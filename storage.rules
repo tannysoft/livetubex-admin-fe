@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── รูปสำเนาบัตรประชาชน ────────────────────────────────────────────────
+    // path: idCards/{lineUserId}/id_card.{ext}
+    match /idCards/{lineUserId}/{fileName} {
+
+      // เฉพาะ Admin (email/password sign-in) เท่านั้นที่อ่านได้
+      allow read: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+
+      // Freelancer อัพโหลดได้เฉพาะของตัวเอง
+      // ต้องเป็นไฟล์รูป ขนาดไม่เกิน 10 MB
+      allow write: if request.auth != null
+        && request.auth.uid == lineUserId
+        && request.auth.token.lineUser == true
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+  }
+}

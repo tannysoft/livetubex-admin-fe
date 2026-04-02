@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ────────────────────────────────────────────────────
+
+    // Admin: login ด้วย email/password (sign_in_provider == 'password')
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // Freelancer: login ผ่าน LINE LIFF → Firebase Custom Token
+    // (sign_in_provider == 'custom') และมี claim lineUser == true
+    function isFreelancer() {
+      return request.auth != null
+          && request.auth.token.firebase.sign_in_provider == 'custom'
+          && request.auth.token.lineUser == true;
+    }
+
+    // Freelancer คนนี้คือเจ้าของ document หรือไม่
+    // โดยเปรียบ request.auth.uid กับ field lineUserId ใน document
+    function isOwnerByLineId(lineUserId) {
+      return isFreelancer() && request.auth.uid == lineUserId;
+    }
+
+    // ── jobs: Admin เขียนได้, ทุกคนที่ login อ่านได้ ────────────────────────
+    match /jobs/{jobId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // ── freelancers ──────────────────────────────────────────────────────────
+    match /freelancers/{freelancerId} {
+      // Admin อ่าน/เขียนได้ทุกอย่าง
+      allow read, write: if isAdmin();
+
+      // Freelancer อ่านได้เฉพาะ document ของตัวเอง (lineUserId == uid)
+      allow read: if isOwnerByLineId(resource.data.lineUserId);
+
+      // Freelancer สร้าง profile ตัวเองได้ครั้งแรก
+      // → lineUserId ต้องตรงกับ uid ของตัวเอง + ห้ามตั้ง totalEarned หรือ isActive เอง
+      allow create: if isFreelancer()
+                    && request.auth.uid == request.resource.data.lineUserId
+                    && request.resource.data.totalEarned == 0
+                    && request.resource.data.isActive == true
+                    && request.resource.data.keys().hasAll([
+                        'lineUserId','lineDisplayName','name',
+                        'phone','bankAccount','bankName',
+                        'totalEarned','isActive','createdAt'
+                       ]);
+
+      // Freelancer แก้ไข profile ตัวเองได้ แต่ห้ามแก้ field สำคัญ
+      allow update: if isOwnerByLineId(resource.data.lineUserId)
+                    && request.resource.data.lineUserId == resource.data.lineUserId
+                    && request.resource.data.totalEarned == resource.data.totalEarned
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.isActive == resource.data.isActive;
+    }
+
+    // ── jobAssignments ───────────────────────────────────────────────────────
+    match /jobAssignments/{assignmentId} {
+      // Admin เขียนได้ทุกอย่าง
+      allow read, write: if isAdmin();
+
+      // Freelancer อ่านได้เฉพาะงานของตัวเอง
+      allow read: if isFreelancer()
+                  && resource.data.freelancerId == request.auth.uid;
+    }
+
+    // ── payments ─────────────────────────────────────────────────────────────
+    match /payments/{paymentId} {
+      // Admin ทำได้ทุกอย่าง
+      allow read, write: if isAdmin();
+
+      // Freelancer อ่านได้เฉพาะ payment ของตัวเอง
+      // freelancerId ใน document เก็บ Firestore doc ID ไม่ใช่ lineUserId
+      // แต่เราสามารถ query ด้วย where('freelancerId','==', docId) ได้
+      // → ใช้วิธี lookup freelancer doc เพื่อ verify ว่า lineUserId == auth.uid
+      // (วิธีที่ง่ายกว่า: เก็บ lineUserId ใน payment document ด้วย)
+      allow read: if isFreelancer()
+                  && resource.data.lineUserId == request.auth.uid;
+
+      // Freelancer สร้าง payment request ได้
+      // → lineUserId ต้องตรงกับ uid + status ต้อง pending + amount > 0
+      allow create: if isFreelancer()
+                    && request.resource.data.lineUserId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && request.resource.data.keys().hasAll([
+                        'freelancerId','jobAssignmentId','jobId',
+                        'amount','status','requestedAt',
+                        'freelancerName','jobTitle','bankAccount','bankName',
+                        'lineUserId'
+                       ]);
+    }
+  }
+}
