@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "yarn run build && cd functions && yarn build && cd .. && firebase deploy"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",

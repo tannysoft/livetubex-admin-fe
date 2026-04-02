@@ -4,7 +4,9 @@ import { useForm } from 'react-hook-form'
 import type { Freelancer } from '@/lib/types'
 
 type FormData = {
-  name: string
+  namePrefix: string
+  firstName: string
+  lastName: string
   phone: string
   email: string
   bankAccount: string
@@ -16,7 +18,7 @@ type FormData = {
 
 interface FreelancerFormProps {
   defaultValues?: Partial<Freelancer>
-  onSubmit: (data: FormData) => Promise<void>
+  onSubmit: (data: Omit<Freelancer, 'id' | 'createdAt' | 'totalEarned'>) => Promise<void>
   onCancel: () => void
   isLoading?: boolean
 }
@@ -37,7 +39,9 @@ const bankOptions = [
 export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLoading }: FreelancerFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: {
-      name: defaultValues?.name ?? '',
+      namePrefix: defaultValues?.namePrefix ?? 'นาย',
+      firstName: defaultValues?.firstName ?? '',
+      lastName: defaultValues?.lastName ?? '',
       phone: defaultValues?.phone ?? '',
       email: defaultValues?.email ?? '',
       bankAccount: defaultValues?.bankAccount ?? '',
@@ -48,17 +52,63 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
     },
   })
 
+  const handleFormSubmit = (data: FormData) => {
+    const fullName = `${data.namePrefix}${data.firstName} ${data.lastName}`
+    return onSubmit({
+      namePrefix: data.namePrefix,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      name: fullName,
+      phone: data.phone,
+      email: data.email,
+      bankAccount: data.bankAccount,
+      bankName: data.bankName,
+      lineUserId: data.lineUserId,
+      lineDisplayName: data.lineDisplayName,
+      linePictureUrl: defaultValues?.linePictureUrl ?? '',
+      idCardImageUrl: defaultValues?.idCardImageUrl ?? '',
+      isActive: data.isActive,
+    })
+  }
+
   const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+        {/* คำนำหน้า + ชื่อ */}
         <div>
-          <label className={labelCls}>ชื่อ-นามสกุล *</label>
-          <input {...register('name')} className={inputCls} placeholder="ชื่อเต็ม" />
-          {errors.name && <p className={errorCls}>{errors.name.message}</p>}
+          <label className={labelCls}>ชื่อ *</label>
+          <div className="flex gap-2">
+            <select
+              {...register('namePrefix', { required: true })}
+              className={`${inputCls} w-28 flex-shrink-0`}
+            >
+              <option value="นาย">นาย</option>
+              <option value="นาง">นาง</option>
+              <option value="นางสาว">นางสาว</option>
+            </select>
+            <input
+              {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
+              className={inputCls}
+              placeholder="ชื่อ"
+            />
+          </div>
+          {errors.firstName && <p className={errorCls}>{errors.firstName.message}</p>}
+        </div>
+
+        {/* นามสกุล */}
+        <div>
+          <label className={labelCls}>นามสกุล *</label>
+          <input
+            {...register('lastName', { required: 'กรุณากรอกนามสกุล' })}
+            className={inputCls}
+            placeholder="นามสกุล"
+          />
+          {errors.lastName && <p className={errorCls}>{errors.lastName.message}</p>}
         </div>
 
         <div>
@@ -67,7 +117,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
           {errors.phone && <p className={errorCls}>{errors.phone.message}</p>}
         </div>
 
-        <div className="sm:col-span-2">
+        <div>
           <label className={labelCls}>อีเมล</label>
           <input {...register('email')} className={inputCls} placeholder="email@example.com" type="email" />
           {errors.email && <p className={errorCls}>{errors.email.message}</p>}

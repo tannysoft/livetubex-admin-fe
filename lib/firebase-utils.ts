@@ -90,7 +90,9 @@ export async function upsertFreelancerByLineId(
   data: {
     lineDisplayName: string
     linePictureUrl?: string
-    name: string
+    namePrefix: string
+    firstName: string
+    lastName: string
     phone: string
     email?: string
     bankAccount: string
@@ -98,14 +100,19 @@ export async function upsertFreelancerByLineId(
     idCardImageUrl?: string
   }
 ): Promise<string> {
+  // ชื่อเต็ม ใช้สำหรับ denormalize ใน payments / assignments
+  const fullName = `${data.namePrefix}${data.firstName} ${data.lastName}`
+
   const existing = await getFreelancerByLineId(lineUserId)
 
   if (existing) {
-    // อัปเดตเฉพาะ field ที่ Freelancer แก้ได้
     const updateData: Record<string, unknown> = {
       lineDisplayName: data.lineDisplayName,
       linePictureUrl: data.linePictureUrl ?? '',
-      name: data.name,
+      namePrefix: data.namePrefix,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      name: fullName,
       phone: data.phone,
       email: data.email ?? '',
       bankAccount: data.bankAccount,
@@ -123,7 +130,10 @@ export async function upsertFreelancerByLineId(
     lineUserId,
     lineDisplayName: data.lineDisplayName,
     linePictureUrl: data.linePictureUrl ?? '',
-    name: data.name,
+    namePrefix: data.namePrefix,
+    firstName: data.firstName,
+    lastName: data.lastName,
+    name: fullName,
     phone: data.phone,
     email: data.email ?? '',
     bankAccount: data.bankAccount,

@@ -18,7 +18,9 @@ import { getFreelancerByLineId, upsertFreelancerByLineId } from '@/lib/firebase-
 import { uploadIdCardImage } from '@/lib/firebase-storage'
 
 type FormData = {
-  name: string
+  namePrefix: string
+  firstName: string
+  lastName: string
   phone: string
   email: string
   bankName: string
@@ -70,7 +72,7 @@ export default function FreelancerRegisterPage() {
     reset,
     formState: { errors },
   } = useForm<FormData>({
-    defaultValues: { name: '', phone: '', email: '', bankName: '', bankAccount: '' },
+    defaultValues: { namePrefix: 'นาย', firstName: '', lastName: '', phone: '', email: '', bankName: '', bankAccount: '' },
   })
 
   useEffect(() => {
@@ -90,7 +92,9 @@ export default function FreelancerRegisterPage() {
         if (existing) {
           setIsEdit(true)
           reset({
-            name: existing.name,
+            namePrefix: existing.namePrefix || 'นาย',
+            firstName: existing.firstName || '',
+            lastName: existing.lastName || '',
             phone: existing.phone,
             email: existing.email ?? '',
             bankName: existing.bankName,
@@ -162,7 +166,9 @@ export default function FreelancerRegisterPage() {
       await upsertFreelancerByLineId(liffProfile.userId, {
         lineDisplayName: liffProfile.displayName,
         linePictureUrl: liffProfile.pictureUrl,
-        name: data.name,
+        namePrefix: data.namePrefix,
+        firstName: data.firstName,
+        lastName: data.lastName,
         phone: data.phone,
         email: data.email,
         bankAccount: data.bankAccount,
@@ -296,17 +302,44 @@ export default function FreelancerRegisterPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
             <p className="text-sm font-semibold text-gray-700">ข้อมูลส่วนตัว</p>
 
+            {/* คำนำหน้า + ชื่อ */}
             <div>
-              <label className={labelCls}>ชื่อ-นามสกุล *</label>
-              <input
-                {...register('name', { required: 'กรุณากรอกชื่อ-นามสกุล' })}
-                className={inputCls}
-                placeholder="ชื่อเต็ม เช่น สมชาย ใจดี"
-              />
-              {errors.name && (
+              <label className={labelCls}>ชื่อ *</label>
+              <div className="flex gap-2">
+                <select
+                  {...register('namePrefix', { required: true })}
+                  className={`${inputCls} w-32 flex-shrink-0`}
+                >
+                  <option value="นาย">นาย</option>
+                  <option value="นาง">นาง</option>
+                  <option value="นางสาว">นางสาว</option>
+                </select>
+                <input
+                  {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
+                  className={inputCls}
+                  placeholder="ชื่อ"
+                />
+              </div>
+              {errors.firstName && (
                 <p className={errorCls}>
                   <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.name.message}
+                  {errors.firstName.message}
+                </p>
+              )}
+            </div>
+
+            {/* นามสกุล */}
+            <div>
+              <label className={labelCls}>นามสกุล *</label>
+              <input
+                {...register('lastName', { required: 'กรุณากรอกนามสกุล' })}
+                className={inputCls}
+                placeholder="นามสกุล"
+              />
+              {errors.lastName && (
+                <p className={errorCls}>
+                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
+                  {errors.lastName.message}
                 </p>
               )}
             </div>

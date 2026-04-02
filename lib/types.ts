@@ -31,7 +31,10 @@ export interface Freelancer {
   lineUserId: string
   lineDisplayName: string
   linePictureUrl?: string
-  name: string
+  namePrefix: string        // คำนำหน้า: นาย / นาง / นางสาว
+  firstName: string         // ชื่อ
+  lastName: string          // นามสกุล
+  name: string              // ชื่อเต็ม (computed: namePrefix + firstName + ' ' + lastName)
   phone: string
   email?: string
   bankAccount: string
