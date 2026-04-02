@@ -1,5 +1,11 @@
-import { redirect } from 'next/navigation'
+import type { Metadata } from 'next'
+import HomeEntry from '@/components/landing/HomeEntry'
+
+export const metadata: Metadata = {
+  title: 'LiveTubeX',
+  description: 'ระบบจัดการงานถ่ายทอดสดและการเบิกจ่าย Freelancer ของ LiveTubeX Co., Ltd.',
+}
 
 export default function HomePage() {
-  redirect('/admin')
+  return <HomeEntry />
 }

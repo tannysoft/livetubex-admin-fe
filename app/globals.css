@@ -34,3 +34,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #d1d5db;
 }
+
+/* react-day-picker — โทนสีแอดมิน */
+.livetube-day-picker {
+  --rdp-accent-color: #f73727;
+  --rdp-accent-background-color: #ffe8e6;
+}

@@ -8,6 +8,12 @@ import {
 } from 'firebase/auth'
 import { auth } from './firebase'
 
+/** /admin รับเฉพาะ Firebase Email/Password — ไม่รับ LINE (custom token) หรือ provider อื่น */
+export function isFirebaseEmailPasswordAdmin(user: User | null): boolean {
+  if (!user) return false
+  return user.providerData.some((p) => p.providerId === 'password')
+}
+
 export async function adminLogin(email: string, password: string): Promise<User> {
   const result = await signInWithEmailAndPassword(auth, email, password)
   // Set session cookie so middleware can guard /admin routes

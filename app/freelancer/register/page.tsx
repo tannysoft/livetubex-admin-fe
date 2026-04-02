@@ -11,7 +11,8 @@ import {
   CameraIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
+import FormListbox from '@/components/ui/FormListbox'
 import Logo from '@/components/ui/Logo'
 import { initLiff, isLiffLoggedIn, liffLogin, signInFirebaseWithLiff } from '@/lib/line-liff'
 import { getFreelancerByLineId, upsertFreelancerByLineId } from '@/lib/firebase-utils'
@@ -38,6 +39,17 @@ const bankOptions = [
   'ธนาคาร ธ.ก.ส.',
   'ธนาคารซีไอเอ็มบี (CIMB)',
   'ธนาคารยูโอบี (UOB)',
+]
+
+const namePrefixOptions = [
+  { value: 'นาย', label: 'นาย' },
+  { value: 'นาง', label: 'นาง' },
+  { value: 'นางสาว', label: 'นางสาว' },
+]
+
+const bankListboxOptions = [
+  { value: '', label: '-- เลือกธนาคาร --' },
+  ...bankOptions.map((b) => ({ value: b, label: b })),
 ]
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -67,6 +79,7 @@ export default function FreelancerRegisterPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -77,7 +90,12 @@ export default function FreelancerRegisterPage() {
   useEffect(() => {
     async function init() {
       try {
-        await initLiff()
+        const liffReady = await initLiff()
+        if (!liffReady) {
+          setErrorMsg('ไม่สามารถโหลด LINE LIFF ในหน้านี้ได้ กรุณาเปิดจากลิงก์พอร์ทัล Freelancer')
+          setPageState('error')
+          return
+        }
         const loggedIn = await isLiffLoggedIn()
         if (!loggedIn) {
           setPageState('not-logged-in')
@@ -307,14 +325,19 @@ export default function FreelancerRegisterPage() {
               <div className="min-w-0">
                 <label className={labelCls}>ชื่อ *</label>
                 <div className="flex min-w-0 gap-2">
-                  <select
-                    {...register('namePrefix', { required: true })}
-                    className={`${inputBaseCls} w-28 shrink-0`}
-                  >
-                    <option value="นาย">นาย</option>
-                    <option value="นาง">นาง</option>
-                    <option value="นางสาว">นางสาว</option>
-                  </select>
+                  <Controller
+                    name="namePrefix"
+                    control={control}
+                    rules={{ required: true }}
+                    render={({ field }) => (
+                      <FormListbox
+                        value={field.value}
+                        onChange={field.onChange}
+                        options={namePrefixOptions}
+                        buttonClassName="w-28 shrink-0"
+                      />
+                    )}
+                  />
                   <input
                     {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
                     className={`${inputBaseCls} min-w-0 flex-1`}
@@ -375,14 +398,21 @@ export default function FreelancerRegisterPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelCls}>ธนาคาร *</label>
-                <select {...register('bankName', { required: 'กรุณาเลือกธนาคาร' })} className={inputCls}>
-                  <option value="">-- เลือกธนาคาร --</option>
-                  {bankOptions.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
+                <Controller
+                  name="bankName"
+                  control={control}
+                  rules={{ required: 'กรุณาเลือกธนาคาร' }}
+                  render={({ field }) => (
+                    <FormListbox
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={bankListboxOptions}
+                      placeholder="-- เลือกธนาคาร --"
+                      buttonClassName={inputCls}
+                      invalid={!!errors.bankName}
+                    />
+                  )}
+                />
                 {errors.bankName && <p className={errorCls}>{errors.bankName.message}</p>}
               </div>
 

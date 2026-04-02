@@ -6,9 +6,12 @@ service firebase.storage {
     // path: idCards/{lineUserId}/id_card.{ext}
     match /idCards/{lineUserId}/{fileName} {
 
-      // เฉพาะ Admin (email/password sign-in) เท่านั้นที่อ่านได้
+      // Admin อ่านได้ทั้งหมด; freelancer (LINE custom token, uid = lineUserId) อ่านได้เฉพาะโฟลเดอร์ของตัวเอง
       allow read: if request.auth != null
-        && request.auth.token.firebase.sign_in_provider == 'password';
+        && (
+          request.auth.token.firebase.sign_in_provider == 'password'
+          || (request.auth.uid == lineUserId && request.auth.token.lineUser == true)
+        );
 
       // Freelancer อัพโหลดได้เฉพาะของตัวเอง
       // ต้องเป็นไฟล์รูป ขนาดไม่เกิน 10 MB

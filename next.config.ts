@@ -5,8 +5,6 @@ const nextConfig: NextConfig = {
 
   // ── Firebase Hosting: export เป็น static files ──────────────────────────
   output: 'export',
-
-  // trailing slash สำหรับ Firebase Hosting routing
   trailingSlash: true,
 
   // ปิด image optimization (ไม่มี server ใน static export)

@@ -1,6 +1,8 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
+import FormListbox from '@/components/ui/FormListbox'
+import FormDatePicker from '@/components/ui/FormDatePicker'
 import type { Job, JobStatus } from '@/lib/types'
 
 type FormData = {
@@ -35,6 +37,8 @@ const statusOptions: { value: JobStatus; label: string }[] = [
 export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }: JobFormProps) {
   const {
     register,
+    control,
+    watch,
     handleSubmit,
     formState: { errors },
   } = useForm<FormData>({
@@ -50,6 +54,8 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
       notes: defaultValues?.notes ?? '',
     },
   })
+
+  const startDateValue = watch('date')
 
   const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
@@ -71,14 +77,46 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
         </div>
 
         <div>
-          <label className={labelCls}>วันที่เริ่มงาน *</label>
-          <input type="date" {...register('date')} className={inputCls} />
+          <label className={labelCls} htmlFor="job-date-start">
+            วันที่เริ่มงาน *
+          </label>
+          <Controller
+            name="date"
+            control={control}
+            rules={{ required: 'กรุณาเลือกวันที่เริ่มงาน' }}
+            render={({ field }) => (
+              <FormDatePicker
+                id="job-date-start"
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="เลือกวันที่เริ่ม"
+                buttonClassName={inputCls}
+                invalid={!!errors.date}
+              />
+            )}
+          />
           {errors.date && <p className={errorCls}>{errors.date.message}</p>}
         </div>
 
         <div>
-          <label className={labelCls}>วันที่สิ้นสุด</label>
-          <input type="date" {...register('endDate')} className={inputCls} />
+          <label className={labelCls} htmlFor="job-date-end">
+            วันที่สิ้นสุด
+          </label>
+          <Controller
+            name="endDate"
+            control={control}
+            render={({ field }) => (
+              <FormDatePicker
+                id="job-date-end"
+                value={field.value ?? ''}
+                onChange={field.onChange}
+                placeholder="ไม่บังคับ"
+                buttonClassName={inputCls}
+                minDate={startDateValue || undefined}
+                allowClear
+              />
+            )}
+          />
         </div>
 
         <div className="sm:col-span-2">
@@ -101,11 +139,18 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
 
         <div>
           <label className={labelCls}>สถานะ *</label>
-          <select {...register('status')} className={inputCls}>
-            {statusOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <FormListbox
+                value={field.value}
+                onChange={(v) => field.onChange(v as JobStatus)}
+                options={statusOptions.map((o) => ({ value: o.value, label: o.label }))}
+                buttonClassName={inputCls}
+              />
+            )}
+          />
         </div>
 
         <div className="sm:col-span-2">

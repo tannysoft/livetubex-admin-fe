@@ -37,7 +37,12 @@ export default function FreelancerPage() {
   useEffect(() => {
     async function init() {
       try {
-        await initLiff()
+        const liffReady = await initLiff()
+        if (!liffReady) {
+          setErrorMsg('ไม่สามารถโหลด LINE LIFF ในหน้านี้ได้ กรุณาเปิดจากลิงก์พอร์ทัล Freelancer')
+          setPageState('error')
+          return
+        }
         const isLogin = await isLiffLoggedIn()
 
         if (!isLogin) {
@@ -49,7 +54,7 @@ export default function FreelancerPage() {
         const profile = await signInFirebaseWithLiff()
         setLiffProfile(profile)
 
-        // ดึงข้อมูล freelancer ด้วย lineUserId (ขณะนี้ auth แล้ว)
+        // ยังไม่ลงทะเบียน → ไปลงทะเบียนก่อน แล้วค่อยกลับมาหน้าหลัก (/freelancer) หลังบันทึกสำเร็จ
         const f = await getFreelancerByLineId(profile.userId)
         if (!f) {
           router.replace('/freelancer/register')

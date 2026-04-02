@@ -1,6 +1,8 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
+import { Switch } from '@headlessui/react'
+import FormListbox from '@/components/ui/FormListbox'
 import type { Freelancer } from '@/lib/types'
 
 type FormData = {
@@ -36,8 +38,19 @@ const bankOptions = [
   'ธนาคารยูโอบี (UOB)',
 ]
 
+const namePrefixOptions = [
+  { value: 'นาย', label: 'นาย' },
+  { value: 'นาง', label: 'นาง' },
+  { value: 'นางสาว', label: 'นางสาว' },
+]
+
+const bankListboxOptions = [
+  { value: '', label: '-- เลือกธนาคาร --' },
+  ...bankOptions.map((b) => ({ value: b, label: b })),
+]
+
 export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLoading }: FreelancerFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       namePrefix: defaultValues?.namePrefix ?? 'นาย',
       firstName: defaultValues?.firstName ?? '',
@@ -85,14 +98,19 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
         <div className="min-w-0">
           <label className={labelCls}>ชื่อ *</label>
           <div className="flex min-w-0 gap-2">
-            <select
-              {...register('namePrefix', { required: true })}
-              className={`${inputBaseCls} w-28 shrink-0`}
-            >
-              <option value="นาย">นาย</option>
-              <option value="นาง">นาง</option>
-              <option value="นางสาว">นางสาว</option>
-            </select>
+            <Controller
+              name="namePrefix"
+              control={control}
+              rules={{ required: true }}
+              render={({ field }) => (
+                <FormListbox
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={namePrefixOptions}
+                  buttonClassName="w-28 shrink-0"
+                />
+              )}
+            />
             <input
               {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
               className={`${inputBaseCls} min-w-0 flex-1`}
@@ -127,12 +145,21 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
 
         <div>
           <label className={labelCls}>ธนาคาร *</label>
-          <select {...register('bankName')} className={inputCls}>
-            <option value="">-- เลือกธนาคาร --</option>
-            {bankOptions.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
+          <Controller
+            name="bankName"
+            control={control}
+            rules={{ required: 'กรุณาเลือกธนาคาร' }}
+            render={({ field }) => (
+              <FormListbox
+                value={field.value}
+                onChange={field.onChange}
+                options={bankListboxOptions}
+                placeholder="-- เลือกธนาคาร --"
+                buttonClassName={inputCls}
+                invalid={!!errors.bankName}
+              />
+            )}
+          />
           {errors.bankName && <p className={errorCls}>{errors.bankName.message}</p>}
         </div>
 
@@ -153,8 +180,23 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
         </div>
 
         <div className="sm:col-span-2 flex items-center gap-3">
-          <input type="checkbox" id="isActive" {...register('isActive')} className="w-4 h-4 accent-[#f73727]" />
-          <label htmlFor="isActive" className="text-sm text-gray-700">Active (สามารถรับงานได้)</label>
+          <Controller
+            name="isActive"
+            control={control}
+            render={({ field: { value, onChange } }) => (
+              <Switch
+                checked={value}
+                onChange={onChange}
+                id="isActive"
+                className="group relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:ring-offset-2 data-checked:bg-[#f73727] data-disabled:opacity-50"
+              >
+                <span className="pointer-events-none inline-block size-5 translate-x-0.5 rounded-full bg-white shadow transition duration-200 ease-in-out group-data-checked:translate-x-5" />
+              </Switch>
+            )}
+          />
+          <label htmlFor="isActive" className="text-sm text-gray-700 cursor-pointer">
+            Active (สามารถรับงานได้)
+          </label>
         </div>
       </div>
 

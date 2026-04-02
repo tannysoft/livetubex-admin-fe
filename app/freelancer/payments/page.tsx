@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeftIcon,
@@ -11,6 +11,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
+import FormListbox from '@/components/ui/FormListbox'
 import Badge from '@/components/ui/Badge'
 import { initLiff, isLiffLoggedIn, signInFirebaseWithLiff } from '@/lib/line-liff'
 import {
@@ -35,6 +36,7 @@ export default function FreelancerPaymentsPage() {
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [bootError, setBootError] = useState('')
 
   const load = async (freelancerId: string, luid: string) => {
     const [p, a] = await Promise.all([
@@ -48,7 +50,11 @@ export default function FreelancerPaymentsPage() {
   useEffect(() => {
     async function init() {
       try {
-        await initLiff()
+        const liffReady = await initLiff()
+        if (!liffReady) {
+          setBootError('ไม่สามารถโหลด LINE LIFF ได้')
+          return
+        }
         const isLogin = await isLiffLoggedIn()
         if (!isLogin) {
           window.location.href = '/freelancer'
@@ -68,6 +74,7 @@ export default function FreelancerPaymentsPage() {
         await load(f.id, profile.userId)
       } catch (err) {
         console.error(err)
+        setBootError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
       } finally {
         setLoading(false)
       }
@@ -81,6 +88,17 @@ export default function FreelancerPaymentsPage() {
     )
     return (a.status === 'accepted' || a.status === 'completed') && !alreadyRequested
   })
+
+  const assignmentListboxOptions = useMemo(
+    () => [
+      { value: '', label: '-- เลือกงาน --' },
+      ...eligibleAssignments.map((a) => ({
+        value: a.id,
+        label: `${a.jobTitle} (${formatCurrency(a.fee)})`,
+      })),
+    ],
+    [eligibleAssignments]
+  )
 
   const handleRequest = async () => {
     if (!selectedAssignmentId || !requestAmount) {
@@ -125,6 +143,17 @@ export default function FreelancerPaymentsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="w-8 h-8 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (bootError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+        <p className="text-red-600 text-sm text-center">{bootError}</p>
+        <Link href="/freelancer" className="mt-6 text-[#f73727] text-sm font-medium">
+          กลับหน้าหลัก
+        </Link>
       </div>
     )
   }
@@ -243,22 +272,16 @@ export default function FreelancerPaymentsPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">เลือกงาน *</label>
-            <select
+            <FormListbox
               value={selectedAssignmentId}
-              onChange={(e) => {
-                setSelectedAssignmentId(e.target.value)
-                const a = assignments.find((a) => a.id === e.target.value)
+              onChange={(id) => {
+                setSelectedAssignmentId(id)
+                const a = assignments.find((x) => x.id === id)
                 if (a) setRequestAmount(String(a.fee))
               }}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
-            >
-              <option value="">-- เลือกงาน --</option>
-              {eligibleAssignments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.jobTitle} ({formatCurrency(a.fee)})
-                </option>
-              ))}
-            </select>
+              options={assignmentListboxOptions}
+              placeholder="-- เลือกงาน --"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) *</label>

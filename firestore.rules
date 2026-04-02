@@ -63,9 +63,13 @@ service cloud.firestore {
       // Admin เขียนได้ทุกอย่าง
       allow read, write: if isAdmin();
 
-      // Freelancer อ่านได้เฉพาะงานของตัวเอง
+      // Freelancer อ่านได้เฉพาะงานที่ freelancerId ชี้ไปยัง profile ของตัวเอง
+      // (freelancerId = Firestore doc id ของ freelancers/{id}; auth.uid = LINE user id)
       allow read: if isFreelancer()
-                  && resource.data.freelancerId == request.auth.uid;
+                  && resource.data.freelancerId is string
+                  && exists(/databases/$(database)/documents/freelancers/$(resource.data.freelancerId))
+                  && get(/databases/$(database)/documents/freelancers/$(resource.data.freelancerId)).data.lineUserId
+                     == request.auth.uid;
     }
 
     // ── payments ─────────────────────────────────────────────────────────────

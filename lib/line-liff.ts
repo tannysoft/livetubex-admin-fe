@@ -20,18 +20,43 @@ export interface LiffUserProfile {
   pictureUrl?: string
 }
 
+/** normalize เช่น /index.html → / (บาง host เสิร์ฟแบบนี้) */
+function normalizePathname(pathname: string): string {
+  let p = pathname.replace(/\/+$/, '') || '/'
+  if (p.endsWith('/index.html')) {
+    p = p.slice(0, -'/index.html'.length).replace(/\/+$/, '') || '/'
+  }
+  return p
+}
+
+/** LIFF ใช้เฉพาะ `/` และ `/freelancer...` — ห้าม init บน /admin หรือ /login */
+export function isLiffPathAllowed(): boolean {
+  if (typeof window === 'undefined') return false
+  const p = normalizePathname(window.location.pathname)
+  if (p === '/') return true
+  return p === '/freelancer' || p.startsWith('/freelancer/')
+}
+
 // ── LIFF init ─────────────────────────────────────────────────────────────────
-export async function initLiff(): Promise<void> {
-  if (liffInitialized) return
+/** คืน true ถ้า init สำเร็จหรือเคย init แล้ว — false ถ้า path ไม่อนุญาต (ห้ามเรียก isLoggedIn ต่อ) */
+export async function initLiff(): Promise<boolean> {
+  if (typeof window !== 'undefined' && !isLiffPathAllowed()) {
+    return false
+  }
+  if (liffInitialized) return true
   const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID
   if (!liffId) throw new Error('NEXT_PUBLIC_LINE_LIFF_ID is not set')
   const liff = await getLiff()
   await liff.init({ liffId, withLoginOnExternalBrowser: true })
   liffInitialized = true
+  return true
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 export async function liffLogin(): Promise<void> {
+  if (typeof window !== 'undefined' && !isLiffPathAllowed()) return
+  const ok = await initLiff()
+  if (!ok) return
   const liff = await getLiff()
   if (!liff.isLoggedIn()) {
     liff.login({ redirectUri: window.location.href })
@@ -40,6 +65,11 @@ export async function liffLogin(): Promise<void> {
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 export async function liffLogout(): Promise<void> {
+  if (!liffInitialized) {
+    await signOut(auth).catch(() => {})
+    window.location.reload()
+    return
+  }
   const liff = await getLiff()
   liff.logout()
   await signOut(auth).catch(() => {})
@@ -47,13 +77,29 @@ export async function liffLogout(): Promise<void> {
 }
 
 export async function isLiffLoggedIn(): Promise<boolean> {
+  if (!liffInitialized) return false
   const liff = await getLiff()
   return liff.isLoggedIn()
 }
 
+/** @deprecated ใช้ initLiffAndIsInClient แทน — ฟังก์ชันนี้ไม่ได้เรียก init ก่อน */
 export async function isInLineApp(): Promise<boolean> {
   const liff = await getLiff()
   return liff.isInClient()
+}
+
+/** init LIFF แล้วตรวจว่าเปิดใน LINE in-app หรือไม่ — ใช้แยกหน้าแรกจากแอดมิน */
+export async function initLiffAndIsInClient(): Promise<boolean> {
+  try {
+    if (typeof window !== 'undefined' && !isLiffPathAllowed()) {
+      return false
+    }
+    const ok = await initLiff()
+    if (!ok) return false
+    return (await getLiff()).isInClient()
+  } catch {
+    return false
+  }
 }
 
 // ── Auth: แปลง LINE token → Firebase Custom Token → signIn ───────────────────
@@ -65,6 +111,9 @@ export async function isInLineApp(): Promise<boolean> {
  * 4. ตอนนี้ request.auth.uid = lineUserId ใน Firestore rules
  */
 export async function signInFirebaseWithLiff(): Promise<LiffUserProfile> {
+  if (!liffInitialized) {
+    throw new Error('LIFF ยังไม่ได้ init')
+  }
   const liff = await getLiff()
 
   if (!liff.isLoggedIn()) {
@@ -115,6 +164,7 @@ export async function signInFirebaseWithLiff(): Promise<LiffUserProfile> {
 
 // ── Get current LINE profile (ไม่ต้อง call API ซ้ำ ใช้ cache จาก auth) ────────
 export async function getLiffProfile(): Promise<LiffUserProfile | null> {
+  if (!liffInitialized) return null
   const liff = await getLiff()
   if (!liff.isLoggedIn()) return null
   const profile = await liff.getProfile()

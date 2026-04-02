@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
+import FormListbox from '@/components/ui/FormListbox'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { getFreelancers, createAssignment, deleteAssignment } from '@/lib/firebase-utils'
@@ -29,7 +30,7 @@ export default function AssignmentModal({ isOpen, onClose, job, assignments, onR
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     defaultValues: { role: '', fee: 0, freelancerId: '', notes: '' },
   })
 
@@ -102,12 +103,24 @@ export default function AssignmentModal({ isOpen, onClose, job, assignments, onR
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <select {...register('freelancerId')} className={inputCls}>
-                  <option value="">-- เลือก Freelancer --</option>
-                  {freelancers.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
+                <Controller
+                  name="freelancerId"
+                  control={control}
+                  rules={{ required: 'กรุณาเลือก Freelancer' }}
+                  render={({ field }) => (
+                    <FormListbox
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={[
+                        { value: '', label: '-- เลือก Freelancer --' },
+                        ...freelancers.map((f) => ({ value: f.id, label: f.name })),
+                      ]}
+                      placeholder="-- เลือก Freelancer --"
+                      buttonClassName={inputCls}
+                      invalid={!!errors.freelancerId}
+                    />
+                  )}
+                />
                 {errors.freelancerId && <p className="text-xs text-red-500 mt-1">{errors.freelancerId.message}</p>}
               </div>
               <div>
