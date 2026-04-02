@@ -38,7 +38,6 @@ const bankOptions = [
   'ธนาคาร ธ.ก.ส.',
   'ธนาคารซีไอเอ็มบี (CIMB)',
   'ธนาคารยูโอบี (UOB)',
-  'ธนาคารแลนด์แอนด์เฮ้าส์ (LH Bank)',
 ]
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -183,10 +182,11 @@ export default function FreelancerRegisterPage() {
     }
   }
 
-  const inputCls =
-    'w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all bg-white'
-  const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
-  const errorCls = 'text-xs text-red-500 mt-1.5 flex items-center gap-1'
+  const inputBaseCls =
+    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all bg-white'
+  const inputCls = `w-full ${inputBaseCls}`
+  const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
+  const errorCls = 'text-xs text-red-500 mt-1'
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (pageState === 'loading') {
@@ -302,85 +302,66 @@ export default function FreelancerRegisterPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
             <p className="text-sm font-semibold text-gray-700">ข้อมูลส่วนตัว</p>
 
-            {/* คำนำหน้า + ชื่อ */}
-            <div>
-              <label className={labelCls}>ชื่อ *</label>
-              <div className="flex gap-2">
-                <select
-                  {...register('namePrefix', { required: true })}
-                  className={`${inputCls} w-32 flex-shrink-0`}
-                >
-                  <option value="นาย">นาย</option>
-                  <option value="นาง">นาง</option>
-                  <option value="นางสาว">นางสาว</option>
-                </select>
-                <input
-                  {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
-                  className={inputCls}
-                  placeholder="ชื่อ"
-                />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* คำนำหน้า + ชื่อ */}
+              <div className="min-w-0">
+                <label className={labelCls}>ชื่อ *</label>
+                <div className="flex min-w-0 gap-2">
+                  <select
+                    {...register('namePrefix', { required: true })}
+                    className={`${inputBaseCls} w-28 shrink-0`}
+                  >
+                    <option value="นาย">นาย</option>
+                    <option value="นาง">นาง</option>
+                    <option value="นางสาว">นางสาว</option>
+                  </select>
+                  <input
+                    {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
+                    className={`${inputBaseCls} min-w-0 flex-1`}
+                    placeholder="ชื่อ"
+                  />
+                </div>
+                {errors.firstName && <p className={errorCls}>{errors.firstName.message}</p>}
               </div>
-              {errors.firstName && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.firstName.message}
-                </p>
-              )}
-            </div>
 
-            {/* นามสกุล */}
-            <div>
-              <label className={labelCls}>นามสกุล *</label>
-              <input
-                {...register('lastName', { required: 'กรุณากรอกนามสกุล' })}
-                className={inputCls}
-                placeholder="นามสกุล"
-              />
-              {errors.lastName && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.lastName.message}
-                </p>
-              )}
-            </div>
+              <div className="min-w-0">
+                <label className={labelCls}>นามสกุล *</label>
+                <input
+                  {...register('lastName', { required: 'กรุณากรอกนามสกุล' })}
+                  className={inputCls}
+                  placeholder="นามสกุล"
+                />
+                {errors.lastName && <p className={errorCls}>{errors.lastName.message}</p>}
+              </div>
 
-            <div>
-              <label className={labelCls}>เบอร์โทรศัพท์ *</label>
-              <input
-                {...register('phone', {
-                  required: 'กรุณากรอกเบอร์โทร',
-                  pattern: { value: /^[0-9]{9,10}$/, message: 'เบอร์โทรไม่ถูกต้อง' },
-                })}
-                className={inputCls}
-                placeholder="0812345678"
-                type="tel"
-                inputMode="tel"
-              />
-              {errors.phone && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.phone.message}
-                </p>
-              )}
-            </div>
+              <div>
+                <label className={labelCls}>เบอร์โทรศัพท์ *</label>
+                <input
+                  {...register('phone', {
+                    required: 'กรุณากรอกเบอร์โทร',
+                    pattern: { value: /^[0-9]{9,10}$/, message: 'เบอร์โทรไม่ถูกต้อง' },
+                  })}
+                  className={inputCls}
+                  placeholder="0812345678"
+                  type="tel"
+                  inputMode="tel"
+                />
+                {errors.phone && <p className={errorCls}>{errors.phone.message}</p>}
+              </div>
 
-            <div>
-              <label className={labelCls}>อีเมล (ไม่บังคับ)</label>
-              <input
-                {...register('email', {
-                  pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'อีเมลไม่ถูกต้อง' },
-                })}
-                className={inputCls}
-                placeholder="example@email.com"
-                type="email"
-                inputMode="email"
-              />
-              {errors.email && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.email.message}
-                </p>
-              )}
+              <div>
+                <label className={labelCls}>อีเมล</label>
+                <input
+                  {...register('email', {
+                    pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'อีเมลไม่ถูกต้อง' },
+                  })}
+                  className={inputCls}
+                  placeholder="email@example.com"
+                  type="email"
+                  inputMode="email"
+                />
+                {errors.email && <p className={errorCls}>{errors.email.message}</p>}
+              </div>
             </div>
           </div>
 
@@ -391,42 +372,33 @@ export default function FreelancerRegisterPage() {
               <p className="text-xs text-gray-400 mt-0.5">ใช้สำหรับโอนค่าจ้าง กรอกให้ถูกต้อง</p>
             </div>
 
-            <div>
-              <label className={labelCls}>ธนาคาร *</label>
-              <select
-                {...register('bankName', { required: 'กรุณาเลือกธนาคาร' })}
-                className={inputCls}
-              >
-                <option value="">-- เลือกธนาคาร --</option>
-                {bankOptions.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-              {errors.bankName && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.bankName.message}
-                </p>
-              )}
-            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>ธนาคาร *</label>
+                <select {...register('bankName', { required: 'กรุณาเลือกธนาคาร' })} className={inputCls}>
+                  <option value="">-- เลือกธนาคาร --</option>
+                  {bankOptions.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                {errors.bankName && <p className={errorCls}>{errors.bankName.message}</p>}
+              </div>
 
-            <div>
-              <label className={labelCls}>เลขที่บัญชี *</label>
-              <input
-                {...register('bankAccount', {
-                  required: 'กรุณากรอกเลขที่บัญชี',
-                  pattern: { value: /^[0-9\-]{10,}$/, message: 'เลขบัญชีไม่ถูกต้อง' },
-                })}
-                className={`${inputCls} font-mono tracking-wider`}
-                placeholder="000-0-00000-0"
-                inputMode="numeric"
-              />
-              {errors.bankAccount && (
-                <p className={errorCls}>
-                  <ExclamationCircleIcon className="w-3.5 h-3.5" />
-                  {errors.bankAccount.message}
-                </p>
-              )}
+              <div>
+                <label className={labelCls}>เลขบัญชีธนาคาร *</label>
+                <input
+                  {...register('bankAccount', {
+                    required: 'กรุณากรอกเลขที่บัญชี',
+                    pattern: { value: /^[0-9\-]{10,}$/, message: 'เลขบัญชีไม่ถูกต้อง' },
+                  })}
+                  className={`${inputCls} font-mono tracking-wider`}
+                  placeholder="000-0-00000-0"
+                  inputMode="numeric"
+                />
+                {errors.bankAccount && <p className={errorCls}>{errors.bankAccount.message}</p>}
+              </div>
             </div>
           </div>
 
@@ -518,8 +490,8 @@ export default function FreelancerRegisterPage() {
             />
 
             {idCardError && (
-              <p className={errorCls}>
-                <ExclamationCircleIcon className="w-3.5 h-3.5" />
+              <p className={`${errorCls} flex items-center gap-1`}>
+                <ExclamationCircleIcon className="w-3.5 h-3.5 shrink-0" />
                 {idCardError}
               </p>
             )}

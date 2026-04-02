@@ -71,7 +71,9 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
     })
   }
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+  const inputBaseCls =
+    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+  const inputCls = `w-full ${inputBaseCls}`
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
 
@@ -79,13 +81,13 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-        {/* คำนำหน้า + ชื่อ */}
-        <div>
+        {/* คำนำหน้า + ชื่อ — flex + w-full on sibling overflows grid; use flex-1 min-w-0 */}
+        <div className="min-w-0">
           <label className={labelCls}>ชื่อ *</label>
-          <div className="flex gap-2">
+          <div className="flex min-w-0 gap-2">
             <select
               {...register('namePrefix', { required: true })}
-              className={`${inputCls} w-28 flex-shrink-0`}
+              className={`${inputBaseCls} w-28 shrink-0`}
             >
               <option value="นาย">นาย</option>
               <option value="นาง">นาง</option>
@@ -93,7 +95,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
             </select>
             <input
               {...register('firstName', { required: 'กรุณากรอกชื่อ' })}
-              className={inputCls}
+              className={`${inputBaseCls} min-w-0 flex-1`}
               placeholder="ชื่อ"
             />
           </div>
@@ -101,7 +103,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
         </div>
 
         {/* นามสกุล */}
-        <div>
+        <div className="min-w-0">
           <label className={labelCls}>นามสกุล *</label>
           <input
             {...register('lastName', { required: 'กรุณากรอกนามสกุล' })}
