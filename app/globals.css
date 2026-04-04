@@ -35,6 +35,18 @@ body {
   background: #d1d5db;
 }
 
+/* Skeleton shimmer — Facebook style */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
 /* react-day-picker — โทนสีแอดมิน */
 .livetube-day-picker {
   --rdp-accent-color: #f73727;

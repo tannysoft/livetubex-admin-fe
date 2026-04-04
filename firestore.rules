@@ -45,7 +45,8 @@ service cloud.firestore {
                     && request.resource.data.totalEarned == 0
                     && request.resource.data.isActive == true
                     && request.resource.data.keys().hasAll([
-                        'lineUserId','lineDisplayName','name',
+                        'lineUserId','lineDisplayName',
+                        'namePrefix','firstName','lastName','name',
                         'phone','bankAccount','bankName',
                         'totalEarned','isActive','createdAt'
                        ]);
@@ -92,11 +93,13 @@ service cloud.firestore {
                     && request.resource.data.status == 'pending'
                     && request.resource.data.amount is number
                     && request.resource.data.amount > 0
+                    && request.resource.data.workDescription is string
+                    && request.resource.data.workDescription.size() > 0
                     && request.resource.data.keys().hasAll([
-                        'freelancerId','jobAssignmentId','jobId',
+                        'freelancerId','lineUserId',
                         'amount','status','requestedAt',
-                        'freelancerName','jobTitle','bankAccount','bankName',
-                        'lineUserId'
+                        'workDescription',
+                        'freelancerName','bankAccount','bankName'
                        ]);
     }
   }

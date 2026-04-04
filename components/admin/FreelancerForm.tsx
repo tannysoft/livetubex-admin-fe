@@ -50,6 +50,8 @@ const bankListboxOptions = [
 ]
 
 export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLoading }: FreelancerFormProps) {
+  const isEditMode = !!defaultValues?.id
+
   const { register, control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       namePrefix: defaultValues?.namePrefix ?? 'นาย',
@@ -67,6 +69,8 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
 
   const handleFormSubmit = (data: FormData) => {
     const fullName = `${data.namePrefix}${data.firstName} ${data.lastName}`
+    const lineUserId = isEditMode ? (defaultValues?.lineUserId ?? data.lineUserId) : data.lineUserId
+    const lineDisplayName = isEditMode ? (defaultValues?.lineDisplayName ?? data.lineDisplayName) : data.lineDisplayName
     return onSubmit({
       namePrefix: data.namePrefix,
       firstName: data.firstName,
@@ -76,8 +80,8 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       email: data.email,
       bankAccount: data.bankAccount,
       bankName: data.bankName,
-      lineUserId: data.lineUserId,
-      lineDisplayName: data.lineDisplayName,
+      lineUserId,
+      lineDisplayName,
       linePictureUrl: defaultValues?.linePictureUrl ?? '',
       idCardImageUrl: defaultValues?.idCardImageUrl ?? '',
       isActive: data.isActive,
@@ -171,12 +175,24 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
 
         <div>
           <label className={labelCls}>Line User ID</label>
-          <input {...register('lineUserId')} className={inputCls} placeholder="U1234..." />
+          <input
+            {...register('lineUserId')}
+            className={`${inputCls} ${isEditMode ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+            placeholder="U1234..."
+            readOnly={isEditMode}
+          />
+          {isEditMode && <p className="text-xs text-gray-400 mt-1">Line User ID ไม่สามารถแก้ไขได้</p>}
         </div>
 
         <div>
           <label className={labelCls}>Line Display Name</label>
-          <input {...register('lineDisplayName')} className={inputCls} placeholder="ชื่อใน Line" />
+          <input
+            {...register('lineDisplayName')}
+            className={`${inputCls} ${isEditMode ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+            placeholder="ชื่อใน Line"
+            readOnly={isEditMode}
+          />
+          {isEditMode && <p className="text-xs text-gray-400 mt-1">Line Display Name ไม่สามารถแก้ไขได้</p>}
         </div>
 
         <div className="sm:col-span-2 flex items-center gap-3">

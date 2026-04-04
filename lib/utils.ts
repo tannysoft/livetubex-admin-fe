@@ -1,6 +1,15 @@
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
+/** แสดงวันแบบย่อสำหรับ pill เช่น "จ. 14 เม.ย." */
+export function formatDatePill(dateStr: string): string {
+  try {
+    return format(parseISO(dateStr), 'EEE d MMM', { locale: th })
+  } catch {
+    return dateStr
+  }
+}
+
 export function formatDate(dateStr: string): string {
   try {
     return format(parseISO(dateStr), 'd MMM yyyy', { locale: th })
@@ -23,6 +32,14 @@ export function formatCurrency(amount: number): string {
     currency: 'THB',
     minimumFractionDigits: 0,
   }).format(amount)
+}
+
+const TAX_RATE = 0.03
+
+/** คำนวณภาษีหัก ณ ที่จ่าย 3% */
+export function calcTax(gross: number): { gross: number; tax: number; net: number } {
+  const tax = Math.round(gross * TAX_RATE)
+  return { gross, tax, net: gross - tax }
 }
 
 export function jobStatusLabel(status: string): string {

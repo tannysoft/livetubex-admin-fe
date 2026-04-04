@@ -14,6 +14,7 @@ import { getDashboardStats, getJobs, getPayments } from '@/lib/firebase-utils'
 import type { DashboardStats, Job, Payment } from '@/lib/types'
 import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
+import { Skeleton, SkeletonCard, SkeletonStat } from '@/components/ui/Skeleton'
 import Link from 'next/link'
 
 export default function AdminDashboard() {
@@ -44,8 +45,24 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-8">
+        <div>
+          <Skeleton className="h-8 w-40 rounded-lg" />
+          <Skeleton className="h-4 w-72 rounded-md mt-2" />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonStat key={i} />)}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <Skeleton className="h-6 w-32 rounded-lg" />
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-6 w-40 rounded-lg" />
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        </div>
       </div>
     )
   }
@@ -136,7 +153,7 @@ export default function AdminDashboard() {
                 <div key={payment.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 truncate">{payment.freelancerName}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{payment.jobTitle}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{payment.workDescription}</p>
                   </div>
                   <div className="text-right ml-4">
                     <p className="text-sm font-semibold text-gray-900">{formatCurrency(payment.amount)}</p>

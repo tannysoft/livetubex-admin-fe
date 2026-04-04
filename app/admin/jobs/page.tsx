@@ -7,23 +7,21 @@ import {
   TrashIcon,
   MapPinIcon,
   CalendarIcon,
-  UserGroupIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
 import JobForm from '@/components/admin/JobForm'
-import AssignmentModal from '@/components/admin/AssignmentModal'
 import {
   getJobs,
   createJob,
   updateJob,
   deleteJob,
-  getAssignmentsByJob,
 } from '@/lib/firebase-utils'
-import type { Job, JobAssignment } from '@/lib/types'
+import type { Job } from '@/lib/types'
 import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel } from '@/lib/utils'
+import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -33,8 +31,6 @@ export default function JobsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editJob, setEditJob] = useState<Job | null>(null)
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
-  const [assignJob, setAssignJob] = useState<Job | null>(null)
-  const [assignments, setAssignments] = useState<JobAssignment[]>([])
   const [saving, setSaving] = useState(false)
 
   const loadJobs = async () => {
@@ -50,18 +46,6 @@ export default function JobsPage() {
   useEffect(() => {
     loadJobs()
   }, [])
-
-  const openAssign = async (job: Job) => {
-    setAssignJob(job)
-    const a = await getAssignmentsByJob(job.id)
-    setAssignments(a)
-  }
-
-  const refreshAssignments = async () => {
-    if (!assignJob) return
-    const a = await getAssignmentsByJob(assignJob.id)
-    setAssignments(a)
-  }
 
   const handleCreate = async (data: Parameters<typeof createJob>[0]) => {
     setSaving(true)
@@ -128,8 +112,8 @@ export default function JobsPage() {
 
       {/* Job cards */}
       {loading ? (
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+        <div className="grid gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
@@ -165,13 +149,6 @@ export default function JobsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => openAssign(job)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-                  >
-                    <UserGroupIcon className="w-3.5 h-3.5" />
-                    มอบหมาย
-                  </button>
                   <button
                     onClick={() => setEditJob(job)}
                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -223,16 +200,6 @@ export default function JobsPage() {
         danger
       />
 
-      {/* Assignment Modal */}
-      {assignJob && (
-        <AssignmentModal
-          isOpen={!!assignJob}
-          onClose={() => setAssignJob(null)}
-          job={assignJob}
-          assignments={assignments}
-          onRefresh={refreshAssignments}
-        />
-      )}
     </div>
   )
 }

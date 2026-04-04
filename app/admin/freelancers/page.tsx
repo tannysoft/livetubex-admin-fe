@@ -14,6 +14,7 @@ import FreelancerForm from '@/components/admin/FreelancerForm'
 import { getFreelancers, createFreelancer, updateFreelancer } from '@/lib/firebase-utils'
 import type { Freelancer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 export default function FreelancersPage() {
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
@@ -92,8 +93,30 @@ export default function FreelancersPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="w-12 h-12 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-28 rounded-md" />
+                    <Skeleton className="h-3.5 w-14 rounded-full" />
+                  </div>
+                </div>
+                <Skeleton className="w-7 h-7 rounded-lg" />
+              </div>
+              <div className="mt-4 space-y-2">
+                <Skeleton className="h-3.5 w-32 rounded-md" />
+                <Skeleton className="h-3.5 w-40 rounded-md" />
+                <Skeleton className="h-3.5 w-28 rounded-md" />
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between">
+                <Skeleton className="h-4 w-20 rounded-md" />
+                <Skeleton className="h-4 w-16 rounded-md" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

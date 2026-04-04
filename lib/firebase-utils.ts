@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   addDoc,
-  setDoc,
   updateDoc,
   deleteDoc,
   getDocs,
@@ -10,8 +9,10 @@ import {
   query,
   where,
   orderBy,
+  increment,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from './firebase'
 import type { Job, Freelancer, JobAssignment, Payment, DashboardStats } from './types'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
@@ -211,11 +212,21 @@ export async function getPaymentsByFreelancer(freelancerId: string): Promise<Pay
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Payment))
 }
 
-export async function createPayment(data: Omit<Payment, 'id' | 'requestedAt'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'payments'), {
-    ...data,
-    requestedAt: new Date().toISOString(),
-  })
+export async function createPayment(
+  data: Omit<Payment, 'id' | 'requestedAt'>,
+  freelancerEmail?: string,
+): Promise<string> {
+  const requestedAt = new Date().toISOString()
+  const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
+  const ref = await addDoc(collection(db, 'payments'), { ...clean, requestedAt })
+
+  // ส่งเมลแจ้งเตือน admin + freelancer (fire-and-forget)
+  httpsCallable(functions, 'sendPaymentNotification')({
+    ...clean,
+    requestedAt,
+    freelancerEmail: freelancerEmail ?? null,
+  }).catch(() => {})
+
   return ref.id
 }
 
@@ -237,11 +248,10 @@ export async function markPaymentPaid(id: string, freelancerId: string, amount: 
     paidAt: new Date().toISOString(),
     adminNotes: adminNotes || '',
   })
-  // Update freelancer totalEarned
-  const freelancer = await getFreelancer(freelancerId)
-  if (freelancer) {
-    await updateFreelancer(freelancerId, { totalEarned: (freelancer.totalEarned || 0) + amount })
-  }
+  // ใช้ increment() เพื่อหลีกเลี่ยง race condition (atomic server-side add)
+  await updateDoc(doc(db, 'freelancers', freelancerId), {
+    totalEarned: increment(amount),
+  })
 }
 
 export async function rejectPayment(id: string, adminNotes?: string): Promise<void> {

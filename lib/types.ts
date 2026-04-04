@@ -63,20 +63,21 @@ export interface JobAssignment {
 export interface Payment {
   id: string
   freelancerId: string
-  lineUserId: string          // ← เพิ่มเพื่อให้ Firestore rules ตรวจสอบได้
-  jobAssignmentId: string
-  jobId: string
+  lineUserId: string          // ← ใช้ใน Firestore rules
+  jobAssignmentId?: string    // optional — ถ้าผูกกับ assignment
+  jobId?: string              // optional
   amount: number
   status: PaymentStatus
+  workDescription: string     // รายละเอียดงานที่ทำ (freelancer กรอกเอง)
+  workDates?: string[]        // วันที่ทำงาน (ISO date strings) เลือกได้หลายวัน
   requestedAt: string
   approvedAt?: string
   paidAt?: string
   rejectedAt?: string
-  notes?: string
-  adminNotes?: string
+  notes?: string              // หมายเหตุจาก freelancer
+  adminNotes?: string         // หมายเหตุจาก admin
   // denormalized
   freelancerName?: string
-  jobTitle?: string
   bankAccount?: string
   bankName?: string
 }
