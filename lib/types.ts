@@ -39,7 +39,8 @@ export interface Freelancer {
   email?: string
   bankAccount: string
   bankName: string
-  idCardImageUrl?: string   // URL รูปสำเนาบัตรประชาชน (Firebase Storage)
+  idCardImagePath?: string  // Storage path รูปสำเนาบัตรประชาชน (เช่น idCards/{uid}/id_card.jpg)
+  idCardImageUrl?: string   // @deprecated: เก็บ URL เดิม (backward compat) — ใช้ idCardImagePath แทน
   totalEarned: number
   createdAt: string
   isActive: boolean
@@ -65,10 +66,9 @@ export interface Payment {
   freelancerId: string
   lineUserId: string          // ← ใช้ใน Firestore rules
   jobAssignmentId?: string    // optional — ถ้าผูกกับ assignment
-  jobId?: string              // optional
+  jobId: string               // relation → jobs collection
   amount: number
   status: PaymentStatus
-  workDescription: string     // รายละเอียดงานที่ทำ (freelancer กรอกเอง)
   workDates?: string[]        // วันที่ทำงาน (ISO date strings) เลือกได้หลายวัน
   requestedAt: string
   approvedAt?: string
@@ -76,10 +76,21 @@ export interface Payment {
   rejectedAt?: string
   notes?: string              // หมายเหตุจาก freelancer
   adminNotes?: string         // หมายเหตุจาก admin
-  // denormalized
+  position?: string           // ตำแหน่งงาน
+  expenseAmount?: number      // ค่าใช้จ่ายเพิ่มเติม (ไม่หัก 3%)
+  expenseSlipPath?: string    // Storage path รูปสลิปค่าใช้จ่าย (เช่น expenseSlips/{uid}/{ts}.jpg)
+  expenseSlipUrl?: string     // @deprecated: เก็บ URL เดิม (backward compat) — ใช้ expenseSlipPath แทน
+  // backward-compat only (old data may have these)
+  workDescription?: string
   freelancerName?: string
   bankAccount?: string
   bankName?: string
+}
+
+export interface Position {
+  id: string
+  name: string
+  createdAt: string
 }
 
 export interface DashboardStats {
@@ -89,4 +100,13 @@ export interface DashboardStats {
   pendingPayments: number
   totalPaidAmount: number
   pendingPaymentAmount: number
+}
+
+export type BillingCycle = 'mid' | 'end'  // กลางเดือน (1–15) หรือ ปลายเดือน (16–สิ้นเดือน)
+
+export interface AppSettings {
+  reportPeriodMonth: number   // 1–12
+  reportPeriodYear: number    // เช่น 2026
+  billingCycle: BillingCycle  // กลางเดือน หรือ ปลายเดือน
+  updatedAt?: string
 }

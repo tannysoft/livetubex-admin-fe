@@ -8,13 +8,15 @@ import {
   PhoneIcon,
   BanknotesIcon,
   UserCircleIcon,
+  IdentificationIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import FreelancerForm from '@/components/admin/FreelancerForm'
 import { getFreelancers, createFreelancer, updateFreelancer } from '@/lib/firebase-utils'
+import { getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { Skeleton, SkeletonImage } from '@/components/ui/Skeleton'
 
 export default function FreelancersPage() {
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
@@ -23,6 +25,51 @@ export default function FreelancersPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editFreelancer, setEditFreelancer] = useState<Freelancer | null>(null)
   const [saving, setSaving] = useState(false)
+  const [idCardUrl, setIdCardUrl] = useState<string | null>(null)
+  const [idCardName, setIdCardName] = useState('')
+
+  // IdCardButton จัดการ loading state ของตัวเองต่อ card
+  // เรียก getStorageDownloadUrl เพื่อขอ URL พร้อม token อัตโนมัติ (ต้อง login อยู่)
+  const IdCardButton = ({ freelancer }: { freelancer: Freelancer }) => {
+    const [loading, setLoading] = useState(false)
+    const path = freelancer.idCardImagePath
+    const legacyUrl = freelancer.idCardImageUrl
+    if (!path && !legacyUrl) return null
+
+    const handleClick = async () => {
+      if (path) {
+        setLoading(true)
+        try {
+          const url = await getStorageDownloadUrl(path)
+          setIdCardUrl(url)
+          setIdCardName(freelancer.name)
+        } catch {
+          // ไม่สามารถโหลดรูปได้
+        } finally {
+          setLoading(false)
+        }
+      } else if (legacyUrl) {
+        // backward compat: ข้อมูลเก่าที่เก็บ URL โดยตรง
+        setIdCardUrl(legacyUrl)
+        setIdCardName(freelancer.name)
+      }
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        title="ดูสำเนาบัตรประชาชน"
+        className="p-1.5 text-blue-400 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"
+      >
+        {loading
+          ? <span className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin inline-block" />
+          : <IdentificationIcon className="w-4 h-4" />
+        }
+      </button>
+    )
+  }
 
   const load = async () => {
     setLoading(true)
@@ -144,12 +191,15 @@ export default function FreelancersPage() {
                       </span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setEditFreelancer(f)}
-                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <IdCardButton freelancer={f} />
+                    <button
+                      onClick={() => setEditFreelancer(f)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 space-y-2 text-sm">
@@ -193,6 +243,22 @@ export default function FreelancersPage() {
             onCancel={() => setEditFreelancer(null)}
             isLoading={saving}
           />
+        )}
+      </Modal>
+
+      <Modal isOpen={!!idCardUrl} onClose={() => setIdCardUrl(null)} title={`สำเนาบัตรประชาชน — ${idCardName}`} size="md">
+        {idCardUrl && (
+          <div className="flex flex-col items-center gap-4">
+            <SkeletonImage src={idCardUrl} alt="สำเนาบัตรประชาชน" />
+            <a
+              href={idCardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              เปิดในแท็บใหม่
+            </a>
+          </div>
         )}
       </Modal>
     </div>

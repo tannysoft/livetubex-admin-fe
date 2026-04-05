@@ -7,6 +7,9 @@ import {
   VideoCameraIcon,
   UsersIcon,
   BanknotesIcon,
+  BriefcaseIcon,
+  ChartBarIcon,
+  Cog6ToothIcon,
   Bars3Icon,
   XMarkIcon,
   ArrowRightOnRectangleIcon,
@@ -20,7 +23,10 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: HomeIcon, exact: true },
   { href: '/admin/jobs', label: 'จัดการงานถ่ายทอดสด', icon: VideoCameraIcon },
   { href: '/admin/freelancers', label: 'Freelancer', icon: UsersIcon },
+  { href: '/admin/positions', label: 'ตำแหน่ง', icon: BriefcaseIcon },
   { href: '/admin/payments', label: 'การเบิกจ่าย', icon: BanknotesIcon },
+  { href: '/admin/report', label: 'รายงานการจ่ายเงิน', icon: ChartBarIcon },
+  { href: '/admin/settings', label: 'ตั้งค่าระบบ', icon: Cog6ToothIcon },
 ]
 
 function NavItem({ href, label, icon: Icon, exact }: (typeof navItems)[0]) {

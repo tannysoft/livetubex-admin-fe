@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
-import type { Job, Freelancer, JobAssignment, Payment, DashboardStats } from './types'
+import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings } from './types'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export async function upsertFreelancerByLineId(
     email?: string
     bankAccount: string
     bankName: string
-    idCardImageUrl?: string
+    idCardImagePath?: string  // storage path (ไม่ใช่ URL)
   }
 ): Promise<string> {
   // ชื่อเต็ม ใช้สำหรับ denormalize ใน payments / assignments
@@ -119,8 +119,8 @@ export async function upsertFreelancerByLineId(
       bankAccount: data.bankAccount,
       bankName: data.bankName,
     }
-    if (data.idCardImageUrl) {
-      updateData.idCardImageUrl = data.idCardImageUrl
+    if (data.idCardImagePath) {
+      updateData.idCardImagePath = data.idCardImagePath
     }
     await updateDoc(doc(db, 'freelancers', existing.id), updateData)
     return existing.id
@@ -139,7 +139,7 @@ export async function upsertFreelancerByLineId(
     email: data.email ?? '',
     bankAccount: data.bankAccount,
     bankName: data.bankName,
-    idCardImageUrl: data.idCardImageUrl ?? '',
+    idCardImagePath: data.idCardImagePath ?? '',
     totalEarned: 0,
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -259,6 +259,78 @@ export async function rejectPayment(id: string, adminNotes?: string): Promise<vo
     status: 'rejected',
     rejectedAt: new Date().toISOString(),
     adminNotes: adminNotes || '',
+  })
+}
+
+// ─── Payment Report Email ─────────────────────────────────────────────────────
+
+export interface FreelancerReportPayload {
+  freelancerEmail: string
+  freelancerName: string
+  period: string
+  payments: {
+    workDescription: string
+    position?: string
+    workDates?: string[]
+    amount: number
+    paidAt?: string
+  }[]
+  totalGross: number
+  totalTax: number
+  totalNet: number
+}
+
+export async function sendPaymentReport(reports: FreelancerReportPayload[]): Promise<void> {
+  await httpsCallable(functions, 'sendPaymentReport')({ reports })
+}
+
+// ─── Positions ───────────────────────────────────────────────────────────────
+
+export async function getPositions(): Promise<Position[]> {
+  const q = query(collection(db, 'positions'), orderBy('createdAt', 'asc'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Position))
+}
+
+export async function createPosition(name: string): Promise<string> {
+  const ref = await addDoc(collection(db, 'positions'), {
+    name: name.trim(),
+    createdAt: new Date().toISOString(),
+  })
+  return ref.id
+}
+
+export async function updatePosition(id: string, name: string): Promise<void> {
+  await updateDoc(doc(db, 'positions', id), { name: name.trim() })
+}
+
+export async function deletePosition(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'positions', id))
+}
+
+// ─── App Settings ────────────────────────────────────────────────────────────
+
+const SETTINGS_DOC = 'app'
+
+export async function getAppSettings(): Promise<AppSettings | null> {
+  const snap = await getDoc(doc(db, 'settings', SETTINGS_DOC))
+  if (!snap.exists()) return null
+  return snap.data() as AppSettings
+}
+
+export async function saveAppSettings(data: Omit<AppSettings, 'updatedAt'>): Promise<void> {
+  await updateDoc(doc(db, 'settings', SETTINGS_DOC), {
+    ...data,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+export async function initAppSettings(data: Omit<AppSettings, 'updatedAt'>): Promise<void> {
+  // ใช้ setDoc เพื่อ create-or-update
+  const { setDoc } = await import('firebase/firestore')
+  await setDoc(doc(db, 'settings', SETTINGS_DOC), {
+    ...data,
+    updatedAt: new Date().toISOString(),
   })
 }
 

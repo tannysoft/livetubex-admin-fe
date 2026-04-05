@@ -59,6 +59,17 @@ service cloud.firestore {
                     && request.resource.data.isActive == resource.data.isActive;
     }
 
+    // ── positions: Admin เขียนได้, Freelancer อ่านได้ ───────────────────────
+    match /positions/{positionId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // ── settings: Admin อ่าน/เขียนได้ ───────────────────────────────────────
+    match /settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── jobAssignments ───────────────────────────────────────────────────────
     match /jobAssignments/{assignmentId} {
       // Admin เขียนได้ทุกอย่าง
@@ -93,13 +104,10 @@ service cloud.firestore {
                     && request.resource.data.status == 'pending'
                     && request.resource.data.amount is number
                     && request.resource.data.amount > 0
-                    && request.resource.data.workDescription is string
-                    && request.resource.data.workDescription.size() > 0
                     && request.resource.data.keys().hasAll([
                         'freelancerId','lineUserId',
                         'amount','status','requestedAt',
-                        'workDescription',
-                        'freelancerName','bankAccount','bankName'
+                        'jobId'
                        ]);
     }
   }

@@ -10,8 +10,8 @@ import {
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline'
 import StatCard from '@/components/admin/StatCard'
-import { getDashboardStats, getJobs, getPayments } from '@/lib/firebase-utils'
-import type { DashboardStats, Job, Payment } from '@/lib/types'
+import { getDashboardStats, getJobs, getPayments, getFreelancers } from '@/lib/firebase-utils'
+import type { DashboardStats, Freelancer, Job, Payment } from '@/lib/types'
 import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
 import { Skeleton, SkeletonCard, SkeletonStat } from '@/components/ui/Skeleton'
@@ -21,19 +21,24 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recentJobs, setRecentJobs] = useState<Job[]>([])
   const [recentPayments, setRecentPayments] = useState<Payment[]>([])
+  const [jobsMap, setJobsMap] = useState<Map<string, Job>>(new Map())
+  const [freelancersMap, setFreelancersMap] = useState<Map<string, Freelancer>>(new Map())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       try {
-        const [s, jobs, payments] = await Promise.all([
+        const [s, jobs, payments, freelancers] = await Promise.all([
           getDashboardStats(),
           getJobs(),
           getPayments(),
+          getFreelancers(),
         ])
         setStats(s)
         setRecentJobs(jobs.slice(0, 5))
         setRecentPayments(payments.slice(0, 5))
+        setJobsMap(new Map(jobs.map((j) => [j.id, j])))
+        setFreelancersMap(new Map(freelancers.map((f) => [f.id, f])))
       } catch (err) {
         console.error(err)
       } finally {
@@ -152,8 +157,12 @@ export default function AdminDashboard() {
               recentPayments.map((payment) => (
                 <div key={payment.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 truncate">{payment.freelancerName}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{payment.workDescription}</p>
+                    <p className="font-medium text-gray-900 truncate">
+                      {freelancersMap.get(payment.freelancerId)?.name ?? payment.freelancerName ?? '-'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {(payment.jobId ? jobsMap.get(payment.jobId)?.title : undefined) ?? payment.workDescription ?? '-'}
+                    </p>
                   </div>
                   <div className="text-right ml-4">
                     <p className="text-sm font-semibold text-gray-900">{formatCurrency(payment.amount)}</p>

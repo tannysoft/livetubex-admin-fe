@@ -83,7 +83,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       lineUserId,
       lineDisplayName,
       linePictureUrl: defaultValues?.linePictureUrl ?? '',
-      idCardImageUrl: defaultValues?.idCardImageUrl ?? '',
+      idCardImagePath: defaultValues?.idCardImagePath ?? '',
       isActive: data.isActive,
     })
   }

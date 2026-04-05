@@ -15,8 +15,9 @@ import Modal from '@/components/ui/Modal'
 import FormListbox from '@/components/ui/FormListbox'
 import Badge from '@/components/ui/Badge'
 import { initLiff, isLiffLoggedIn, signInFirebaseWithLiff } from '@/lib/line-liff'
-import { getFreelancerByLineId, getPaymentsByLineUserId, createPayment, getJobs } from '@/lib/firebase-utils'
-import type { Freelancer, Job, Payment } from '@/lib/types'
+import { getFreelancerByLineId, getPaymentsByLineUserId, createPayment, getJobs, getPositions } from '@/lib/firebase-utils'
+import { uploadExpenseSlip } from '@/lib/firebase-storage'
+import type { Freelancer, Job, Payment, Position } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { Skeleton, SkeletonPaymentCard } from '@/components/ui/Skeleton'
 
@@ -41,23 +42,32 @@ export default function FreelancerPaymentsPage() {
   const [freelancer, setFreelancer] = useState<Freelancer | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [requestOpen, setRequestOpen] = useState(false)
 
   const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [selectedPosition, setSelectedPosition] = useState('')
   const [requestAmount, setRequestAmount] = useState('')
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [bootError, setBootError] = useState('')
+  // expense
+  const [showExpense, setShowExpense] = useState(false)
+  const [expenseAmount, setExpenseAmount] = useState('')
+  const [expenseFile, setExpenseFile] = useState<File | null>(null)
+  const [expensePreview, setExpensePreview] = useState<string | null>(null)
 
   const load = async (luid: string) => {
-    const [p, j] = await Promise.all([
+    const [p, j, pos] = await Promise.all([
       getPaymentsByLineUserId(luid),
       getJobs(),
+      getPositions(),
     ])
     setPayments(p)
     setJobs(j)
+    setPositions(pos)
   }
 
   useEffect(() => {
@@ -82,10 +92,20 @@ export default function FreelancerPaymentsPage() {
     init()
   }, [])
 
+  const jobsMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs])
+
   const jobOptions = useMemo(() => [
     { value: '', label: '-- เลือกงาน --' },
     ...jobs.map((j) => ({ value: j.id, label: j.title })),
   ], [jobs])
+
+  const getJobTitle = (p: Payment) =>
+    (p.jobId ? jobsMap.get(p.jobId)?.title : undefined) ?? p.workDescription ?? ''
+
+  const positionOptions = useMemo(() => [
+    { value: '', label: '-- เลือกตำแหน่ง --' },
+    ...positions.map((p) => ({ value: p.name, label: p.name })),
+  ], [positions])
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId)
 
@@ -98,10 +118,22 @@ export default function FreelancerPaymentsPage() {
   const openModal = () => {
     setSelectedJobId('')
     setSelectedDates([])
+    setSelectedPosition('')
     setRequestAmount('')
     setRequestNotes('')
     setError('')
+    setShowExpense(false)
+    setExpenseAmount('')
+    setExpenseFile(null)
+    setExpensePreview(null)
     setRequestOpen(true)
+  }
+
+  const handleExpenseFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setExpenseFile(file)
+    setExpensePreview(URL.createObjectURL(file))
   }
 
   const handleSelectJob = (jobId: string) => {
@@ -122,8 +154,14 @@ export default function FreelancerPaymentsPage() {
       setError('กรุณาเลือกวันที่ทำงานอย่างน้อย 1 วัน')
       return
     }
+    if (!selectedPosition) { setError('กรุณาเลือกตำแหน่ง'); return }
     const amount = parseFloat(requestAmount)
     if (isNaN(amount) || amount <= 0) { setError('กรุณากรอกจำนวนเงินที่ถูกต้อง'); return }
+    if (showExpense) {
+      const expAmt = parseFloat(expenseAmount)
+      if (isNaN(expAmt) || expAmt <= 0) { setError('กรุณากรอกจำนวนค่าใช้จ่ายให้ถูกต้อง'); return }
+      if (!expenseFile) { setError('กรุณาแนบรูปสลิปค่าใช้จ่าย'); return }
+    }
     if (!freelancer) return
 
     // วันที่ส่ง: ถ้างาน 1 วัน ใช้วันนั้นเลย ถ้าหลายวัน ใช้ที่เลือก
@@ -132,17 +170,22 @@ export default function FreelancerPaymentsPage() {
     setSubmitting(true)
     setError('')
     try {
+      let expenseSlipPath: string | undefined
+      if (showExpense && expenseFile) {
+        expenseSlipPath = await uploadExpenseSlip(lineUserId, expenseFile)
+      }
+
       await createPayment({
         freelancerId: freelancer.id,
         lineUserId,
+        jobId: selectedJob.id,
         amount,
         status: 'pending',
-        workDescription: selectedJob.title,
         workDates,
+        position: selectedPosition,
         notes: requestNotes.trim() || undefined,
-        freelancerName: freelancer.name,
-        bankAccount: freelancer.bankAccount,
-        bankName: freelancer.bankName,
+        expenseAmount: showExpense ? parseFloat(expenseAmount) : undefined,
+        expenseSlipPath,
       }, freelancer.email)
       setRequestOpen(false)
       await load(lineUserId)
@@ -267,7 +310,7 @@ export default function FreelancerPaymentsPage() {
                 <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900">{p.workDescription}</p>
+                      <p className="font-semibold text-gray-900">{getJobTitle(p)}</p>
                       <p className="text-xs text-gray-400 mt-0.5">ขอเบิก {formatDateTime(p.requestedAt)}</p>
                       {p.workDates && p.workDates.length > 0 && (
                         <div className="flex items-start gap-1 mt-1">
@@ -366,6 +409,17 @@ export default function FreelancerPaymentsPage() {
             </div>
           )}
 
+          {/* ตำแหน่ง */}
+          <div>
+            <label className={labelCls}>ตำแหน่ง *</label>
+            <FormListbox
+              value={selectedPosition}
+              onChange={(v) => { setSelectedPosition(v); setError('') }}
+              options={positionOptions}
+              placeholder="-- เลือกตำแหน่ง --"
+            />
+          </div>
+
           {/* จำนวนเงินทั้งหมด */}
           <div>
             <label className={labelCls}>จำนวนเงินทั้งหมด (บาท) *</label>
@@ -378,6 +432,65 @@ export default function FreelancerPaymentsPage() {
               inputMode="numeric"
               placeholder="0"
             />
+          </div>
+
+          {/* ค่าใช้จ่ายเพิ่มเติม */}
+          <div>
+            <div className="flex items-center justify-between">
+              <label className={`text-sm font-medium ${showExpense ? 'text-orange-500' : 'text-gray-700'}`}>
+                ค่าใช้จ่ายเพิ่มเติม
+                {!showExpense && <span className="ml-1 text-xs font-normal text-gray-400">(ไม่หัก 3%)</span>}
+              </label>
+              <button
+                type="button"
+                onClick={() => { setShowExpense(!showExpense); setExpenseAmount(''); setExpenseFile(null); setExpensePreview(null) }}
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-base font-bold transition-colors ${
+                  showExpense
+                    ? 'bg-orange-100 text-orange-500 hover:bg-orange-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                {showExpense ? '−' : '+'}
+              </button>
+            </div>
+
+            {showExpense && (
+              <div className="mt-2 space-y-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                <div>
+                  <label className={labelCls}>จำนวนค่าใช้จ่าย (บาท) *</label>
+                  <input
+                    type="number"
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    className={inputCls}
+                    min="1"
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>รูปสลิป / หลักฐานค่าใช้จ่าย *</label>
+                  {expensePreview ? (
+                    <div className="relative">
+                      <img src={expensePreview} alt="slip" className="w-full max-h-48 object-contain rounded-xl border border-orange-200 bg-white" />
+                      <button
+                        type="button"
+                        onClick={() => { setExpenseFile(null); setExpensePreview(null) }}
+                        className="absolute top-2 right-2 w-7 h-7 bg-white rounded-full shadow flex items-center justify-center text-gray-500 hover:text-red-500 text-sm font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center gap-2 w-full h-28 border-2 border-dashed border-orange-200 rounded-xl cursor-pointer bg-white hover:bg-orange-50 transition-colors">
+                      <span className="text-3xl">📎</span>
+                      <span className="text-xs text-gray-500">แตะเพื่อเลือกรูป</span>
+                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleExpenseFile} />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* หมายเหตุ */}

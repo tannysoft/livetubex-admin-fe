@@ -1,3 +1,7 @@
+'use client'
+
+import { useState } from 'react'
+
 interface SkeletonProps {
   className?: string
 }
@@ -71,6 +75,50 @@ export function SkeletonPaymentCard() {
           <Skeleton className="h-5 w-16 rounded-lg" />
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * รูปภาพพร้อม Facebook-style shimmer ขณะโหลด
+ * แสดง skeleton ก่อน จนกว่า browser จะโหลดรูปเสร็จ
+ */
+export function SkeletonImage({
+  src,
+  alt,
+  className = 'w-full max-h-[70vh] object-contain rounded-xl border border-gray-100',
+}: {
+  src: string
+  alt: string
+  className?: string
+}) {
+  const [loaded, setLoaded] = useState(false)
+  const [error,  setError]  = useState(false)
+
+  return (
+    <div className="relative w-full">
+      {/* shimmer placeholder — ซ่อนหลังรูปโหลดเสร็จ */}
+      {!loaded && !error && (
+        <div className="skeleton w-full rounded-xl" style={{ aspectRatio: '4/3', minHeight: 180 }} />
+      )}
+
+      {/* รูปจริง — ซ่อนไว้ก่อนจนกว่า onLoad จะ fire */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        className={`${className} transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0 w-full h-full'}`}
+      />
+
+      {/* error state */}
+      {error && (
+        <div className="w-full flex flex-col items-center justify-center py-10 text-gray-400 text-sm gap-2">
+          <span className="text-3xl">🖼️</span>
+          <span>โหลดรูปไม่สำเร็จ</span>
+        </div>
+      )}
     </div>
   )
 }

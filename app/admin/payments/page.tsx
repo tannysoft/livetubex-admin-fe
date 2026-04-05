@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -8,54 +8,87 @@ import {
   MagnifyingGlassIcon,
   ListBulletIcon,
   RectangleGroupIcon,
+  ReceiptRefundIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { getPayments, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
-import type { Payment, PaymentStatus } from '@/lib/types'
+import { getPayments, getJobs, getFreelancers, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
+import { getStorageDownloadUrl } from '@/lib/firebase-storage'
+import type { Freelancer, Job, Payment, PaymentStatus } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
-import { Skeleton, SkeletonTableRow } from '@/components/ui/Skeleton'
+import { Skeleton, SkeletonImage, SkeletonTableRow } from '@/components/ui/Skeleton'
 
 type ViewMode = 'list' | 'grouped'
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [freelancers, setFreelancers] = useState<Freelancer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<PaymentStatus | 'all'>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
+  const [editAmount, setEditAmount] = useState('')
   const [actionType, setActionType] = useState<'approve' | 'paid' | 'reject' | null>(null)
   const [saving, setSaving] = useState(false)
+  const [slipUrl, setSlipUrl] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      const data = await getPayments()
+      const [data, jobData, freelancerData] = await Promise.all([getPayments(), getJobs(), getFreelancers()])
       setPayments(data)
+      setJobs(jobData)
+      setFreelancers(freelancerData)
     } finally {
       setLoading(false)
     }
   }
+
+  const jobsMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs])
+  const freelancersMap = useMemo(() => new Map(freelancers.map((f) => [f.id, f])), [freelancers])
+
+  const getJobTitle = (p: Payment) =>
+    (p.jobId ? jobsMap.get(p.jobId)?.title : undefined) ?? p.workDescription ?? ''
+
+  // ดึงข้อมูล freelancer จาก relation — fallback ไปยัง denormalized field เผื่อ backward compat
+  const getFreelancerName = (p: Payment) =>
+    freelancersMap.get(p.freelancerId)?.name ?? p.freelancerName ?? '-'
+  const getBankName = (p: Payment) =>
+    freelancersMap.get(p.freelancerId)?.bankName ?? p.bankName ?? '-'
+  const getBankAccount = (p: Payment) =>
+    freelancersMap.get(p.freelancerId)?.bankAccount ?? p.bankAccount ?? '-'
 
   useEffect(() => { load() }, [])
 
   const openAction = (payment: Payment, type: 'approve' | 'paid' | 'reject') => {
     setSelectedPayment(payment)
     setAdminNotes('')
+    setEditAmount(String(payment.amount))
     setActionType(type)
   }
 
   const handleAction = async () => {
     if (!selectedPayment || !actionType) return
+    const finalAmount = parseFloat(editAmount)
+    if (isNaN(finalAmount) || finalAmount <= 0) return
     setSaving(true)
     try {
       if (actionType === 'approve') {
+        // อัปเดต amount ถ้า admin แก้ไข
+        if (finalAmount !== selectedPayment.amount) {
+          await updatePayment(selectedPayment.id, { amount: finalAmount })
+        }
         await approvePayment(selectedPayment.id, adminNotes)
       } else if (actionType === 'paid') {
-        await markPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, selectedPayment.amount, adminNotes)
+        // อัปเดต amount ใน payments doc ก่อน ถ้า admin แก้ไข
+        if (finalAmount !== selectedPayment.amount) {
+          await updatePayment(selectedPayment.id, { amount: finalAmount })
+        }
+        await markPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, finalAmount, adminNotes)
       } else {
         await rejectPayment(selectedPayment.id, adminNotes)
       }
@@ -69,8 +102,8 @@ export default function PaymentsPage() {
 
   const filtered = payments.filter((p) => {
     const matchSearch =
-      (p.freelancerName ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.workDescription ?? '').toLowerCase().includes(search.toLowerCase())
+      getFreelancerName(p).toLowerCase().includes(search.toLowerCase()) ||
+      getJobTitle(p).toLowerCase().includes(search.toLowerCase())
     const matchStatus = filterStatus === 'all' || p.status === filterStatus
     return matchSearch && matchStatus
   })
@@ -91,14 +124,54 @@ export default function PaymentsPage() {
 
   // Group by workDescription (job title)
   const grouped = filtered.reduce<Record<string, Payment[]>>((acc, p) => {
-    const key = p.workDescription || 'ไม่ระบุงาน'
+    const key = getJobTitle(p) || 'ไม่ระบุงาน'
     if (!acc[key]) acc[key] = []
     acc[key].push(p)
     return acc
   }, {})
 
+  // SlipButton จัดการ loading state ของตัวเองแยกต่อ instance
+  // เรียก getStorageDownloadUrl เพื่อขอ URL พร้อม token อัตโนมัติ (ต้อง login อยู่)
+  const SlipButton = ({ payment }: { payment: Payment }) => {
+    const [loading, setLoading] = useState(false)
+    const hasSlip = !!(payment.expenseSlipPath || payment.expenseSlipUrl)
+    if (!hasSlip) return null
+
+    const handleClick = async () => {
+      if (payment.expenseSlipPath) {
+        setLoading(true)
+        try {
+          const url = await getStorageDownloadUrl(payment.expenseSlipPath)
+          setSlipUrl(url)
+        } catch {
+          // ไม่สามารถโหลดรูปได้
+        } finally {
+          setLoading(false)
+        }
+      } else if (payment.expenseSlipUrl) {
+        // backward compat: ข้อมูลเก่าที่เก็บ URL โดยตรง
+        setSlipUrl(payment.expenseSlipUrl)
+      }
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        title="ดูสลิปค่าใช้จ่าย"
+        className="p-1.5 text-orange-400 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-40"
+      >
+        {loading
+          ? <span className="w-4 h-4 border-2 border-orange-300 border-t-transparent rounded-full animate-spin inline-block" />
+          : <ReceiptRefundIcon className="w-4 h-4" />
+        }
+      </button>
+    )
+  }
+
   const ActionButtons = ({ payment }: { payment: Payment }) => (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       {payment.status === 'pending' && (
         <>
           <button
@@ -126,9 +199,10 @@ export default function PaymentsPage() {
           โอนแล้ว
         </button>
       )}
-      {(payment.status === 'paid' || payment.status === 'rejected') && (
+      {(payment.status === 'paid' || payment.status === 'rejected') && !payment.expenseSlipPath && !payment.expenseSlipUrl && (
         <span className="text-xs text-gray-300">-</span>
       )}
+      <SlipButton payment={payment} />
     </div>
   )
 
@@ -221,7 +295,7 @@ export default function PaymentsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {['Freelancer','รายละเอียด','บัญชี','จำนวน','สถานะ','วันที่','จัดการ'].map((h) => (
+                  {['Freelancer','รายละเอียด','ตำแหน่ง','บัญชี','จำนวน','สถานะ','วันที่','จัดการ'].map((h) => (
                     <th key={h} className="px-5 py-3 text-left">
                       <Skeleton className="h-3.5 w-16 rounded-md" />
                     </th>
@@ -229,7 +303,7 @@ export default function PaymentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={7} />)}
+                {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={8} />)}
               </tbody>
             </table>
           </div>
@@ -245,21 +319,22 @@ export default function PaymentsPage() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Freelancer</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">รายละเอียดงาน</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">ตำแหน่ง</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">บัญชีธนาคาร</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">จำนวน</th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">สถานะ</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">วันที่ขอ</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">จำนวน</th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">จัดการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={payment.id} className={`transition-colors ${payment.status === 'paid' ? 'bg-green-50 hover:bg-green-100/60' : 'hover:bg-gray-50'}`}>
                     <td className="px-5 py-4">
-                      <p className="font-medium text-gray-900">{payment.freelancerName}</p>
+                      <p className="font-medium text-gray-900">{getFreelancerName(payment)}</p>
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-gray-700">{payment.workDescription}</p>
+                      <p className="text-gray-700">{getJobTitle(payment)}</p>
                       {payment.workDates && payment.workDates.length > 0 && (
                         <p className="text-xs text-gray-400 mt-0.5">
                           {payment.workDates.map((d) => formatDate(d)).join(', ')}
@@ -267,19 +342,27 @@ export default function PaymentsPage() {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-gray-600 text-xs">{payment.bankName}</p>
-                      <p className="text-gray-900 font-mono text-xs">{payment.bankAccount}</p>
+                      {payment.position
+                        ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{payment.position}</span>
+                        : <span className="text-gray-300 text-xs">-</span>
+                      }
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      <p className="font-semibold text-gray-900">{formatCurrency(payment.amount)}</p>
-                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)}</p>
-                      <p className="text-xs text-[#f73727] font-medium">โอน {formatCurrency(calcTax(payment.amount).net)}</p>
+                    <td className="px-5 py-4">
+                      <p className="text-gray-600 text-xs">{getBankName(payment)}</p>
+                      <p className="text-gray-900 font-mono text-xs">{getBankAccount(payment)}</p>
                     </td>
                     <td className="px-5 py-4 text-center">
                       <Badge label={paymentStatusLabel(payment.status)} colorClass={paymentStatusColor(payment.status)} />
                     </td>
                     <td className="px-5 py-4 text-gray-400 text-xs">
                       {formatDateTime(payment.requestedAt)}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <p className="font-semibold text-gray-900 text-sm">{formatCurrency(payment.amount)}</p>
+                      {payment.expenseAmount && (
+                        <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
+                      )}
+                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-center">
@@ -322,21 +405,23 @@ export default function PaymentsPage() {
                 </div>
 
                 {/* Column headers */}
-                <div className="grid grid-cols-[1fr_140px_120px_90px] gap-x-4 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
+                <div className="grid grid-cols-[1fr_100px_140px_110px_120px_90px] gap-x-4 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
                   <span>Freelancer / วันที่ทำงาน</span>
+                  <span>ตำแหน่ง</span>
                   <span>บัญชีธนาคาร</span>
-                  <span className="text-right">จำนวน / วันที่ขอ</span>
+                  <span>วันที่ขอ</span>
+                  <span className="text-right">จำนวน</span>
                   <span className="text-center">จัดการ</span>
                 </div>
 
                 {/* Payments in this job */}
                 <div className="divide-y divide-gray-50">
                   {items.map((payment) => (
-                    <div key={payment.id} className="grid grid-cols-[1fr_140px_120px_90px] gap-x-4 items-center px-5 py-3 hover:bg-gray-50 transition-colors">
-                      {/* col 1: name + badge + dates */}
+                    <div key={payment.id} className={`grid grid-cols-[1fr_100px_140px_110px_120px_90px] gap-x-4 items-center px-5 py-3 transition-colors ${payment.status === 'paid' ? 'bg-green-50 hover:bg-green-100/60' : 'hover:bg-gray-50'}`}>
+                      {/* col 1: name + badge + work dates */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-gray-900 text-sm">{payment.freelancerName}</p>
+                          <p className="font-medium text-gray-900 text-sm">{getFreelancerName(payment)}</p>
                           <Badge label={paymentStatusLabel(payment.status)} colorClass={paymentStatusColor(payment.status)} />
                         </div>
                         {payment.workDates && payment.workDates.length > 0 && (
@@ -345,18 +430,31 @@ export default function PaymentsPage() {
                           </p>
                         )}
                       </div>
-                      {/* col 2: bank */}
-                      <div className="min-w-0">
-                        <p className="text-xs text-gray-500 truncate">{payment.bankName}</p>
-                        <p className="text-xs font-mono text-gray-700">{payment.bankAccount}</p>
+                      {/* col 2: position */}
+                      <div>
+                        {payment.position
+                          ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{payment.position}</span>
+                          : <span className="text-gray-300 text-xs">-</span>
+                        }
                       </div>
-                      {/* col 3: amount + tax + date */}
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900 text-sm">{formatCurrency(payment.amount)}</p>
-                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net)}</span></p>
+                      {/* col 3: bank */}
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500 truncate">{getBankName(payment)}</p>
+                        <p className="text-xs font-mono text-gray-700">{getBankAccount(payment)}</p>
+                      </div>
+                      {/* col 4: requested date */}
+                      <div>
                         <p className="text-xs text-gray-400">{formatDateTime(payment.requestedAt)}</p>
                       </div>
-                      {/* col 4: actions */}
+                      {/* col 5: amount + tax */}
+                      <div className="text-right">
+                        <p className="font-semibold text-gray-900 text-sm">{formatCurrency(payment.amount)}</p>
+                        {payment.expenseAmount && (
+                          <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
+                        )}
+                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
+                      </div>
+                      {/* col 6: actions */}
                       <div className="flex items-center justify-center">
                         <ActionButtons payment={payment} />
                       </div>
@@ -381,12 +479,18 @@ export default function PaymentsPage() {
             <div className="bg-gray-50 rounded-xl p-4 space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Freelancer</span>
-                <span className="font-medium">{selectedPayment.freelancerName}</span>
+                <span className="font-medium">{getFreelancerName(selectedPayment)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">รายละเอียด</span>
-                <span className="font-medium text-right max-w-[60%]">{selectedPayment.workDescription}</span>
+                <span className="font-medium text-right max-w-[60%]">{getJobTitle(selectedPayment)}</span>
               </div>
+              {selectedPayment.position && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">ตำแหน่ง</span>
+                  <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{selectedPayment.position}</span>
+                </div>
+              )}
               {selectedPayment.workDates && selectedPayment.workDates.length > 0 && (
                 <div className="flex justify-between gap-4">
                   <span className="text-gray-500 shrink-0">วันที่ทำงาน</span>
@@ -401,25 +505,61 @@ export default function PaymentsPage() {
                   <span className="text-gray-700 text-right">{selectedPayment.notes}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-500">จำนวนขอเบิก</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(selectedPayment.amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">ภาษีหัก ณ ที่จ่าย 3%</span>
-                <span className="text-gray-500">−{formatCurrency(calcTax(selectedPayment.amount).tax)}</span>
-              </div>
-              <div className="flex justify-between border-t border-gray-200 pt-1.5 mt-0.5">
-                <span className="text-gray-700 font-medium">ยอดโอนสุทธิ</span>
-                <span className="font-bold text-[#f73727]">{formatCurrency(calcTax(selectedPayment.amount).net)}</span>
-              </div>
+              {selectedPayment.expenseAmount && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">ค่าใช้จ่ายเพิ่มเติม <span className="text-xs text-gray-400">(ไม่หัก 3%)</span></span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-orange-600">{formatCurrency(selectedPayment.expenseAmount)}</span>
+                    <SlipButton payment={selectedPayment} />
+                  </div>
+                </div>
+              )}
               {actionType === 'paid' && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">บัญชี</span>
-                  <span className="font-medium text-xs">{selectedPayment.bankName} {selectedPayment.bankAccount}</span>
+                  <span className="font-medium text-xs">{getBankName(selectedPayment)} {getBankAccount(selectedPayment)}</span>
                 </div>
               )}
             </div>
+            {/* Amount editor */}
+            {(() => {
+              const amt = parseFloat(editAmount) || 0
+              const { tax, net } = calcTax(amt)
+              const isEdited = amt !== selectedPayment.amount
+              return (
+                <div className={`rounded-xl border px-4 py-3 transition-colors ${isEdited ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500">จำนวนเงิน</span>
+                      {isEdited && (
+                        <>
+                          <span className="text-xs text-gray-400 line-through">{formatCurrency(selectedPayment.amount)}</span>
+                          <button type="button" onClick={() => setEditAmount(String(selectedPayment.amount))} className="text-xs text-orange-500 hover:text-orange-600">รีเซ็ต</button>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-400">฿</span>
+                      <input
+                        type="number"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        min="1"
+                        inputMode="numeric"
+                        className="w-28 text-right text-base font-bold text-gray-900 bg-transparent border-b border-gray-300 focus:border-[#f73727] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                    <span>ภาษี 3% −{formatCurrency(tax)}</span>
+                    <span className={`font-semibold ${isEdited ? 'text-orange-600' : 'text-[#f73727]'}`}>
+                      โอนรวม {formatCurrency(net + (selectedPayment.expenseAmount ?? 0))}
+                    </span>
+                  </div>
+                </div>
+              )
+            })()}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ Admin</label>
               <textarea
@@ -448,6 +588,23 @@ export default function PaymentsPage() {
                 {actionType === 'approve' ? 'อนุมัติ' : actionType === 'paid' ? 'ยืนยันโอนเงิน' : 'ปฏิเสธ'}
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Slip image modal */}
+      <Modal isOpen={!!slipUrl} onClose={() => setSlipUrl(null)} title="สลิปค่าใช้จ่าย" size="md">
+        {slipUrl && (
+          <div className="flex flex-col items-center gap-4">
+            <SkeletonImage src={slipUrl} alt="สลิปค่าใช้จ่าย" />
+            <a
+              href={slipUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              เปิดในแท็บใหม่
+            </a>
           </div>
         )}
       </Modal>

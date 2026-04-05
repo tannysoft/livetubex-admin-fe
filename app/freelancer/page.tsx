@@ -29,8 +29,10 @@ import {
   getJobs,
   getPaymentsByLineUserId,
   createPayment,
+  getPositions,
 } from '@/lib/firebase-utils'
-import type { Freelancer, Job, Payment, LiffUserProfile } from '@/lib/types'
+import { uploadExpenseSlip } from '@/lib/firebase-storage'
+import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
 import { calcTax, formatCurrency, formatDatePill, formatDate } from '@/lib/utils'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
 
@@ -59,16 +61,23 @@ export default function FreelancerPage() {
   const [lineUserId, setLineUserId] = useState('')
   const [jobs, setJobs] = useState<Job[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
 
   // Modal state
   const [requestOpen, setRequestOpen] = useState(false)
   const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [selectedPosition, setSelectedPosition] = useState('')
   const [requestAmount, setRequestAmount] = useState('')
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [modalError, setModalError] = useState('')
+  // expense
+  const [showExpense, setShowExpense] = useState(false)
+  const [expenseAmount, setExpenseAmount] = useState('')
+  const [expenseFile, setExpenseFile] = useState<File | null>(null)
+  const [expensePreview, setExpensePreview] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -90,9 +99,10 @@ export default function FreelancerPage() {
         if (!f) { router.replace('/freelancer/register'); return }
 
         setFreelancer(f)
-        const [j, p] = await Promise.all([getJobs(), getPaymentsByLineUserId(profile.userId)])
+        const [j, p, pos] = await Promise.all([getJobs(), getPaymentsByLineUserId(profile.userId), getPositions()])
         setJobs(j)
         setPayments(p)
+        setPositions(pos)
         setPageState('ready')
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
@@ -109,6 +119,11 @@ export default function FreelancerPage() {
     ...jobs.map((j) => ({ value: j.id, label: j.title })),
   ], [jobs])
 
+  const positionOptions = useMemo(() => [
+    { value: '', label: '-- เลือกตำแหน่ง --' },
+    ...positions.map((p) => ({ value: p.name, label: p.name })),
+  ], [positions])
+
   const selectedJob = jobs.find((j) => j.id === selectedJobId)
 
   const jobDates = useMemo(() => {
@@ -119,11 +134,23 @@ export default function FreelancerPage() {
   const openModal = () => {
     setSelectedJobId('')
     setSelectedDates([])
+    setSelectedPosition('')
     setRequestAmount('')
     setRequestNotes('')
     setModalError('')
     setSubmitSuccess(false)
+    setShowExpense(false)
+    setExpenseAmount('')
+    setExpenseFile(null)
+    setExpensePreview(null)
     setRequestOpen(true)
+  }
+
+  const handleExpenseFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setExpenseFile(file)
+    setExpensePreview(URL.createObjectURL(file))
   }
 
   const toggleDate = (date: string) => {
@@ -137,8 +164,14 @@ export default function FreelancerPage() {
     if (jobDates.length > 1 && selectedDates.length === 0) {
       setModalError('กรุณาเลือกวันที่ทำงานอย่างน้อย 1 วัน'); return
     }
+    if (!selectedPosition) { setModalError('กรุณาเลือกตำแหน่ง'); return }
     const amount = parseFloat(requestAmount)
     if (isNaN(amount) || amount <= 0) { setModalError('กรุณากรอกจำนวนเงินที่ถูกต้อง'); return }
+    if (showExpense) {
+      const expAmt = parseFloat(expenseAmount)
+      if (isNaN(expAmt) || expAmt <= 0) { setModalError('กรุณากรอกจำนวนค่าใช้จ่ายให้ถูกต้อง'); return }
+      if (!expenseFile) { setModalError('กรุณาแนบรูปสลิปค่าใช้จ่าย'); return }
+    }
     if (!freelancer) return
 
     const workDates = jobDates.length === 1 ? jobDates : selectedDates
@@ -146,17 +179,23 @@ export default function FreelancerPage() {
     setSubmitting(true)
     setModalError('')
     try {
+      // อัพโหลดสลิปก่อน (ถ้ามี) — returns storage path ไม่ใช่ URL
+      let expenseSlipPath: string | undefined
+      if (showExpense && expenseFile) {
+        expenseSlipPath = await uploadExpenseSlip(lineUserId, expenseFile)
+      }
+
       await createPayment({
         freelancerId: freelancer.id,
         lineUserId,
+        jobId: selectedJob.id,
         amount,
         status: 'pending',
-        workDescription: selectedJob.title,
         workDates,
+        position: selectedPosition,
         notes: requestNotes.trim() || undefined,
-        freelancerName: freelancer.name,
-        bankAccount: freelancer.bankAccount,
-        bankName: freelancer.bankName,
+        expenseAmount: showExpense ? parseFloat(expenseAmount) : undefined,
+        expenseSlipPath,
       }, freelancer.email)
       setSubmitSuccess(true)
     } catch {
@@ -391,6 +430,17 @@ export default function FreelancerPage() {
               </div>
             )}
 
+            {/* ตำแหน่ง */}
+            <div>
+              <label className={labelCls}>ตำแหน่ง *</label>
+              <FormListbox
+                value={selectedPosition}
+                onChange={(v) => { setSelectedPosition(v); setModalError('') }}
+                options={positionOptions}
+                placeholder="-- เลือกตำแหน่ง --"
+              />
+            </div>
+
             {/* จำนวนเงินทั้งหมด */}
             <div>
               <label className={labelCls}>จำนวนเงินทั้งหมด (บาท) *</label>
@@ -403,6 +453,65 @@ export default function FreelancerPage() {
                 inputMode="numeric"
                 placeholder="0"
               />
+            </div>
+
+            {/* ค่าใช้จ่ายเพิ่มเติม */}
+            <div>
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${showExpense ? 'text-orange-500' : 'text-gray-700'}`}>
+                  ค่าใช้จ่ายเพิ่มเติม
+                  {!showExpense && <span className="ml-1 text-xs font-normal text-gray-400">(ไม่หัก 3%)</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setShowExpense(!showExpense); setExpenseAmount(''); setExpenseFile(null); setExpensePreview(null) }}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-base font-bold transition-colors ${
+                    showExpense
+                      ? 'bg-orange-100 text-orange-500 hover:bg-orange-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {showExpense ? '−' : '+'}
+                </button>
+              </div>
+
+              {showExpense && (
+                <div className="mt-2 space-y-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                  <div>
+                    <label className={labelCls}>จำนวนค่าใช้จ่าย (บาท) *</label>
+                    <input
+                      type="number"
+                      value={expenseAmount}
+                      onChange={(e) => setExpenseAmount(e.target.value)}
+                      className={inputCls}
+                      min="1"
+                      inputMode="numeric"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>รูปสลิป / หลักฐานค่าใช้จ่าย *</label>
+                    {expensePreview ? (
+                      <div className="relative">
+                        <img src={expensePreview} alt="slip" className="w-full max-h-48 object-contain rounded-xl border border-orange-200 bg-white" />
+                        <button
+                          type="button"
+                          onClick={() => { setExpenseFile(null); setExpensePreview(null) }}
+                          className="absolute top-2 right-2 w-7 h-7 bg-white rounded-full shadow flex items-center justify-center text-gray-500 hover:text-red-500 text-sm font-bold"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-2 w-full h-28 border-2 border-dashed border-orange-200 rounded-xl cursor-pointer bg-white hover:bg-orange-50 transition-colors">
+                        <span className="text-3xl">📎</span>
+                        <span className="text-xs text-gray-500">แตะเพื่อเลือกรูป</span>
+                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleExpenseFile} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* หมายเหตุ */}

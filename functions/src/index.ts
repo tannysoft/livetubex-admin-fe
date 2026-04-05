@@ -33,7 +33,7 @@ export const sendPaymentNotification = onCall(
     }
 
     const payment = (request.data ?? {}) as Record<string, unknown>
-    if (!payment.freelancerName || !payment.amount) {
+    if (!payment.amount) {
       throw new HttpsError('invalid-argument', 'Missing payment data')
     }
 
@@ -41,7 +41,63 @@ export const sendPaymentNotification = onCall(
     const mailTo   = MAIL_TO.value()
     const resend   = new Resend(RESEND_API_KEY.value())
 
-    console.log(`[sendPaymentNotification] from=${mailFrom} to=${mailTo} freelancer=${payment.freelancerName as string} amount=${payment.amount as number}`)
+    // mask เลขบัญชี: แสดง 4 ตัวหลัง ซ่อนส่วนที่เหลือด้วย xxx
+    const maskAccount = (acc: string) => {
+      const clean = acc.replace(/\D/g, '')   // เอาเฉพาะตัวเลข
+      if (clean.length <= 4) return clean
+      return 'x'.repeat(clean.length - 4) + clean.slice(-4)
+    }
+
+    // ── ดึงข้อมูล freelancer จาก Firestore โดยตรง ─────────────────────────
+    // ไม่พึ่ง client ส่งมา เพราะ bankAccount, bankName, name ไม่ได้เก็บใน payments อีกต่อไป
+    let freelancerEmail: string | null = null
+    let freelancerName = '-'
+    let freelancerBankName = '-'
+    let freelancerBankAccount = '-'
+    const freelancerId = payment.freelancerId as string | undefined
+    const lineUserId   = payment.lineUserId   as string | undefined
+
+    if (freelancerId) {
+      const snap = await admin.firestore().collection('freelancers').doc(freelancerId).get()
+      if (snap.exists) {
+        const data = snap.data()!
+        const email = data.email as string | undefined
+        if (email && email.trim()) freelancerEmail = email.trim()
+        if (data.name) freelancerName = data.name as string
+        if (data.bankName) freelancerBankName = data.bankName as string
+        if (data.bankAccount) freelancerBankAccount = data.bankAccount as string
+      }
+    }
+
+    // fallback: query ด้วย lineUserId ถ้าหา freelancerId ไม่เจอ
+    if ((!freelancerEmail || freelancerName === '-') && lineUserId) {
+      const snap = await admin.firestore()
+        .collection('freelancers')
+        .where('lineUserId', '==', lineUserId)
+        .limit(1)
+        .get()
+      if (!snap.empty) {
+        const data = snap.docs[0].data()
+        const email = data.email as string | undefined
+        if (email && email.trim() && !freelancerEmail) freelancerEmail = email.trim()
+        if (freelancerName === '-' && data.name) freelancerName = data.name as string
+        if (freelancerBankName === '-' && data.bankName) freelancerBankName = data.bankName as string
+        if (freelancerBankAccount === '-' && data.bankAccount) freelancerBankAccount = data.bankAccount as string
+      }
+    }
+
+    // ── ดึงชื่องานจาก jobId ───────────────────────────────────────────────────
+    let jobTitle = (payment.workDescription as string | undefined) ?? '-'
+    const jobId = payment.jobId as string | undefined
+    if (jobId) {
+      const jobSnap = await admin.firestore().collection('jobs').doc(jobId).get()
+      if (jobSnap.exists) {
+        const t = jobSnap.data()!.title as string | undefined
+        if (t) jobTitle = t
+      }
+    }
+
+    console.log(`[sendPaymentNotification] from=${mailFrom} to=${mailTo} freelancer=${freelancerName} amount=${payment.amount as number} freelancerEmail=${freelancerEmail ?? 'none'} (freelancerId=${freelancerId ?? '-'} lineUserId=${lineUserId ?? '-'})`)
 
     const thaiDate = new Date(payment.requestedAt as string).toLocaleString('th-TH', {
       timeZone: 'Asia/Bangkok',
@@ -74,17 +130,17 @@ export const sendPaymentNotification = onCall(
     <!-- Body -->
     <div style="padding:28px">
       <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        <strong>${payment.freelancerName as string}</strong> ส่งคำขอเบิกจ่ายเงินเข้ามาแล้ว กรุณาตรวจสอบและอนุมัติ
+        <strong>${freelancerName}</strong> ส่งคำขอเบิกจ่ายเงินเข้ามาแล้ว กรุณาตรวจสอบและอนุมัติ
       </p>
       <!-- Info table -->
       <table style="width:100%;border-collapse:collapse;font-size:14px">
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280;width:40%">Freelancer</td>
-          <td style="padding:10px 0;color:#111827;font-weight:600">${payment.freelancerName as string}</td>
+          <td style="padding:10px 0;color:#111827;font-weight:600">${freelancerName}</td>
         </tr>
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280">รายละเอียดงาน</td>
-          <td style="padding:10px 0;color:#111827">${payment.workDescription as string}</td>
+          <td style="padding:10px 0;color:#111827">${jobTitle}</td>
         </tr>
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280">วันที่ทำงาน</td>
@@ -92,7 +148,7 @@ export const sendPaymentNotification = onCall(
         </tr>
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280">บัญชีธนาคาร</td>
-          <td style="padding:10px 0;color:#111827">${payment.bankName as string}<br><span style="font-family:monospace">${payment.bankAccount as string}</span></td>
+          <td style="padding:10px 0;color:#111827">${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span></td>
         </tr>
         ${payment.notes ? `
         <tr style="border-bottom:1px solid #f3f4f6">
@@ -131,7 +187,7 @@ export const sendPaymentNotification = onCall(
     const { data, error } = await resend.emails.send({
       from: `LiveTubeX Notify <${mailFrom}>`,
       to: mailTo,
-      subject: `[LiveTubeX] คำขอเบิกจ่าย — ${payment.freelancerName as string} — ${formatCurrency(amount)}`,
+      subject: `[LiveTubeX] คำขอเบิกจ่าย — ${freelancerName} — ${formatCurrency(amount)}`,
       html,
     })
 
@@ -143,7 +199,6 @@ export const sendPaymentNotification = onCall(
     console.log(`[sendPaymentNotification] ✅ Admin email sent id=${data?.id}`)
 
     // ── ส่งเมลยืนยันหา Freelancer (ถ้ามี email) ───────────────────────────
-    const freelancerEmail = payment.freelancerEmail as string | null | undefined
     if (freelancerEmail) {
       const freelancerHtml = `
 <!DOCTYPE html>
@@ -157,13 +212,13 @@ export const sendPaymentNotification = onCall(
     </div>
     <div style="padding:28px">
       <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        สวัสดีคุณ <strong>${payment.freelancerName as string}</strong><br>
+        สวัสดีคุณ <strong>${freelancerName}</strong><br>
         ระบบได้รับคำขอเบิกจ่ายของคุณแล้ว กรุณารอการอนุมัติจาก Admin
       </p>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280;width:40%">รายละเอียดงาน</td>
-          <td style="padding:10px 0;color:#111827">${payment.workDescription as string}</td>
+          <td style="padding:10px 0;color:#111827">${jobTitle}</td>
         </tr>
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:10px 0;color:#6b7280">วันที่ทำงาน</td>
@@ -318,5 +373,155 @@ export const lineAuth = onCall(
       displayName: lineProfile.displayName,
       pictureUrl: lineProfile.pictureUrl ?? '',
     }
+  }
+)
+
+// ── ส่งสรุปรายได้ให้ Freelancer (Admin เรียก) ─────────────────────────────
+interface ReportPaymentRow {
+  workDescription: string
+  position?: string
+  workDates?: string[]
+  amount: number
+  paidAt?: string
+}
+
+interface FreelancerReport {
+  freelancerEmail: string
+  freelancerName: string
+  period: string
+  payments: ReportPaymentRow[]
+  totalGross: number
+  totalTax: number
+  totalNet: number
+}
+
+export const sendPaymentReport = onCall(
+  {
+    cors: [
+      'https://livetubex-admin.web.app',
+      'https://livetubex-admin.firebaseapp.com',
+      'https://console.livetubex.com',
+      /localhost/,
+    ],
+    secrets: [RESEND_API_KEY, MAIL_FROM],
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+
+    // Admin only (sign_in_provider == 'password')
+    const provider = (request.auth.token as Record<string, unknown>)?.firebase as Record<string, unknown> | undefined
+    if (provider?.sign_in_provider !== 'password') {
+      throw new HttpsError('permission-denied', 'Admin only')
+    }
+
+    const { reports } = (request.data ?? {}) as { reports?: FreelancerReport[] }
+    if (!reports || !Array.isArray(reports) || reports.length === 0) {
+      throw new HttpsError('invalid-argument', 'Missing reports data')
+    }
+
+    const mailFrom = MAIL_FROM.value()
+    const resend   = new Resend(RESEND_API_KEY.value())
+
+    const formatCurr = (n: number) =>
+      new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n)
+
+    const formatDates = (dates?: string[]) => {
+      if (!dates || dates.length === 0) return '-'
+      return dates.map((d) => {
+        const dt = new Date(d + 'T00:00:00')
+        return dt.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+      }).join(', ')
+    }
+
+    const results: { email: string; ok: boolean }[] = []
+
+    for (const report of reports) {
+      const { freelancerEmail, freelancerName, period, payments, totalGross, totalTax, totalNet } = report
+
+      if (!freelancerEmail || !freelancerEmail.trim()) {
+        console.warn(`[sendPaymentReport] skip ${freelancerName} — no email`)
+        results.push({ email: freelancerEmail || '-', ok: false })
+        continue
+      }
+
+      const rows = payments.map((p) => `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#111827">${p.workDescription}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${p.position ?? '-'}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#374151;white-space:nowrap">${formatDates(p.workDates)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#111827;text-align:right;white-space:nowrap">${formatCurr(p.amount)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;text-align:right;white-space:nowrap">−${formatCurr(Math.round(p.amount * 0.03))}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#059669;font-weight:600;text-align:right;white-space:nowrap">${formatCurr(p.amount - Math.round(p.amount * 0.03))}</td>
+        </tr>`).join('')
+
+      const html = `
+<!DOCTYPE html>
+<html lang="th">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Helvetica Neue',Arial,sans-serif">
+  <div style="max-width:640px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+    <div style="background:#f73727;padding:24px 28px">
+      <p style="margin:0;color:#fff;font-size:18px;font-weight:700">LiveTubeX</p>
+      <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px">สรุปรายได้ประจำ${period}</p>
+    </div>
+    <div style="padding:28px">
+      <p style="margin:0 0 20px;font-size:15px;color:#374151">
+        สวัสดีคุณ <strong>${freelancerName}</strong><br>
+        นี่คือสรุปรายได้ของคุณประจำ<strong>${period}</strong>
+      </p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px">
+          <thead>
+            <tr style="background:#f9fafb">
+              <th style="padding:10px 12px;text-align:left;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">งาน</th>
+              <th style="padding:10px 12px;text-align:left;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">ตำแหน่ง</th>
+              <th style="padding:10px 12px;text-align:left;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">วันที่</th>
+              <th style="padding:10px 12px;text-align:right;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">ยอดขอเบิก</th>
+              <th style="padding:10px 12px;text-align:right;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">ภาษี 3%</th>
+              <th style="padding:10px 12px;text-align:right;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb">สุทธิ</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr style="background:#f9fafb">
+              <td colspan="3" style="padding:12px;font-weight:700;color:#111827;border-top:2px solid #e5e7eb">รวมทั้งหมด</td>
+              <td style="padding:12px;text-align:right;font-weight:700;color:#111827;border-top:2px solid #e5e7eb">${formatCurr(totalGross)}</td>
+              <td style="padding:12px;text-align:right;color:#6b7280;border-top:2px solid #e5e7eb">−${formatCurr(totalTax)}</td>
+              <td style="padding:12px;text-align:right;font-weight:700;color:#f73727;font-size:15px;border-top:2px solid #e5e7eb">${formatCurr(totalNet)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="margin-top:24px;background:#f0fdf4;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px">
+        <div>
+          <p style="margin:0;font-size:13px;color:#374151">ยอดโอนสุทธิที่จะได้รับ (หักภาษี ณ ที่จ่าย 3%)</p>
+          <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#059669">${formatCurr(totalNet)}</p>
+        </div>
+      </div>
+      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">
+        ออกโดย LiveTubeX · ${new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`
+
+      const { error } = await resend.emails.send({
+        from: `LiveTubeX Notify <${mailFrom}>`,
+        to: freelancerEmail.trim(),
+        subject: `[LiveTubeX] สรุปรายได้ประจำ${period} — ${freelancerName}`,
+        html,
+      })
+
+      if (error) {
+        console.error(`[sendPaymentReport] ❌ ${freelancerEmail}:`, error)
+        results.push({ email: freelancerEmail, ok: false })
+      } else {
+        console.log(`[sendPaymentReport] ✅ sent to ${freelancerEmail}`)
+        results.push({ email: freelancerEmail, ok: true })
+      }
+    }
+
+    return { results }
   }
 )

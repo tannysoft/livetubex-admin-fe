@@ -16,7 +16,7 @@ import FormListbox from '@/components/ui/FormListbox'
 import Logo from '@/components/ui/Logo'
 import { initLiff, isLiffLoggedIn, liffLogin, signInFirebaseWithLiff } from '@/lib/line-liff'
 import { getFreelancerByLineId, upsertFreelancerByLineId } from '@/lib/firebase-utils'
-import { uploadIdCardImage } from '@/lib/firebase-storage'
+import { uploadIdCardImage, getStorageDownloadUrl } from '@/lib/firebase-storage'
 
 type FormData = {
   namePrefix: string
@@ -70,8 +70,9 @@ export default function FreelancerRegisterPage() {
 
   // ID card image states
   const [idCardFile, setIdCardFile] = useState<File | null>(null)
-  const [idCardPreview, setIdCardPreview] = useState<string>('') // blob URL or existing URL
-  const [existingIdCardUrl, setExistingIdCardUrl] = useState<string>('')
+  const [idCardPreview, setIdCardPreview] = useState<string>('') // blob URL or fetched URL for display
+  const [existingIdCardUrl, setExistingIdCardUrl] = useState<string>('')   // URL สำหรับ preview รูปเดิม
+  const [existingIdCardPath, setExistingIdCardPath] = useState<string>('') // storage path รูปเดิม
   const [idCardError, setIdCardError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)       // gallery
@@ -117,7 +118,17 @@ export default function FreelancerRegisterPage() {
             bankName: existing.bankName,
             bankAccount: existing.bankAccount,
           })
-          if (existing.idCardImageUrl) {
+          if (existing.idCardImagePath) {
+            setExistingIdCardPath(existing.idCardImagePath)
+            try {
+              const url = await getStorageDownloadUrl(existing.idCardImagePath)
+              setExistingIdCardUrl(url)
+              setIdCardPreview(url)
+            } catch {
+              // ไม่สามารถโหลด preview ได้ — ข้ามไป
+            }
+          } else if (existing.idCardImageUrl) {
+            // backward compat: ข้อมูลเก่าที่เก็บ URL โดยตรง
             setExistingIdCardUrl(existing.idCardImageUrl)
             setIdCardPreview(existing.idCardImageUrl)
           }
@@ -171,12 +182,12 @@ export default function FreelancerRegisterPage() {
 
     setPageState('saving')
     try {
-      let idCardImageUrl = existingIdCardUrl
+      let idCardImagePath = existingIdCardPath
 
-      // อัพโหลดรูปใหม่ถ้ามีการเปลี่ยน
+      // อัพโหลดรูปใหม่ถ้ามีการเปลี่ยน (returns storage path ไม่ใช่ URL)
       if (idCardFile) {
         setUploadProgress(true)
-        idCardImageUrl = await uploadIdCardImage(liffProfile.userId, idCardFile)
+        idCardImagePath = await uploadIdCardImage(liffProfile.userId, idCardFile)
         setUploadProgress(false)
       }
 
@@ -190,7 +201,7 @@ export default function FreelancerRegisterPage() {
         email: data.email,
         bankAccount: data.bankAccount,
         bankName: data.bankName,
-        idCardImageUrl,
+        idCardImagePath: idCardImagePath || undefined,
       })
       setPageState('success')
     } catch (err: unknown) {
