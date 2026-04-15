@@ -15,7 +15,7 @@ import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
 import Logo from '@/components/ui/Logo'
 import { initLiff, isLiffLoggedIn, liffLogin, signInFirebaseWithLiff } from '@/lib/line-liff'
-import { getFreelancerByLineId, upsertFreelancerByLineId } from '@/lib/firebase-utils'
+import { getFreelancerByLineId, upsertFreelancerByLineId, updateFreelancer, generateFreelancerDocId } from '@/lib/firebase-utils'
 import { uploadIdCardImage, getStorageDownloadUrl } from '@/lib/firebase-storage'
 
 type FormData = {
@@ -66,6 +66,7 @@ export default function FreelancerRegisterPage() {
     pictureUrl?: string
   } | null>(null)
   const [isEdit, setIsEdit] = useState(false)
+  const [freelancerDocId, setFreelancerDocId] = useState<string>('')
   const [errorMsg, setErrorMsg] = useState('')
 
   // ID card image states
@@ -109,6 +110,7 @@ export default function FreelancerRegisterPage() {
         const existing = await getFreelancerByLineId(profile.userId)
         if (existing) {
           setIsEdit(true)
+          setFreelancerDocId(existing.id)
           reset({
             namePrefix: existing.namePrefix || 'นาย',
             firstName: existing.firstName || '',
@@ -132,6 +134,9 @@ export default function FreelancerRegisterPage() {
             setExistingIdCardUrl(existing.idCardImageUrl)
             setIdCardPreview(existing.idCardImageUrl)
           }
+        } else {
+          // Pre-generate Firestore doc ID ก่อน เพื่อให้ storage path ตรงกับ freelancerId
+          setFreelancerDocId(generateFreelancerDocId())
         }
 
         setPageState('form')
@@ -182,16 +187,9 @@ export default function FreelancerRegisterPage() {
 
     setPageState('saving')
     try {
-      let idCardImagePath = existingIdCardPath
-
-      // อัพโหลดรูปใหม่ถ้ามีการเปลี่ยน (returns storage path ไม่ใช่ URL)
-      if (idCardFile) {
-        setUploadProgress(true)
-        idCardImagePath = await uploadIdCardImage(liffProfile.userId, idCardFile)
-        setUploadProgress(false)
-      }
-
-      await upsertFreelancerByLineId(liffProfile.userId, {
+      // Step 1: Upsert Firestore doc ก่อนเสมอ (ไม่ส่ง idCardImagePath ถ้าจะ upload ใหม่)
+      // → ทำให้ storage rules ยืนยัน ownership ได้ทันทีตอน upload
+      const savedId = await upsertFreelancerByLineId(liffProfile.userId, {
         lineDisplayName: liffProfile.displayName,
         linePictureUrl: liffProfile.pictureUrl,
         namePrefix: data.namePrefix,
@@ -201,8 +199,18 @@ export default function FreelancerRegisterPage() {
         email: data.email,
         bankAccount: data.bankAccount,
         bankName: data.bankName,
-        idCardImagePath: idCardImagePath || undefined,
-      })
+        idCardImagePath: idCardFile ? (existingIdCardPath || undefined) : (existingIdCardPath || undefined),
+      }, !isEdit ? freelancerDocId : undefined)
+
+      // Step 2: upload รูปบัตร — ใช้ lineUserId (= auth.uid) เป็น folder
+      // ไม่ต้องพึ่ง Firestore cross-lookup ใน Storage rule → ไม่มี race condition
+      if (idCardFile) {
+        setUploadProgress(true)
+        const newPath = await uploadIdCardImage(liffProfile.userId, idCardFile)
+        setUploadProgress(false)
+        await updateFreelancer(savedId, { idCardImagePath: newPath })
+      }
+
       setPageState('success')
     } catch (err: unknown) {
       setUploadProgress(false)

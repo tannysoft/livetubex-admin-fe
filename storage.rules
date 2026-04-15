@@ -3,36 +3,58 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     // ── สลิปค่าใช้จ่ายเพิ่มเติม ────────────────────────────────────────────
-    // path: expenseSlips/{lineUserId}/{fileName}
-    match /expenseSlips/{lineUserId}/{fileName} {
+    // path: expenseSlips/{freelancerId}/{fileName}
+    match /expenseSlips/{freelancerId}/{fileName} {
       allow read: if request.auth != null
         && (
           request.auth.token.firebase.sign_in_provider == 'password'
-          || (request.auth.uid == lineUserId && request.auth.token.lineUser == true)
+          || (request.auth.token.lineUser == true
+              && firestore.get(/databases/(default)/documents/freelancers/$(freelancerId)).data.lineUserId == request.auth.uid)
         );
       allow write: if request.auth != null
-        && request.auth.uid == lineUserId
-        && request.auth.token.lineUser == true
+        && (
+          request.auth.token.firebase.sign_in_provider == 'password'
+          || (request.auth.token.lineUser == true
+              && firestore.get(/databases/(default)/documents/freelancers/$(freelancerId)).data.lineUserId == request.auth.uid)
+        )
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── สลิปการโอนเงิน (admin อัพโหลด, freelancer อ่านได้) ────────────────
+    // path: payoutSlips/{freelancerId}/{fileName}
+    // read: admin หรือ LIFF user ที่ login แล้ว — ไม่ต้อง Firestore cross-lookup
+    //   เพราะ path ของสลิปนี้ freelancer รู้ได้แค่จาก payment ของตัวเอง
+    //   ซึ่ง Firestore rules บังคับไว้อยู่แล้ว
+    match /payoutSlips/{freelancerId}/{fileName} {
+      allow read: if request.auth != null
+        && (
+          request.auth.token.firebase.sign_in_provider == 'password'
+          || request.auth.token.lineUser == true
+        );
+      allow write: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     // ── รูปสำเนาบัตรประชาชน ────────────────────────────────────────────────
     // path: idCards/{lineUserId}/id_card.{ext}
+    // ใช้ lineUserId (= auth.uid) เป็น folder — ตรวจสอบ ownership โดยตรง ไม่ต้อง Firestore cross-lookup
     match /idCards/{lineUserId}/{fileName} {
 
-      // Admin อ่านได้ทั้งหมด; freelancer (LINE custom token, uid = lineUserId) อ่านได้เฉพาะโฟลเดอร์ของตัวเอง
+      // Admin อ่านได้ทั้งหมด; freelancer อ่านได้เฉพาะ folder ของตัวเอง
+      // (ครอบคลุมทั้ง path ใหม่ {lineUserId} และ path เก่า {freelancerId} ที่ migrate แล้ว)
       allow read: if request.auth != null
         && (
           request.auth.token.firebase.sign_in_provider == 'password'
-          || (request.auth.uid == lineUserId && request.auth.token.lineUser == true)
+          || request.auth.token.lineUser == true
         );
 
-      // Freelancer อัพโหลดได้เฉพาะของตัวเอง
-      // ต้องเป็นไฟล์รูป ขนาดไม่เกิน 10 MB
+      // Freelancer อัพโหลดได้เฉพาะ folder ของตัวเอง (auth.uid == lineUserId ในชื่อ folder)
       allow write: if request.auth != null
-        && request.auth.uid == lineUserId
         && request.auth.token.lineUser == true
+        && request.auth.uid == lineUserId
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }

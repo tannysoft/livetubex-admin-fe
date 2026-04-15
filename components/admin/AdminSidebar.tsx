@@ -13,6 +13,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   ArrowRightOnRectangleIcon,
+  QueueListIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
@@ -25,7 +27,9 @@ const navItems = [
   { href: '/admin/freelancers', label: 'Freelancer', icon: UsersIcon },
   { href: '/admin/positions', label: 'ตำแหน่ง', icon: BriefcaseIcon },
   { href: '/admin/payments', label: 'การเบิกจ่าย', icon: BanknotesIcon },
+  { href: '/admin/payout', label: 'เตรียมจ่ายเงิน', icon: QueueListIcon },
   { href: '/admin/report', label: 'รายงานการจ่ายเงิน', icon: ChartBarIcon },
+  { href: '/admin/line-messages', label: 'LINE Message Report', icon: ChatBubbleLeftRightIcon },
   { href: '/admin/settings', label: 'ตั้งค่าระบบ', icon: Cog6ToothIcon },
 ]
 

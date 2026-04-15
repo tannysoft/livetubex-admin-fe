@@ -27,7 +27,7 @@ import {
 import {
   getFreelancerByLineId,
   getJobs,
-  getPaymentsByLineUserId,
+  getPaymentsByFreelancer,
   createPayment,
   getPositions,
 } from '@/lib/firebase-utils'
@@ -99,7 +99,7 @@ export default function FreelancerPage() {
         if (!f) { router.replace('/freelancer/register'); return }
 
         setFreelancer(f)
-        const [j, p, pos] = await Promise.all([getJobs(), getPaymentsByLineUserId(profile.userId), getPositions()])
+        const [j, p, pos] = await Promise.all([getJobs(), getPaymentsByFreelancer(f.id), getPositions()])
         setJobs(j)
         setPayments(p)
         setPositions(pos)
@@ -182,12 +182,11 @@ export default function FreelancerPage() {
       // อัพโหลดสลิปก่อน (ถ้ามี) — returns storage path ไม่ใช่ URL
       let expenseSlipPath: string | undefined
       if (showExpense && expenseFile) {
-        expenseSlipPath = await uploadExpenseSlip(lineUserId, expenseFile)
+        expenseSlipPath = await uploadExpenseSlip(freelancer.id, expenseFile)
       }
 
       await createPayment({
         freelancerId: freelancer.id,
-        lineUserId,
         jobId: selectedJob.id,
         amount,
         status: 'pending',
@@ -210,11 +209,13 @@ export default function FreelancerPage() {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7) // "YYYY-MM"
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
 
-  const totalPaid = freelancer?.totalEarned ?? 0
+  const paidPayments = payments.filter((p) => p.status === 'paid')
+  const totalPaid    = paidPayments.reduce((s, p) => s + p.amount, 0)
+  const totalPaidNet = paidPayments.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
 
-  const lastMonthEarned = payments
-    .filter((p) => p.status === 'paid' && p.paidAt && p.paidAt.startsWith(lastMonthStart))
-    .reduce((s, p) => s + p.amount, 0)
+  const lastMonthPaid    = payments.filter((p) => p.status === 'paid' && p.paidAt && p.paidAt.startsWith(lastMonthStart))
+  const lastMonthEarned  = lastMonthPaid.reduce((s, p) => s + p.amount, 0)
+  const lastMonthNet     = lastMonthPaid.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
 
   const pendingAmount = payments
     .filter((p) => p.status === 'pending' || p.status === 'approved')
@@ -329,12 +330,12 @@ export default function FreelancerPage() {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
             <p className="text-base font-bold text-[#f73727] leading-tight">{formatCurrency(totalPaid)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(calcTax(totalPaid).net)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(totalPaidNet)}</p>
             <p className="text-xs text-gray-500 mt-0.5">รายได้รวม</p>
           </div>
           <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
             <p className="text-base font-bold text-gray-800 leading-tight">{formatCurrency(lastMonthEarned)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(calcTax(lastMonthEarned).net)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(lastMonthNet)}</p>
             <p className="text-xs text-gray-500 mt-0.5">เดือน{lastMonthLabel}</p>
           </div>
           <div className="bg-yellow-50 rounded-2xl p-3 shadow-sm border border-yellow-100 text-center">

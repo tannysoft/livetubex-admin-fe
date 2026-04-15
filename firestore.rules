@@ -70,6 +70,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── lineMessageLogs: Admin อ่านได้, Cloud Function เขียน (Admin SDK bypass rules) ─
+    match /lineMessageLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // ── jobAssignments ───────────────────────────────────────────────────────
     match /jobAssignments/{assignmentId} {
       // Admin เขียนได้ทุกอย่าง
@@ -90,22 +96,21 @@ service cloud.firestore {
       allow read, write: if isAdmin();
 
       // Freelancer อ่านได้เฉพาะ payment ของตัวเอง
-      // freelancerId ใน document เก็บ Firestore doc ID ไม่ใช่ lineUserId
-      // แต่เราสามารถ query ด้วย where('freelancerId','==', docId) ได้
-      // → ใช้วิธี lookup freelancer doc เพื่อ verify ว่า lineUserId == auth.uid
-      // (วิธีที่ง่ายกว่า: เก็บ lineUserId ใน payment document ด้วย)
+      // → lookup freelancers/{freelancerId} เพื่อเทียบ lineUserId กับ auth.uid
       allow read: if isFreelancer()
-                  && resource.data.lineUserId == request.auth.uid;
+                  && get(/databases/$(database)/documents/freelancers/$(resource.data.freelancerId)).data.lineUserId
+                     == request.auth.uid;
 
       // Freelancer สร้าง payment request ได้
-      // → lineUserId ต้องตรงกับ uid + status ต้อง pending + amount > 0
+      // → verify ว่า freelancerId ชี้ไปยัง freelancer ของตัวเอง
       allow create: if isFreelancer()
-                    && request.resource.data.lineUserId == request.auth.uid
+                    && get(/databases/$(database)/documents/freelancers/$(request.resource.data.freelancerId)).data.lineUserId
+                       == request.auth.uid
                     && request.resource.data.status == 'pending'
                     && request.resource.data.amount is number
                     && request.resource.data.amount > 0
                     && request.resource.data.keys().hasAll([
-                        'freelancerId','lineUserId',
+                        'freelancerId',
                         'amount','status','requestedAt',
                         'jobId'
                        ]);

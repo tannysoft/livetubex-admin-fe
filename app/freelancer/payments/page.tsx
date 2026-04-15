@@ -10,16 +10,54 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   CalendarDaysIcon,
+  ReceiptRefundIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import FormListbox from '@/components/ui/FormListbox'
 import Badge from '@/components/ui/Badge'
 import { initLiff, isLiffLoggedIn, signInFirebaseWithLiff } from '@/lib/line-liff'
-import { getFreelancerByLineId, getPaymentsByLineUserId, createPayment, getJobs, getPositions } from '@/lib/firebase-utils'
-import { uploadExpenseSlip } from '@/lib/firebase-storage'
+import { getFreelancerByLineId, getPaymentsByFreelancer, createPayment, getJobs, getPositions } from '@/lib/firebase-utils'
+import { uploadExpenseSlip, getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
-import { Skeleton, SkeletonPaymentCard } from '@/components/ui/Skeleton'
+import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { Skeleton, SkeletonImage, SkeletonPaymentCard } from '@/components/ui/Skeleton'
+import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
+
+function PayoutSlipButton({ slipPath, jobTitles, onOpen }: {
+  slipPath: string
+  jobTitles: string[]
+  onOpen: (url: string, titles: string[]) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
+  return (
+    <button
+      onClick={async () => {
+        setLoading(true)
+        setError(false)
+        try {
+          const url = await getStorageDownloadUrl(slipPath)
+          onOpen(url, jobTitles)
+        } catch {
+          setError(true)
+          setTimeout(() => setError(false), 3000)
+        } finally {
+          setLoading(false)
+        }
+      }}
+      disabled={loading}
+      className={`flex items-center gap-1.5 px-3 py-1.5 border text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+        error ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-green-200 text-green-700 hover:bg-green-50'
+      }`}
+    >
+      {loading
+        ? <span className="w-3.5 h-3.5 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+        : <ReceiptRefundIcon className="w-3.5 h-3.5" />
+      }
+      {error ? 'โหลดไม่ได้' : 'ดูสลิป'}
+    </button>
+  )
+}
 
 /** สร้าง array ของวันระหว่าง start → end (inclusive) */
 function getDatesInRange(start: string, end?: string): string[] {
@@ -53,15 +91,18 @@ export default function FreelancerPaymentsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [bootError, setBootError] = useState('')
+  const [payoutSlipUrl, setPayoutSlipUrl] = useState<string | null>(null)
+  const [payoutSlipJobs, setPayoutSlipJobs] = useState<string[]>([])
+  const [showCelebration, setShowCelebration] = useState(false)
   // expense
   const [showExpense, setShowExpense] = useState(false)
   const [expenseAmount, setExpenseAmount] = useState('')
   const [expenseFile, setExpenseFile] = useState<File | null>(null)
   const [expensePreview, setExpensePreview] = useState<string | null>(null)
 
-  const load = async (luid: string) => {
+  const load = async (freelancerId: string) => {
     const [p, j, pos] = await Promise.all([
-      getPaymentsByLineUserId(luid),
+      getPaymentsByFreelancer(freelancerId),
       getJobs(),
       getPositions(),
     ])
@@ -82,7 +123,7 @@ export default function FreelancerPaymentsPage() {
         const f = await getFreelancerByLineId(profile.userId)
         if (!f) { window.location.href = '/freelancer/register'; return }
         setFreelancer(f)
-        await load(profile.userId)
+        await load(f.id)
       } catch (err) {
         setBootError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
       } finally {
@@ -172,12 +213,11 @@ export default function FreelancerPaymentsPage() {
     try {
       let expenseSlipPath: string | undefined
       if (showExpense && expenseFile) {
-        expenseSlipPath = await uploadExpenseSlip(lineUserId, expenseFile)
+        expenseSlipPath = await uploadExpenseSlip(freelancer.id, expenseFile)
       }
 
       await createPayment({
         freelancerId: freelancer.id,
-        lineUserId,
         jobId: selectedJob.id,
         amount,
         status: 'pending',
@@ -188,7 +228,7 @@ export default function FreelancerPaymentsPage() {
         expenseSlipPath,
       }, freelancer.email)
       setRequestOpen(false)
-      await load(lineUserId)
+      await load(freelancer.id)
     } finally {
       setSubmitting(false)
     }
@@ -287,15 +327,6 @@ export default function FreelancerPaymentsPage() {
           </div>
         )}
 
-        {/* Request button */}
-        <button
-          onClick={openModal}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#f73727] text-white font-semibold rounded-2xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
-        >
-          <PlusIcon className="w-5 h-5" />
-          ขอเบิกจ่ายเงิน
-        </button>
-
         {/* Payment history */}
         <div>
           <h2 className="font-semibold text-gray-900 mb-3">ประวัติการเบิกจ่าย</h2>
@@ -304,61 +335,169 @@ export default function FreelancerPaymentsPage() {
               <BanknotesIcon className="w-10 h-10 text-gray-300 mx-auto" />
               <p className="text-gray-400 text-sm mt-3">ยังไม่มีประวัติการเบิกจ่าย</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {payments.map((p) => (
-                <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900">{getJobTitle(p)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">ขอเบิก {formatDateTime(p.requestedAt)}</p>
-                      {p.workDates && p.workDates.length > 0 && (
-                        <div className="flex items-start gap-1 mt-1">
-                          <CalendarDaysIcon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                          <p className="text-xs text-gray-500">
-                            {p.workDates.map((d) => formatDate(d)).join(', ')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        ภาษี {formatCurrency(calcTax(p.amount).tax)} · สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
-                      </p>
-                      <div className="mt-1">
-                        <Badge label={paymentStatusLabel(p.status)} colorClass={paymentStatusColor(p.status)} />
+          ) : (() => {
+            // แยก: paid-with-slip (จัดกลุ่ม), paid-no-slip, non-paid
+            const paidWithSlip = payments.filter((p) => p.status === 'paid' && p.payoutSlipPath)
+            const paidNoSlip = payments.filter((p) => p.status === 'paid' && !p.payoutSlipPath)
+            const nonPaid = payments.filter((p) => p.status !== 'paid')
+
+            // จัดกลุ่มตาม payoutSlipPath
+            const slipGroups = new Map<string, Payment[]>()
+            for (const p of paidWithSlip) {
+              const key = p.payoutSlipPath!
+              const arr = slipGroups.get(key) ?? []
+              arr.push(p)
+              slipGroups.set(key, arr)
+            }
+
+            const PaymentCard = ({ p }: { p: Payment }) => (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900">{getJobTitle(p)}</p>
+                    {p.jobId && jobsMap.get(p.jobId)?.paymentCycle && (
+                      <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-medium">
+                        รอบ: {paymentCycleLabel(jobsMap.get(p.jobId)!.paymentCycle!)}
+                      </span>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">ขอเบิก {formatDateTime(p.requestedAt)}</p>
+                    {p.workDates && p.workDates.length > 0 && (
+                      <div className="flex items-start gap-1 mt-1">
+                        <CalendarDaysIcon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-gray-500">{p.workDates.map((d) => formatDate(d)).join(', ')}</p>
                       </div>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      ภาษี {formatCurrency(calcTax(p.amount).tax)} · สุทธิ{' '}
+                      <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
+                    </p>
+                    <div className="mt-1">
+                      <Badge label={paymentStatusLabel(p.status)} colorClass={paymentStatusColor(p.status)} />
                     </div>
                   </div>
-                  {p.notes && (
-                    <p className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                      หมายเหตุ: {p.notes}
-                    </p>
-                  )}
-                  {p.adminNotes && (
-                    <p className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
-                      Admin: {p.adminNotes}
-                    </p>
-                  )}
-                  {p.status === 'paid' && p.paidAt && (
-                    <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircleIcon className="w-3.5 h-3.5" />
-                      โอนเงินแล้ว {formatDateTime(p.paidAt)}
-                    </p>
-                  )}
-                  {p.status === 'rejected' && (
-                    <p className="mt-2 text-xs text-red-500 flex items-center gap-1">
-                      <XCircleIcon className="w-3.5 h-3.5" />
-                      ถูกปฏิเสธ
-                    </p>
-                  )}
                 </div>
-              ))}
-            </div>
-          )}
+                {p.notes && <p className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">หมายเหตุ: {p.notes}</p>}
+                {p.adminNotes && <p className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">Admin: {p.adminNotes}</p>}
+                {p.status === 'rejected' && (
+                  <p className="mt-2 text-xs text-red-500 flex items-center gap-1">
+                    <XCircleIcon className="w-3.5 h-3.5" />ถูกปฏิเสธ
+                  </p>
+                )}
+              </div>
+            )
+
+            return (
+              <div className="space-y-3">
+                {/* non-paid */}
+                {nonPaid.map((p) => <PaymentCard key={p.id} p={p} />)}
+
+                {/* paid without slip */}
+                {paidNoSlip.map((p) => (
+                  <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900">{getJobTitle(p)}</p>
+                        {p.jobId && jobsMap.get(p.jobId)?.paymentCycle && (
+                          <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-medium">
+                            รอบ: {paymentCycleLabel(jobsMap.get(p.jobId)!.paymentCycle!)}
+                          </span>
+                        )}
+                        <p className="text-xs text-gray-400 mt-0.5">ขอเบิก {formatDateTime(p.requestedAt)}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
+                        </p>
+                        <div className="mt-1"><Badge label={paymentStatusLabel(p.status)} colorClass={paymentStatusColor(p.status)} /></div>
+                      </div>
+                    </div>
+                    {p.paidAt && (
+                      <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircleIcon className="w-3.5 h-3.5" />โอนเงินแล้ว {formatDateTime(p.paidAt)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                {/* paid with slip — grouped */}
+                {Array.from(slipGroups.entries()).map(([slipPath, pmts]) => {
+                  const totalNet = pmts.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
+                  const paidAt = pmts[0]?.paidAt
+                  const jobTitles = pmts.map((p) => getJobTitle(p)).filter(Boolean)
+                  return (
+                    <div key={slipPath} className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
+                      {/* Group header */}
+                      <div className="bg-green-50 px-4 py-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold text-green-700 flex items-center gap-1">
+                            <CheckCircleIcon className="w-3.5 h-3.5" />
+                            โอนเงินแล้ว {paidAt ? formatDateTime(paidAt) : ''}
+                          </p>
+                          <p className="text-xs text-green-600 mt-0.5">รวม {formatCurrency(totalNet)} · {pmts.length} รายการ</p>
+                        </div>
+                        <PayoutSlipButton slipPath={slipPath} jobTitles={jobTitles} onOpen={(url, titles) => { setPayoutSlipUrl(url); setPayoutSlipJobs(titles); setShowCelebration(true) }} />
+                      </div>
+                      {/* Payment rows */}
+                      <div className="divide-y divide-gray-50">
+                        {pmts.map((p) => (
+                          <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800">{getJobTitle(p)}</p>
+                              {p.jobId && jobsMap.get(p.jobId)?.paymentCycle && (
+                                <span className="inline-block mt-0.5 text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md font-medium">
+                                  รอบ: {paymentCycleLabel(jobsMap.get(p.jobId)!.paymentCycle!)}
+                                </span>
+                              )}
+                              {p.workDates && p.workDates.length > 0 && (
+                                <p className="text-xs text-gray-400 mt-0.5">{p.workDates.map((d) => formatDate(d)).join(', ')}</p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</p>
+                              <p className="text-xs text-gray-400">สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span></p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       </div>
+
+      {/* Celebration overlay — แสดงตอน freelancer กดดูสลิปโอนเงิน */}
+      {showCelebration && (
+        <CelebrationOverlay onDone={() => setShowCelebration(false)} />
+      )}
+
+      {/* Payout Slip Modal */}
+      <Modal isOpen={!!payoutSlipUrl} onClose={() => setPayoutSlipUrl(null)} title="สลิปการโอนเงิน" size="md">
+        {payoutSlipUrl && (
+          <div className="space-y-4">
+            {payoutSlipJobs.length > 0 && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs font-medium text-gray-500 mb-2">รายการที่โอนในรอบนี้</p>
+                <ul className="space-y-1">
+                  {payoutSlipJobs.map((title, i) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-center gap-2">
+                      <CheckCircleIcon className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                      {title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <SkeletonImage src={payoutSlipUrl} alt="สลิปการโอนเงิน" />
+          </div>
+        )}
+      </Modal>
 
       {/* Request Modal */}
       <Modal isOpen={requestOpen} onClose={() => setRequestOpen(false)} title="ขอเบิกจ่ายเงิน" size="sm">

@@ -53,3 +53,7 @@ ui-debug.log
 
 # firebase emulator data
 .firebaserc.local
+
+# service account keys — ห้าม commit เด็ดขาด
+service-account*.json
+*-service-account.json

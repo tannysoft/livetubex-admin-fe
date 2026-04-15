@@ -20,6 +20,7 @@ export interface Job {
   clientName: string
   budget: number
   status: JobStatus
+  paymentCycle?: string  // format: "YYYY-MM-mid" | "YYYY-MM-end"
   createdAt: string
   updatedAt: string
   coverImage?: string
@@ -64,7 +65,6 @@ export interface JobAssignment {
 export interface Payment {
   id: string
   freelancerId: string
-  lineUserId: string          // ← ใช้ใน Firestore rules
   jobAssignmentId?: string    // optional — ถ้าผูกกับ assignment
   jobId: string               // relation → jobs collection
   amount: number
@@ -80,6 +80,7 @@ export interface Payment {
   expenseAmount?: number      // ค่าใช้จ่ายเพิ่มเติม (ไม่หัก 3%)
   expenseSlipPath?: string    // Storage path รูปสลิปค่าใช้จ่าย (เช่น expenseSlips/{uid}/{ts}.jpg)
   expenseSlipUrl?: string     // @deprecated: เก็บ URL เดิม (backward compat) — ใช้ expenseSlipPath แทน
+  payoutSlipPath?: string     // Storage path สลิปการโอนเงิน (เช่น payoutSlips/{freelancerId}/{ts}.jpg)
   // backward-compat only (old data may have these)
   workDescription?: string
   freelancerName?: string
@@ -103,6 +104,16 @@ export interface DashboardStats {
 }
 
 export type BillingCycle = 'mid' | 'end'  // กลางเดือน (1–15) หรือ ปลายเดือน (16–สิ้นเดือน)
+
+export interface LineMessageLog {
+  id: string
+  sentAt: string         // ISO datetime
+  month: string          // YYYY-MM (Bangkok timezone)
+  freelancerId: string
+  freelancerName: string
+  lineUserId: string
+  paymentCount: number   // จำนวน payment ที่โอนในครั้งนี้
+}
 
 export interface AppSettings {
   reportPeriodMonth: number   // 1–12

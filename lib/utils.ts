@@ -84,6 +84,37 @@ export function paymentStatusColor(status: string): string {
   return map[status] || 'bg-gray-100 text-gray-600'
 }
 
+const THAI_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+]
+
+/** แปลง paymentCycle value → label ภาษาไทย เช่น "2026-04-mid" → "กลางเดือนเมษายน 2569" */
+export function paymentCycleLabel(value: string): string {
+  const [year, month, cycle] = value.split('-')
+  if (!year || !month || !cycle) return value
+  const monthName = THAI_MONTHS[parseInt(month) - 1] ?? month
+  const buddhistYear = parseInt(year) + 543
+  const prefix = cycle === 'mid' ? 'กลางเดือน' : 'สิ้นเดือน'
+  return `${prefix}${monthName} ${buddhistYear}`
+}
+
+/** สร้าง option list รอบจ่ายเงิน ย้อนหลัง 2 เดือน + ปัจจุบัน + ล่วงหน้า 3 เดือน */
+export function generatePaymentCycleOptions(): { value: string; label: string }[] {
+  const now = new Date()
+  const options: { value: string; label: string }[] = []
+  for (let offset = -2; offset <= 3; offset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    for (const cycle of ['mid', 'end'] as const) {
+      const value = `${y}-${m}-${cycle}`
+      options.push({ value, label: paymentCycleLabel(value) })
+    }
+  }
+  return options
+}
+
 export function assignmentStatusLabel(status: string): string {
   const map: Record<string, string> = {
     invited: 'เชิญแล้ว',

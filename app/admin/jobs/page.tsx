@@ -20,7 +20,7 @@ import {
   deleteJob,
 } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
-import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel } from '@/lib/utils'
+import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
 
 export default function JobsPage() {
@@ -127,28 +127,16 @@ export default function JobsPage() {
               key={job.id}
               className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow"
             >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              {/* แถวบน: ชื่องาน + badge + ปุ่ม */}
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-gray-900">{job.title}</h3>
+                    <h3 className="font-semibold text-gray-900 leading-snug">{job.title}</h3>
                     <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
                   </div>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-2">{job.description}</p>
-                  <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <CalendarIcon className="w-3.5 h-3.5" />
-                      {formatDate(job.date)}{job.endDate ? ` – ${formatDate(job.endDate)}` : ''}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MapPinIcon className="w-3.5 h-3.5" />
-                      {job.location}
-                    </span>
-                    <span className="font-medium text-gray-600">{job.clientName}</span>
-                    <span className="font-semibold text-[#f73727]">{formatCurrency(job.budget)}</span>
-                  </div>
+                  <p className="text-sm text-gray-500 mt-1 line-clamp-1">{job.description}</p>
                 </div>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => setEditJob(job)}
                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -162,6 +150,31 @@ export default function JobsPage() {
                     <TrashIcon className="w-4 h-4" />
                   </button>
                 </div>
+              </div>
+
+              {/* แถวล่าง: meta info */}
+              <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-gray-400">
+                <span className="flex items-center gap-1">
+                  <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
+                  {formatDate(job.date)}{job.endDate && job.endDate !== job.date ? ` – ${formatDate(job.endDate)}` : ''}
+                </span>
+                <span className="text-gray-200">|</span>
+                <span className="flex items-center gap-1">
+                  <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
+                  {job.location}
+                </span>
+                <span className="text-gray-200">|</span>
+                <span className="font-medium text-gray-600">{job.clientName}</span>
+                <span className="text-gray-200">|</span>
+                <span className="font-semibold text-[#f73727]">{formatCurrency(job.budget)}</span>
+                {job.paymentCycle && (
+                  <>
+                    <span className="text-gray-200">|</span>
+                    <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-medium whitespace-nowrap">
+                      รอบ: {paymentCycleLabel(job.paymentCycle)}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           ))}

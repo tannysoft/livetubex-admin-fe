@@ -5,7 +5,7 @@ interface BadgeProps {
 
 export default function Badge({ label, colorClass }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${colorClass}`}>
       {label}
     </span>
   )

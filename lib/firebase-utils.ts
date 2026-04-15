@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   getDocs,
@@ -13,7 +14,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
-import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings } from './types'
+import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings, LineMessageLog } from './types'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -82,8 +83,16 @@ export async function updateFreelancer(id: string, data: Partial<Freelancer>): P
 }
 
 /**
+ * Pre-generate a Firestore doc ID for a new freelancer.
+ * ใช้ก่อนอัพโหลด ID card เพื่อให้ storage path ใช้ freelancerId ได้เลย
+ */
+export function generateFreelancerDocId(): string {
+  return doc(collection(db, 'freelancers')).id
+}
+
+/**
  * Self-registration จาก LIFF:
- * - ถ้ายังไม่มี doc → สร้างใหม่ด้วย lineUserId เป็น key
+ * - ถ้ายังไม่มี doc → สร้างใหม่ด้วย predefinedId (pre-generated ก่อน upload)
  * - ถ้ามีแล้ว → update เฉพาะ field ที่ส่งมา (ไม่แตะ totalEarned, createdAt)
  */
 export async function upsertFreelancerByLineId(
@@ -99,7 +108,8 @@ export async function upsertFreelancerByLineId(
     bankAccount: string
     bankName: string
     idCardImagePath?: string  // storage path (ไม่ใช่ URL)
-  }
+  },
+  predefinedId?: string  // ส่งมาเฉพาะกรณีสร้างใหม่ (pre-generated ก่อน upload)
 ): Promise<string> {
   // ชื่อเต็ม ใช้สำหรับ denormalize ใน payments / assignments
   const fullName = `${data.namePrefix}${data.firstName} ${data.lastName}`
@@ -126,8 +136,11 @@ export async function upsertFreelancerByLineId(
     return existing.id
   }
 
-  // สร้างใหม่
-  const docRef = await addDoc(collection(db, 'freelancers'), {
+  // สร้างใหม่ — ใช้ predefinedId ถ้ามี (เพื่อให้ storage path ตรงกับ freelancerId)
+  const newRef = predefinedId
+    ? doc(db, 'freelancers', predefinedId)
+    : doc(collection(db, 'freelancers'))
+  await setDoc(newRef, {
     lineUserId,
     lineDisplayName: data.lineDisplayName,
     linePictureUrl: data.linePictureUrl ?? '',
@@ -144,7 +157,7 @@ export async function upsertFreelancerByLineId(
     isActive: true,
     createdAt: new Date().toISOString(),
   })
-  return docRef.id
+  return newRef.id
 }
 
 // ─── Job Assignments ─────────────────────────────────────────────────────────
@@ -189,19 +202,7 @@ export async function getPayments(): Promise<Payment[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Payment))
 }
 
-// Freelancer ใช้ query ด้วย lineUserId (ตรงกับ request.auth.uid)
-// เพื่อให้ Firestore rules: resource.data.lineUserId == request.auth.uid ผ่าน
-export async function getPaymentsByLineUserId(lineUserId: string): Promise<Payment[]> {
-  const q = query(
-    collection(db, 'payments'),
-    where('lineUserId', '==', lineUserId),
-    orderBy('requestedAt', 'desc')
-  )
-  const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Payment))
-}
-
-// Admin ใช้ function นี้ (query ด้วย freelancerId = Firestore doc ID)
+// query payments ด้วย freelancerId (Firestore doc ID) — ใช้ทั้ง Admin และ Freelancer LIFF
 export async function getPaymentsByFreelancer(freelancerId: string): Promise<Payment[]> {
   const q = query(
     collection(db, 'payments'),
@@ -242,11 +243,12 @@ export async function approvePayment(id: string, adminNotes?: string): Promise<v
   })
 }
 
-export async function markPaymentPaid(id: string, freelancerId: string, amount: number, adminNotes?: string): Promise<void> {
+export async function markPaymentPaid(id: string, freelancerId: string, amount: number, adminNotes?: string, payoutSlipPath?: string): Promise<void> {
   await updateDoc(doc(db, 'payments', id), {
     status: 'paid',
     paidAt: new Date().toISOString(),
     adminNotes: adminNotes || '',
+    ...(payoutSlipPath ? { payoutSlipPath } : {}),
   })
   // ใช้ increment() เพื่อหลีกเลี่ยง race condition (atomic server-side add)
   await updateDoc(doc(db, 'freelancers', freelancerId), {
@@ -282,6 +284,10 @@ export interface FreelancerReportPayload {
 
 export async function sendPaymentReport(reports: FreelancerReportPayload[]): Promise<void> {
   await httpsCallable(functions, 'sendPaymentReport')({ reports })
+}
+
+export async function sendPayoutNotification(freelancerId: string, paymentIds: string[], payoutSlipPath?: string): Promise<void> {
+  await httpsCallable(functions, 'sendPayoutNotification')({ freelancerId, paymentIds, payoutSlipPath })
 }
 
 // ─── Positions ───────────────────────────────────────────────────────────────
@@ -363,4 +369,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     totalPaidAmount,
     pendingPaymentAmount,
   }
+}
+
+// ─── LINE Message Logs ────────────────────────────────────────────────────────
+
+export async function getLineMessageLogs(month: string): Promise<LineMessageLog[]> {
+  const q = query(
+    collection(db, 'lineMessageLogs'),
+    where('month', '==', month),
+    orderBy('sentAt', 'desc')
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as LineMessageLog))
 }

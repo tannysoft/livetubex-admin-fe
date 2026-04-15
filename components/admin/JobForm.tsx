@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import type { Job, JobStatus } from '@/lib/types'
+import { generatePaymentCycleOptions } from '@/lib/utils'
 
 type FormData = {
   title: string
@@ -14,6 +15,7 @@ type FormData = {
   clientName: string
   budget: number
   status: JobStatus
+  paymentCycle?: string
   notes?: string
 }
 
@@ -51,6 +53,7 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
       clientName: defaultValues?.clientName ?? '',
       budget: defaultValues?.budget ?? 0,
       status: (defaultValues?.status as JobStatus) ?? 'draft',
+      paymentCycle: defaultValues?.paymentCycle ?? '',
       notes: defaultValues?.notes ?? '',
     },
   })
@@ -147,6 +150,25 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
                 value={field.value}
                 onChange={(v) => field.onChange(v as JobStatus)}
                 options={statusOptions.map((o) => ({ value: o.value, label: o.label }))}
+                buttonClassName={inputCls}
+              />
+            )}
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>รอบจ่ายเงินทีมงาน</label>
+          <Controller
+            name="paymentCycle"
+            control={control}
+            render={({ field }) => (
+              <FormListbox
+                value={field.value ?? ''}
+                onChange={(v) => field.onChange(v)}
+                options={[
+                  { value: '', label: 'ยังไม่กำหนด' },
+                  ...generatePaymentCycleOptions(),
+                ]}
                 buttonClassName={inputCls}
               />
             )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -9,47 +9,129 @@ import {
   ListBulletIcon,
   RectangleGroupIcon,
   ReceiptRefundIcon,
+  ArrowUturnLeftIcon,
+  PlusIcon,
+  CalendarDaysIcon,
+  PencilSquareIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { getPayments, getJobs, getFreelancers, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
-import { getStorageDownloadUrl } from '@/lib/firebase-storage'
-import type { Freelancer, Job, Payment, PaymentStatus } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import FormListbox from '@/components/ui/FormListbox'
+import { getPayments, getJobs, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
+import { deleteField } from 'firebase/firestore'
+import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
+import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
+import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { Skeleton, SkeletonImage, SkeletonTableRow } from '@/components/ui/Skeleton'
+import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
 
 type ViewMode = 'list' | 'grouped'
+
+/** สร้าง array ของวันระหว่าง start → end (inclusive) */
+function getDatesInRange(start: string, end?: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(start + 'T00:00:00')
+  const last = new Date((end || start) + 'T00:00:00')
+  while (cur <= last) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
+    dates.push(`${y}-${m}-${d}`)
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
+}
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
+
+  // ── Create form state ─────────────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newFreelancerId, setNewFreelancerId] = useState('')
+  const [newJobId, setNewJobId] = useState('')
+  const [newPosition, setNewPosition] = useState('')
+  const [newWorkDates, setNewWorkDates] = useState<string[]>([])
+  const [newAmount, setNewAmount] = useState('')
+  const [newNotes, setNewNotes] = useState('')
+  const [newStatus, setNewStatus] = useState<'pending' | 'approved' | 'paid'>('pending')
+  const [newShowExpense, setNewShowExpense] = useState(false)
+  const [newExpenseAmount, setNewExpenseAmount] = useState('')
+  const [newExpenseFile, setNewExpenseFile] = useState<File | null>(null)
+  const [newExpensePreview, setNewExpensePreview] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+
+  // ── Edit form state ───────────────────────────────────────────────────────
+  const [editOpen, setEditOpen] = useState(false)
+  const [editPayment, setEditPayment] = useState<Payment | null>(null)
+  const [editJobId, setEditJobId] = useState('')
+  const [editPosition, setEditPosition] = useState('')
+  const [editWorkDates, setEditWorkDates] = useState<string[]>([])
+  const [editAmountVal, setEditAmountVal] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editShowExpense, setEditShowExpense] = useState(false)
+  const [editExpenseAmount, setEditExpenseAmount] = useState('')
+  const [editExpenseFile, setEditExpenseFile] = useState<File | null>(null)
+  const [editExpensePreview, setEditExpensePreview] = useState<string | null>(null)
+  const [editExpenseExistingPath, setEditExpenseExistingPath] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<PaymentStatus | 'all'>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [editAmount, setEditAmount] = useState('')
-  const [actionType, setActionType] = useState<'approve' | 'paid' | 'reject' | null>(null)
+  const [actionType, setActionType] = useState<'approve' | 'paid' | 'reject' | 'unapprove' | null>(null)
   const [saving, setSaving] = useState(false)
   const [slipUrl, setSlipUrl] = useState<string | null>(null)
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'warning' | 'error' } | null>(null)
+  const lastToast = useRef(toast)
+  if (toast) lastToast.current = toast
 
-  const load = async () => {
-    setLoading(true)
+  const showToast = (msg: string, type: 'success' | 'warning' | 'error' = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
-      const [data, jobData, freelancerData] = await Promise.all([getPayments(), getJobs(), getFreelancers()])
+      const [data, jobData, freelancerData, positionData] = await Promise.all([
+        getPayments(), getJobs(), getFreelancers(), getPositions(),
+      ])
       setPayments(data)
       setJobs(jobData)
       setFreelancers(freelancerData)
+      setPositions(positionData)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   const jobsMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs])
   const freelancersMap = useMemo(() => new Map(freelancers.map((f) => [f.id, f])), [freelancers])
+
+  // วันทั้งหมดของงานที่เลือกใน create form
+  const newJobDates = useMemo(() => {
+    const job = jobsMap.get(newJobId)
+    if (!job) return []
+    return getDatesInRange(job.date, job.endDate)
+  }, [newJobId, jobsMap])
+
+  // วันทั้งหมดของงานที่เลือกใน edit form
+  const editJobDates = useMemo(() => {
+    const job = jobsMap.get(editJobId)
+    if (!job) return []
+    return getDatesInRange(job.date, job.endDate)
+  }, [editJobId, jobsMap])
 
   const getJobTitle = (p: Payment) =>
     (p.jobId ? jobsMap.get(p.jobId)?.title : undefined) ?? p.workDescription ?? ''
@@ -64,7 +146,7 @@ export default function PaymentsPage() {
 
   useEffect(() => { load() }, [])
 
-  const openAction = (payment: Payment, type: 'approve' | 'paid' | 'reject') => {
+  const openAction = (payment: Payment, type: 'approve' | 'paid' | 'reject' | 'unapprove') => {
     setSelectedPayment(payment)
     setAdminNotes('')
     setEditAmount(String(payment.amount))
@@ -89,14 +171,151 @@ export default function PaymentsPage() {
           await updatePayment(selectedPayment.id, { amount: finalAmount })
         }
         await markPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, finalAmount, adminNotes)
+      } else if (actionType === 'unapprove') {
+        await updatePayment(selectedPayment.id, { status: 'pending', approvedAt: deleteField() as unknown as string })
       } else {
         await rejectPayment(selectedPayment.id, adminNotes)
       }
       setSelectedPayment(null)
       setActionType(null)
-      load()
+      const label = actionType === 'approve' ? 'อนุมัติแล้ว' : actionType === 'paid' ? 'บันทึกการโอนแล้ว' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติแล้ว' : 'ปฏิเสธแล้ว'
+      const toastType = actionType === 'reject' ? 'error' : actionType === 'unapprove' ? 'warning' : 'success'
+      if (actionType === 'paid') setShowCelebration(true)
+      else showToast(label, toastType)
+      load(true)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openEdit = (payment: Payment) => {
+    setEditPayment(payment)
+    setEditJobId(payment.jobId ?? '')
+    setEditPosition(payment.position ?? '')
+    setEditWorkDates(payment.workDates ?? [])
+    setEditAmountVal(String(payment.amount))
+    setEditNotes(payment.notes ?? '')
+    const hasExpense = !!(payment.expenseAmount && payment.expenseAmount > 0)
+    setEditShowExpense(hasExpense)
+    setEditExpenseAmount(hasExpense ? String(payment.expenseAmount) : '')
+    setEditExpenseFile(null)
+    setEditExpensePreview(null)
+    setEditExpenseExistingPath(payment.expenseSlipPath ?? '')
+    setEditError('')
+    setEditOpen(true)
+  }
+
+  const handleEdit = async () => {
+    if (!editPayment) return
+    const amount = parseFloat(editAmountVal)
+    if (!amount || amount <= 0) return setEditError('กรุณากรอกจำนวนเงิน')
+    if (editShowExpense) {
+      const expAmt = parseFloat(editExpenseAmount)
+      if (!expAmt || expAmt <= 0) return setEditError('กรุณากรอกจำนวนค่าใช้จ่าย')
+    }
+    setEditSaving(true)
+    setEditError('')
+    try {
+      let expenseSlipPath: string | undefined = editExpenseExistingPath || undefined
+      if (editShowExpense && editExpenseFile) {
+        expenseSlipPath = await uploadExpenseSlip(editPayment.freelancerId, editExpenseFile)
+      }
+
+      // สร้าง update object — กรอง undefined ออก
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: Record<string, any> = {
+        jobId: editJobId || editPayment.jobId,
+        position: editPosition || deleteField(),
+        workDates: editWorkDates.length > 0 ? editWorkDates : deleteField(),
+        amount,
+        notes: editNotes.trim() || deleteField(),
+      }
+      if (editShowExpense) {
+        data.expenseAmount = parseFloat(editExpenseAmount)
+        data.expenseSlipPath = expenseSlipPath ?? deleteField()
+      } else {
+        data.expenseAmount = deleteField()
+        data.expenseSlipPath = deleteField()
+      }
+
+      await updatePayment(editPayment.id, data as Partial<Payment>)
+      setEditOpen(false)
+      showToast('แก้ไขการเบิกจ่ายแล้ว')
+      load(true)
+    } catch {
+      setEditError('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const resetCreateForm = () => {
+    setNewFreelancerId('')
+    setNewJobId('')
+    setNewPosition('')
+    setNewWorkDates([])
+    setNewAmount('')
+    setNewNotes('')
+    setNewStatus('pending')
+    setNewShowExpense(false)
+    setNewExpenseAmount('')
+    setNewExpenseFile(null)
+    setNewExpensePreview(null)
+    setCreateError('')
+  }
+
+  const handleNewExpenseFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setNewExpenseFile(file)
+    setNewExpensePreview(URL.createObjectURL(file))
+  }
+
+  const handleCreate = async () => {
+    const amount = parseFloat(newAmount)
+    if (!newFreelancerId) return setCreateError('กรุณาเลือก Freelancer')
+    if (!newJobId) return setCreateError('กรุณาเลือกงาน')
+    if (!amount || amount <= 0) return setCreateError('กรุณากรอกจำนวนเงิน')
+    const expAmt = newShowExpense ? parseFloat(newExpenseAmount) : undefined
+    if (newShowExpense && (!expAmt || expAmt <= 0)) return setCreateError('กรุณากรอกจำนวนค่าใช้จ่าย')
+    if (newShowExpense && !newExpenseFile) return setCreateError('กรุณาแนบรูปสลิปค่าใช้จ่าย')
+    setCreating(true)
+    setCreateError('')
+    try {
+      let expenseSlipPath: string | undefined
+      if (newShowExpense && newExpenseFile) {
+        expenseSlipPath = await uploadExpenseSlip(newFreelancerId, newExpenseFile)
+      }
+      const freelancer = freelancersMap.get(newFreelancerId)
+      const workDates = newJobDates.length === 1 ? newJobDates : newWorkDates.length > 0 ? newWorkDates : undefined
+      const paymentId = await createPayment(
+        Object.fromEntries(Object.entries({
+          freelancerId: newFreelancerId,
+          jobId: newJobId,
+          amount,
+          status: 'pending' as const,
+          position: newPosition || undefined,
+          workDates,
+          expenseAmount: expAmt,
+          expenseSlipPath,
+          notes: newNotes || undefined,
+        }).filter(([, v]) => v !== undefined)) as Omit<Payment, 'id' | 'requestedAt'>,
+        freelancer?.email,
+      )
+      if (newStatus === 'approved' || newStatus === 'paid') {
+        await approvePayment(paymentId)
+      }
+      if (newStatus === 'paid') {
+        await markPaymentPaid(paymentId, newFreelancerId, amount)
+      }
+      setCreateOpen(false)
+      resetCreateForm()
+      showToast('สร้างการเบิกจ่ายแล้ว')
+      load(true)
+    } catch {
+      setCreateError('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -120,7 +339,7 @@ export default function PaymentsPage() {
   const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0)
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
 
-  const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : 'ปฏิเสธการเบิกจ่าย'
+  const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติ' : 'ปฏิเสธการเบิกจ่าย'
 
   // Group by workDescription (job title)
   const grouped = filtered.reduce<Record<string, Payment[]>>((acc, p) => {
@@ -171,9 +390,16 @@ export default function PaymentsPage() {
   }
 
   const ActionButtons = ({ payment }: { payment: Payment }) => (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 flex-nowrap">
       {payment.status === 'pending' && (
         <>
+          <button
+            onClick={() => openEdit(payment)}
+            className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+            title="แก้ไข"
+          >
+            <PencilSquareIcon className="w-4 h-4" />
+          </button>
           <button
             onClick={() => openAction(payment, 'approve')}
             className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -192,11 +418,11 @@ export default function PaymentsPage() {
       )}
       {payment.status === 'approved' && (
         <button
-          onClick={() => openAction(payment, 'paid')}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+          onClick={() => openAction(payment, 'unapprove')}
+          className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+          title="ยกเลิกอนุมัติ"
         >
-          <BanknotesIcon className="w-3.5 h-3.5" />
-          โอนแล้ว
+          <ArrowUturnLeftIcon className="w-4 h-4" />
         </button>
       )}
       {(payment.status === 'paid' || payment.status === 'rejected') && !payment.expenseSlipPath && !payment.expenseSlipUrl && (
@@ -208,9 +434,24 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">จัดการการเบิกจ่าย</h1>
-        <p className="text-gray-500 mt-1">อนุมัติและติดตามการจ่ายเงิน Freelancer</p>
+      {/* Toast */}
+      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${toast ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+        <div className={`text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-lg ${lastToast.current?.type === 'success' ? 'bg-green-500' : lastToast.current?.type === 'warning' ? 'bg-yellow-500' : 'bg-red-500'}`}>
+          {lastToast.current?.type === 'success' ? '✓' : lastToast.current?.type === 'warning' ? '↩' : '✕'} {lastToast.current?.msg}
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">จัดการการเบิกจ่าย</h1>
+          <p className="text-gray-500 mt-1">อนุมัติและติดตามการจ่ายเงิน Freelancer</p>
+        </div>
+        <button
+          onClick={() => { resetCreateForm(); setCreateOpen(true) }}
+          className="flex items-center gap-1.5 px-4 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shrink-0"
+        >
+          <PlusIcon className="w-4 h-4" />
+          สร้างการเบิกจ่าย
+        </button>
       </div>
 
       {/* Summary cards */}
@@ -324,7 +565,7 @@ export default function PaymentsPage() {
                   <th className="text-center px-5 py-3 font-medium text-gray-500">สถานะ</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">วันที่ขอ</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">จำนวน</th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">จัดการ</th>
+                  <th className="text-center px-5 py-3 font-medium text-gray-500 w-[140px]">จัดการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -343,7 +584,7 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-5 py-4">
                       {payment.position
-                        ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{payment.position}</span>
+                        ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
                         : <span className="text-gray-300 text-xs">-</span>
                       }
                     </td>
@@ -364,7 +605,7 @@ export default function PaymentsPage() {
                       )}
                       <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 whitespace-nowrap w-[140px]">
                       <div className="flex items-center justify-center">
                         <ActionButtons payment={payment} />
                       </div>
@@ -383,6 +624,13 @@ export default function PaymentsPage() {
             const jobPending = items.filter((p) => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
             const jobTotal = jobPaid + jobPending  // ไม่นับ rejected
             const jobNetTotal = calcTax(jobTotal).net
+            const jobId = items[0]?.jobId
+            const job = jobId ? jobsMap.get(jobId) : undefined
+            const jobDateLabel = job
+              ? job.endDate && job.endDate !== job.date
+                ? `${formatDate(job.date)} – ${formatDate(job.endDate)}`
+                : formatDate(job.date)
+              : undefined
 
             return (
               <div key={jobTitle} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -390,7 +638,10 @@ export default function PaymentsPage() {
                 <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <p className="font-semibold text-gray-900">{jobTitle}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{items.length} รายการ</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {jobDateLabel && <><span>{jobDateLabel}</span><span className="mx-1.5 text-gray-300">·</span></>}
+                      {items.length} รายการ
+                    </p>
                   </div>
                   <div className="flex gap-4 text-xs">
                     {jobPaid > 0 && (
@@ -405,7 +656,7 @@ export default function PaymentsPage() {
                 </div>
 
                 {/* Column headers */}
-                <div className="grid grid-cols-[1fr_100px_140px_110px_120px_90px] gap-x-4 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
+                <div className="grid grid-cols-[1fr_150px_160px_130px_140px_140px] gap-x-4 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
                   <span>Freelancer / วันที่ทำงาน</span>
                   <span>ตำแหน่ง</span>
                   <span>บัญชีธนาคาร</span>
@@ -417,7 +668,7 @@ export default function PaymentsPage() {
                 {/* Payments in this job */}
                 <div className="divide-y divide-gray-50">
                   {items.map((payment) => (
-                    <div key={payment.id} className={`grid grid-cols-[1fr_100px_140px_110px_120px_90px] gap-x-4 items-center px-5 py-3 transition-colors ${payment.status === 'paid' ? 'bg-green-50 hover:bg-green-100/60' : 'hover:bg-gray-50'}`}>
+                    <div key={payment.id} className={`grid grid-cols-[1fr_150px_160px_130px_140px_140px] gap-x-4 items-center px-5 py-3 transition-colors ${payment.status === 'paid' ? 'bg-green-50 hover:bg-green-100/60' : 'hover:bg-gray-50'}`}>
                       {/* col 1: name + badge + work dates */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -433,7 +684,7 @@ export default function PaymentsPage() {
                       {/* col 2: position */}
                       <div>
                         {payment.position
-                          ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{payment.position}</span>
+                          ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
                           : <span className="text-gray-300 text-xs">-</span>
                         }
                       </div>
@@ -488,7 +739,7 @@ export default function PaymentsPage() {
               {selectedPayment.position && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">ตำแหน่ง</span>
-                  <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{selectedPayment.position}</span>
+                  <span className="text-gray-900">{selectedPayment.position}</span>
                 </div>
               )}
               {selectedPayment.workDates && selectedPayment.workDates.length > 0 && (
@@ -522,7 +773,7 @@ export default function PaymentsPage() {
               )}
             </div>
             {/* Amount editor */}
-            {(() => {
+            {actionType !== 'unapprove' && (() => {
               const amt = parseFloat(editAmount) || 0
               const { tax, net } = calcTax(amt)
               const isEdited = amt !== selectedPayment.amount
@@ -560,7 +811,13 @@ export default function PaymentsPage() {
               )
             })()}
 
-            <div>
+            {actionType === 'unapprove' && (
+              <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
+                รายการนี้จะกลับสู่สถานะ <span className="font-semibold">รอดำเนินการ</span> เหมือนตอนที่ freelancer ขอเบิกเข้ามา
+              </p>
+            )}
+
+            {actionType !== 'unapprove' && <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ Admin</label>
               <textarea
                 value={adminNotes}
@@ -569,7 +826,7 @@ export default function PaymentsPage() {
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
                 placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
               />
-            </div>
+            </div>}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => { setSelectedPayment(null); setActionType(null) }}
@@ -581,16 +838,435 @@ export default function PaymentsPage() {
                 onClick={handleAction}
                 disabled={saving}
                 className={`px-5 py-2 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-60 flex items-center gap-2 ${
-                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : 'bg-[#f73727] hover:bg-red-600'
+                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : actionType === 'unapprove' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-[#f73727] hover:bg-red-600'
                 }`}
               >
                 {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                {actionType === 'approve' ? 'อนุมัติ' : actionType === 'paid' ? 'ยืนยันโอนเงิน' : 'ปฏิเสธ'}
+                {actionType === 'approve' ? 'อนุมัติ' : actionType === 'paid' ? 'ยืนยันโอนเงิน' : actionType === 'unapprove' ? 'ยืนยัน' : 'ปฏิเสธ'}
               </button>
             </div>
           </div>
         )}
       </Modal>
+
+      {/* Create Payment Modal */}
+      <Modal
+        isOpen={createOpen}
+        onClose={() => { setCreateOpen(false); resetCreateForm() }}
+        title="สร้างการเบิกจ่าย"
+        size="md"
+      >
+        <div className="space-y-4">
+          {/* Freelancer */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Freelancer <span className="text-red-500">*</span></label>
+            <FormListbox
+              value={newFreelancerId}
+              onChange={setNewFreelancerId}
+              options={freelancers.map((f) => ({ value: f.id, label: f.name }))}
+              placeholder="เลือก Freelancer…"
+            />
+          </div>
+
+          {/* Job */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">งาน <span className="text-red-500">*</span></label>
+            <FormListbox
+              value={newJobId}
+              onChange={(v) => { setNewJobId(v); setNewWorkDates([]) }}
+              options={jobs.map((j) => ({ value: j.id, label: j.title }))}
+              placeholder="เลือกงาน…"
+            />
+          </div>
+
+          {/* Work dates — แสดงเมื่อเลือกงานแล้ว */}
+          {newJobDates.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                วันที่ทำงาน <span className="text-gray-400 font-normal">(เลือกได้หลายวัน)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {newJobDates.map((date) => {
+                  const active = newWorkDates.includes(date)
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => setNewWorkDates((prev) =>
+                        active ? prev.filter((d) => d !== date) : [...prev, date]
+                      )}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                        active
+                          ? 'bg-[#f73727] text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {formatDatePill(date)}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {newJobDates.length === 1 && (
+            <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2.5">
+              <CalendarDaysIcon className="w-4 h-4 text-gray-400 shrink-0" />
+              <span>{formatDate(newJobDates[0])}</span>
+            </div>
+          )}
+
+          {/* Position */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง</label>
+            <FormListbox
+              value={newPosition}
+              onChange={setNewPosition}
+              options={[{ value: '', label: 'ไม่ระบุ' }, ...positions.map((p) => ({ value: p.name, label: p.name }))]}
+            />
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
+            <input
+              type="number"
+              value={newAmount}
+              onChange={(e) => setNewAmount(e.target.value)}
+              min="1"
+              inputMode="numeric"
+              placeholder="0"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            {newAmount && parseFloat(newAmount) > 0 && (() => {
+              const { tax, net } = calcTax(parseFloat(newAmount))
+              return (
+                <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-[#f73727] font-medium">{formatCurrency(net)}</span></p>
+              )
+            })()}
+          </div>
+
+          {/* Expense */}
+          <div>
+            <div className="flex items-center justify-between">
+              <label className={`text-sm font-medium ${newShowExpense ? 'text-orange-500' : 'text-gray-700'}`}>
+                ค่าใช้จ่ายเพิ่มเติม
+                {!newShowExpense && <span className="ml-1 text-xs font-normal text-gray-400">(ไม่หัก 3%)</span>}
+              </label>
+              <button
+                type="button"
+                onClick={() => { setNewShowExpense(!newShowExpense); setNewExpenseAmount(''); setNewExpenseFile(null); setNewExpensePreview(null) }}
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-base font-bold transition-colors ${
+                  newShowExpense ? 'bg-orange-100 text-orange-500 hover:bg-orange-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                {newShowExpense ? '−' : '+'}
+              </button>
+            </div>
+            {newShowExpense && (
+              <div className="mt-2 space-y-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนค่าใช้จ่าย (บาท)</label>
+                  <input
+                    type="number"
+                    value={newExpenseAmount}
+                    onChange={(e) => setNewExpenseAmount(e.target.value)}
+                    min="1"
+                    inputMode="numeric"
+                    placeholder="0"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">รูปสลิป / หลักฐานค่าใช้จ่าย</label>
+                  {newExpensePreview ? (
+                    <div className="relative">
+                      <img src={newExpensePreview} alt="slip" className="w-full max-h-48 object-contain rounded-xl border border-orange-200 bg-white" />
+                      <button
+                        type="button"
+                        onClick={() => { setNewExpenseFile(null); setNewExpensePreview(null) }}
+                        className="absolute top-2 right-2 w-7 h-7 bg-white rounded-full shadow flex items-center justify-center text-gray-500 hover:text-red-500 text-sm font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center gap-2 w-full h-28 border-2 border-dashed border-orange-200 rounded-xl cursor-pointer bg-white hover:bg-orange-50 transition-colors">
+                      <span className="text-3xl">📎</span>
+                      <span className="text-xs text-gray-500">คลิกเพื่อเลือกรูป</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={handleNewExpenseFile} />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+            <textarea
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              rows={2}
+              placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] resize-none"
+            />
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">สร้างเป็นสถานะ</label>
+            <div className="flex gap-2">
+              {([
+                { value: 'pending', label: 'รอดำเนินการ' },
+                { value: 'approved', label: 'อนุมัติแล้ว' },
+                { value: 'paid', label: 'จ่ายแล้ว' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setNewStatus(opt.value)}
+                  className={`flex-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
+                    newStatus === opt.value
+                      ? 'bg-[#f73727] text-white border-[#f73727]'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {createError && <p className="text-xs text-red-500">{createError}</p>}
+
+          <div className="flex gap-3 justify-end pt-1">
+            <button
+              onClick={() => { setCreateOpen(false); resetCreateForm() }}
+              className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200"
+            >
+              ยกเลิก
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="px-5 py-2 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2"
+            >
+              {creating && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              สร้างการเบิกจ่าย
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Payment Modal */}
+      <Modal
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="แก้ไขการเบิกจ่าย"
+        size="md"
+      >
+        {editPayment && (
+          <div className="space-y-4">
+            {/* Freelancer — readonly */}
+            <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+              <div className="w-8 h-8 rounded-full bg-[#f73727]/10 flex items-center justify-center text-[#f73727] font-bold text-sm shrink-0">
+                {getFreelancerName(editPayment).slice(0, 1)}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">{getFreelancerName(editPayment)}</p>
+                <p className="text-xs text-gray-400">{getBankName(editPayment)} · {getBankAccount(editPayment)}</p>
+              </div>
+            </div>
+
+            {/* Job */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">งาน <span className="text-red-500">*</span></label>
+              <FormListbox
+                value={editJobId}
+                onChange={(v) => { setEditJobId(v); setEditWorkDates([]) }}
+                options={jobs.map((j) => ({ value: j.id, label: j.title }))}
+                placeholder="เลือกงาน…"
+              />
+            </div>
+
+            {/* Work dates */}
+            {editJobDates.length > 1 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  วันที่ทำงาน <span className="text-gray-400 font-normal">(เลือกได้หลายวัน)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {editJobDates.map((date) => {
+                    const active = editWorkDates.includes(date)
+                    return (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() => setEditWorkDates((prev) =>
+                          active ? prev.filter((d) => d !== date) : [...prev, date]
+                        )}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                          active ? 'bg-[#f73727] text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {formatDatePill(date)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {editJobDates.length === 1 && (
+              <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2.5">
+                <CalendarDaysIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                <span>{formatDate(editJobDates[0])}</span>
+              </div>
+            )}
+
+            {/* Position */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง</label>
+              <FormListbox
+                value={editPosition}
+                onChange={setEditPosition}
+                options={[{ value: '', label: 'ไม่ระบุ' }, ...positions.map((p) => ({ value: p.name, label: p.name }))]}
+              />
+            </div>
+
+            {/* Amount */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
+              <input
+                type="number"
+                value={editAmountVal}
+                onChange={(e) => setEditAmountVal(e.target.value)}
+                min="1"
+                inputMode="numeric"
+                placeholder="0"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              {editAmountVal && parseFloat(editAmountVal) > 0 && (() => {
+                const { tax, net } = calcTax(parseFloat(editAmountVal))
+                return (
+                  <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-[#f73727] font-medium">{formatCurrency(net)}</span></p>
+                )
+              })()}
+            </div>
+
+            {/* Expense */}
+            <div>
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${editShowExpense ? 'text-orange-500' : 'text-gray-700'}`}>
+                  ค่าใช้จ่ายเพิ่มเติม
+                  {!editShowExpense && <span className="ml-1 text-xs font-normal text-gray-400">(ไม่หัก 3%)</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setEditShowExpense(!editShowExpense); setEditExpenseAmount(''); setEditExpenseFile(null); setEditExpensePreview(null) }}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-base font-bold transition-colors ${
+                    editShowExpense ? 'bg-orange-100 text-orange-500 hover:bg-orange-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {editShowExpense ? '−' : '+'}
+                </button>
+              </div>
+              {editShowExpense && (
+                <div className="mt-2 space-y-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนค่าใช้จ่าย (บาท)</label>
+                    <input
+                      type="number"
+                      value={editExpenseAmount}
+                      onChange={(e) => setEditExpenseAmount(e.target.value)}
+                      min="1"
+                      inputMode="numeric"
+                      placeholder="0"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">รูปสลิป / หลักฐาน</label>
+                    {editExpensePreview ? (
+                      <div className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={editExpensePreview} alt="slip" className="w-full max-h-48 object-contain rounded-xl border border-orange-200 bg-white" />
+                        <button
+                          type="button"
+                          onClick={() => { setEditExpenseFile(null); setEditExpensePreview(null) }}
+                          className="absolute top-2 right-2 w-7 h-7 bg-white rounded-full shadow flex items-center justify-center text-gray-500 hover:text-red-500 text-sm font-bold"
+                        >×</button>
+                      </div>
+                    ) : editExpenseExistingPath ? (
+                      <div className="flex items-center gap-3 bg-white rounded-xl border border-orange-200 px-3 py-2.5">
+                        <ReceiptRefundIcon className="w-4 h-4 text-orange-400 shrink-0" />
+                        <span className="text-xs text-gray-600 flex-1">มีสลิปเดิมอยู่แล้ว</span>
+                        <label className="text-xs text-[#f73727] font-medium cursor-pointer hover:underline">
+                          เปลี่ยนรูป
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setEditExpenseFile(file)
+                            setEditExpensePreview(URL.createObjectURL(file))
+                          }} />
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-2 w-full h-28 border-2 border-dashed border-orange-200 rounded-xl cursor-pointer bg-white hover:bg-orange-50 transition-colors">
+                        <span className="text-3xl">📎</span>
+                        <span className="text-xs text-gray-500">คลิกเพื่อเลือกรูป</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          setEditExpenseFile(file)
+                          setEditExpensePreview(URL.createObjectURL(file))
+                        }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ (จาก Freelancer)</label>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={2}
+                placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] resize-none"
+              />
+            </div>
+
+            {editError && <p className="text-xs text-red-500">{editError}</p>}
+
+            <div className="flex gap-3 justify-end pt-1">
+              <button
+                onClick={() => setEditOpen(false)}
+                className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleEdit}
+                disabled={editSaving}
+                className="px-5 py-2 text-sm font-medium text-white bg-indigo-500 rounded-xl hover:bg-indigo-600 disabled:opacity-60 flex items-center gap-2"
+              >
+                {editSaving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                บันทึกการแก้ไข
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Celebration overlay — แสดงเมื่อโอนเงินสำเร็จ */}
+      {showCelebration && (
+        <CelebrationOverlay onDone={() => { setShowCelebration(false); showToast('บันทึกการโอนแล้ว') }} />
+      )}
 
       {/* Slip image modal */}
       <Modal isOpen={!!slipUrl} onClose={() => setSlipUrl(null)} title="สลิปค่าใช้จ่าย" size="md">
