@@ -64,30 +64,45 @@ export default function FreelancersPage() {
     }
   }
 
-  // Avatar — ใช้รูปจาก Storage (profileImagePath) ก่อน, fallback เป็น linePictureUrl เดิม,
-  // ถ้าโหลดไม่ขึ้นทั้งคู่ค่อย swap เป็น default icon
+  // Avatar — ใช้รูปจาก Storage (profileImagePath) เป็นหลักเพื่อไม่พึ่ง LINE CDN
+  // ระหว่างรอ resolve URL → โชว์ skeleton (ไม่เปิด linePictureUrl ก่อนเพื่อกัน flicker)
+  // ถ้า Storage fail → fallback ไป linePictureUrl, ถ้า fail อีก → default icon
   // — รูปใน Storage ถูก sync ตอน freelancer เปิด LIFF (ดูที่ app/freelancer/page.tsx)
   const FreelancerAvatar = ({ freelancer }: { freelancer: Freelancer }) => {
+    const path = freelancer.profileImagePath
     const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
-    const [failed, setFailed] = useState(false)
+    const [resolving, setResolving] = useState(!!path)
+    const [storageFailed, setStorageFailed] = useState(false)
+    const [lineFailed, setLineFailed] = useState(false)
 
     useEffect(() => {
+      if (!path) { setResolving(false); return }
       let cancelled = false
-      if (freelancer.profileImagePath) {
-        getStorageDownloadUrl(freelancer.profileImagePath)
-          .then((url) => { if (!cancelled) setResolvedUrl(url) })
-          .catch(() => { if (!cancelled) setResolvedUrl(null) })
-      }
+      setResolving(true)
+      setStorageFailed(false)
+      getStorageDownloadUrl(path)
+        .then((url) => { if (!cancelled) { setResolvedUrl(url); setResolving(false) } })
+        .catch(() => { if (!cancelled) { setStorageFailed(true); setResolving(false) } })
       return () => { cancelled = true }
-    }, [freelancer.profileImagePath])
+    }, [path])
 
-    const url = resolvedUrl ?? freelancer.linePictureUrl
-    if (url && !failed) {
+    if (resolving) {
+      return <Skeleton className="w-12 h-12 rounded-full" />
+    }
+
+    // Priority: Storage URL (ถ้าโหลดสำเร็จ) → LINE URL (เป็น fallback) → default icon
+    const useStorage = resolvedUrl && !storageFailed
+    const url = useStorage ? resolvedUrl : (lineFailed ? null : freelancer.linePictureUrl)
+
+    if (url) {
       return (
         <img
           src={url}
           alt={freelancer.name}
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (useStorage) setStorageFailed(true)
+            else setLineFailed(true)
+          }}
           className="w-12 h-12 rounded-full object-cover bg-gray-100"
         />
       )
