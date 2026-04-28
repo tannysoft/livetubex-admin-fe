@@ -9,10 +9,18 @@ import {
   BanknotesIcon,
   UserCircleIcon,
   IdentificationIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FreelancerForm from '@/components/admin/FreelancerForm'
-import { getFreelancers, createFreelancer, updateFreelancer } from '@/lib/firebase-utils'
+import {
+  getFreelancers,
+  createFreelancer,
+  updateFreelancer,
+  migrateProfilePictures,
+  type MigrateProfilePicturesResult,
+} from '@/lib/firebase-utils'
 import { getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
@@ -27,6 +35,34 @@ export default function FreelancersPage() {
   const [saving, setSaving] = useState(false)
   const [idCardUrl, setIdCardUrl] = useState<string | null>(null)
   const [idCardName, setIdCardName] = useState('')
+  const [migrateOpen, setMigrateOpen] = useState(false)
+  const [migrating, setMigrating] = useState(false)
+  const [migrateResult, setMigrateResult] = useState<MigrateProfilePicturesResult | null>(null)
+
+  // จำนวนคนที่ยัง backfill ไม่ครบ — มี linePictureUrl แต่ยังไม่มี profileImagePath
+  const pendingMigrationCount = freelancers.filter(
+    (f) => f.linePictureUrl && !f.profileImagePath
+  ).length
+
+  const handleMigrate = async () => {
+    setMigrateOpen(false)
+    setMigrating(true)
+    try {
+      const result = await migrateProfilePictures()
+      setMigrateResult(result)
+      // โหลดรายการใหม่เพื่อให้ profileImagePath ที่เพิ่ง update โผล่ขึ้นมา
+      load()
+    } catch (err) {
+      setMigrateResult({
+        total: 0,
+        migrated: 0,
+        skipped: 0,
+        failed: [{ id: '-', name: '-', reason: err instanceof Error ? err.message : 'unknown error' }],
+      })
+    } finally {
+      setMigrating(false)
+    }
+  }
 
   // Avatar — ใช้รูปจาก Storage (profileImagePath) ก่อน, fallback เป็น linePictureUrl เดิม,
   // ถ้าโหลดไม่ขึ้นทั้งคู่ค่อย swap เป็น default icon
@@ -155,13 +191,28 @@ export default function FreelancersPage() {
           <h1 className="text-2xl font-bold text-gray-900">จัดการ Freelancer</h1>
           <p className="text-gray-500 mt-1">{freelancers.length} คนทั้งหมด</p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
-        >
-          <PlusIcon className="w-4 h-4" />
-          เพิ่ม Freelancer
-        </button>
+        <div className="flex items-center gap-2">
+          {pendingMigrationCount > 0 && (
+            <button
+              onClick={() => setMigrateOpen(true)}
+              disabled={migrating}
+              title="คัดลอกรูป profile จาก LINE เข้า Storage สำหรับ freelancer ที่ยังไม่มีรูปใน Storage"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-blue-600 border border-blue-200 text-sm font-medium rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              {migrating
+                ? <span className="w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin" />
+                : <ArrowPathIcon className="w-4 h-4" />}
+              {migrating ? 'กำลัง migrate...' : `Migrate รูป (${pendingMigrationCount})`}
+            </button>
+          )}
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
+          >
+            <PlusIcon className="w-4 h-4" />
+            เพิ่ม Freelancer
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -287,6 +338,49 @@ export default function FreelancersPage() {
             >
               เปิดในแท็บใหม่
             </a>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={migrateOpen}
+        onClose={() => setMigrateOpen(false)}
+        onConfirm={handleMigrate}
+        title="Migrate รูป profile ทั้งหมด"
+        message={`คัดลอกรูปจาก LINE เข้า Storage สำหรับ freelancer ${pendingMigrationCount} คนที่ยังไม่มีรูปใน Storage — อาจใช้เวลาสักครู่`}
+        confirmLabel="เริ่ม migrate"
+      />
+
+      <Modal isOpen={!!migrateResult} onClose={() => setMigrateResult(null)} title="ผลลัพธ์ Migrate รูป" size="md">
+        {migrateResult && (
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-green-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-green-700">สำเร็จ</p>
+                <p className="text-2xl font-bold text-green-600 mt-1">{migrateResult.migrated}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-gray-500">ข้าม</p>
+                <p className="text-2xl font-bold text-gray-700 mt-1">{migrateResult.skipped}</p>
+              </div>
+              <div className="bg-red-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-red-700">ล้มเหลว</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{migrateResult.failed.length}</p>
+              </div>
+            </div>
+            {migrateResult.failed.length > 0 && (
+              <div>
+                <p className="font-medium text-gray-700 mb-2">รายการที่ล้มเหลว</p>
+                <ul className="space-y-1.5 max-h-60 overflow-y-auto bg-gray-50 rounded-xl p-3">
+                  {migrateResult.failed.map((f, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="font-medium text-gray-700">{f.name}</span>
+                      <span className="text-gray-400"> — {f.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </Modal>

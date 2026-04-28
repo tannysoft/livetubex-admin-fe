@@ -868,3 +868,78 @@ export const sendPaymentReport = onCall(
     return { results }
   }
 )
+
+// ── Migrate LINE profile pictures → Firebase Storage (admin only) ──────────
+// Backfill รูป profile ของ freelancer เก่าๆ ที่ยังไม่มี profileImagePath ใน Storage
+// — server-side fetch จาก LINE CDN (ไม่มี CORS) แล้วอัพโหลดผ่าน admin SDK (bypass rules)
+// flow ปกติ (sync ตอน LIFF login) ยังทำงานเหมือนเดิม — ฟังก์ชันนี้ใช้ตอน admin อยากเร่ง backfill
+export const migrateProfilePictures = onCall(
+  {
+    cors: [
+      'https://livetubex-admin.web.app',
+      'https://livetubex-admin.firebaseapp.com',
+      'https://console.livetubex.com',
+      /localhost/,
+    ],
+    timeoutSeconds: 540, // 9 นาที — เผื่อ freelancer เยอะ
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+    const provider = (request.auth.token.firebase as { sign_in_provider?: string } | undefined)?.sign_in_provider
+    if (provider !== 'password') {
+      throw new HttpsError('permission-denied', 'Admin only')
+    }
+
+    const db = admin.firestore()
+    const bucket = admin.storage().bucket()
+
+    const snapshot = await db.collection('freelancers').get()
+
+    const result = {
+      total: snapshot.size,
+      migrated: 0,
+      skipped: 0,
+      failed: [] as { id: string; name: string; reason: string }[],
+    }
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data()
+      const lineUserId = (data.lineUserId as string | undefined)?.trim()
+      const linePictureUrl = (data.linePictureUrl as string | undefined)?.trim()
+      const profileImagePath = (data.profileImagePath as string | undefined)?.trim()
+      const name = (data.name as string | undefined) ?? doc.id
+
+      // ข้ามถ้าไม่มีรูปต้นทาง หรือ migrate แล้ว
+      if (!lineUserId || !linePictureUrl || profileImagePath) {
+        result.skipped++
+        continue
+      }
+
+      try {
+        const res = await fetch(linePictureUrl)
+        if (!res.ok) throw new Error(`fetch ${res.status}`)
+        const arrayBuffer = await res.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+
+        const path = `profilePictures/${lineUserId}/profile.jpg`
+        await bucket.file(path).save(buffer, {
+          contentType,
+          metadata: {
+            metadata: { uploadedBy: 'migration', source: 'line-profile' },
+          },
+        })
+
+        await doc.ref.update({ profileImagePath: path })
+        result.migrated++
+        console.log(`[migrateProfilePictures] ✅ ${name} (${doc.id})`)
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        console.warn(`[migrateProfilePictures] ❌ ${name} (${doc.id}): ${reason}`)
+        result.failed.push({ id: doc.id, name, reason })
+      }
+    }
+
+    return result
+  }
+)

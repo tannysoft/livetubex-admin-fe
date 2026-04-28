@@ -290,6 +290,19 @@ export async function sendPayoutNotification(freelancerId: string, paymentIds: s
   await httpsCallable(functions, 'sendPayoutNotification')({ freelancerId, paymentIds, payoutSlipPath })
 }
 
+export interface MigrateProfilePicturesResult {
+  total: number
+  migrated: number
+  skipped: number
+  failed: { id: string; name: string; reason: string }[]
+}
+
+export async function migrateProfilePictures(): Promise<MigrateProfilePicturesResult> {
+  const callable = httpsCallable<unknown, MigrateProfilePicturesResult>(functions, 'migrateProfilePictures')
+  const res = await callable({})
+  return res.data
+}
+
 // ─── Positions ───────────────────────────────────────────────────────────────
 
 export async function getPositions(): Promise<Position[]> {
