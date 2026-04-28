@@ -149,10 +149,19 @@ export default function FreelancerPage() {
 
   // ── Modal helpers ──────────────────────────────────────────────────────────
 
+  // jobIds ที่ freelancer คนนี้เคยขอเบิกไปแล้ว (ไม่นับที่ admin ปฏิเสธ — ให้เบิกใหม่ได้)
+  const requestedJobIds = useMemo(
+    () => new Set(payments.filter((p) => p.status !== 'rejected').map((p) => p.jobId).filter(Boolean)),
+    [payments],
+  )
+
   const jobOptions = useMemo(() => [
     { value: '', label: '-- เลือกงาน --' },
-    ...jobs.map((j) => ({ value: j.id, label: j.title })),
-  ], [jobs])
+    // กรอง: งานที่ admin เปิดให้แสดงใน LIFF + ยังไม่เคยเบิก
+    ...jobs
+      .filter((j) => j.showInLiff !== false && !requestedJobIds.has(j.id))
+      .map((j) => ({ value: j.id, label: j.title })),
+  ], [jobs, requestedJobIds])
 
   const positionOptions = useMemo(() => [
     { value: '', label: '-- เลือกตำแหน่ง --' },
