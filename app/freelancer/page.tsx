@@ -30,8 +30,9 @@ import {
   getPaymentsByFreelancer,
   createPayment,
   getPositions,
+  updateFreelancer,
 } from '@/lib/firebase-utils'
-import { uploadExpenseSlip } from '@/lib/firebase-storage'
+import { uploadExpenseSlip, uploadProfilePictureFromUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
 import { calcTax, formatCurrency, formatDatePill, formatDate } from '@/lib/utils'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
@@ -97,6 +98,40 @@ export default function FreelancerPage() {
 
         const f = await getFreelancerByLineId(profile.userId)
         if (!f) { router.replace('/freelancer/register'); return }
+
+        // Sync รูป/ชื่อ LINE ล่าสุดเข้า Firestore ถ้าเปลี่ยน — LINE หมุน pictureUrl เป็นระยะ
+        // ทำเงียบๆ (fire-and-forget) ไม่บล็อกหน้าจอแม้ update ล้มเหลว
+        // กรณีรูปเปลี่ยน: ดาวน์โหลดจาก LINE → อัพโหลดเข้า Storage ของเรา (snapshot)
+        // เพื่อให้ admin เห็นรูปจาก path คงที่ ไม่พึ่ง LINE CDN URL ที่หมุนเปลี่ยน
+        const nextPicture = profile.pictureUrl ?? ''
+        const nextDisplayName = profile.displayName ?? ''
+        const pictureChanged = nextPicture !== (f.linePictureUrl ?? '')
+        const patch: Partial<Freelancer> = {}
+        if (pictureChanged) patch.linePictureUrl = nextPicture
+        if (nextDisplayName && nextDisplayName !== (f.lineDisplayName ?? '')) patch.lineDisplayName = nextDisplayName
+
+        if (pictureChanged && nextPicture) {
+          // upload รูปใหม่เข้า Storage แล้ว save path
+          uploadProfilePictureFromUrl(profile.userId, nextPicture)
+            .then((profileImagePath) => {
+              return updateFreelancer(f.id, { ...patch, profileImagePath })
+            })
+            .catch(() => {
+              // ถ้า upload Storage ล้มเหลว (เช่น CORS) ก็ยังบันทึก linePictureUrl ใหม่ไว้
+              if (Object.keys(patch).length > 0) {
+                updateFreelancer(f.id, patch).catch(() => { /* silent */ })
+              }
+            })
+          Object.assign(f, patch)
+        } else if (Object.keys(patch).length > 0) {
+          updateFreelancer(f.id, patch).catch(() => { /* silent */ })
+          Object.assign(f, patch)
+        } else if (!f.profileImagePath && nextPicture) {
+          // backfill: freelancer เก่าที่ยังไม่มี profileImagePath ใน Storage
+          uploadProfilePictureFromUrl(profile.userId, nextPicture)
+            .then((profileImagePath) => updateFreelancer(f.id, { profileImagePath }))
+            .catch(() => { /* silent */ })
+        }
 
         setFreelancer(f)
         const [j, p, pos] = await Promise.all([getJobs(), getPaymentsByFreelancer(f.id), getPositions()])

@@ -57,3 +57,6 @@ ui-debug.log
 # service account keys — ห้าม commit เด็ดขาด
 service-account*.json
 *-service-account.json
+
+line_private.key
+line_public.key

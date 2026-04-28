@@ -28,6 +28,41 @@ export default function FreelancersPage() {
   const [idCardUrl, setIdCardUrl] = useState<string | null>(null)
   const [idCardName, setIdCardName] = useState('')
 
+  // Avatar — ใช้รูปจาก Storage (profileImagePath) ก่อน, fallback เป็น linePictureUrl เดิม,
+  // ถ้าโหลดไม่ขึ้นทั้งคู่ค่อย swap เป็น default icon
+  // — รูปใน Storage ถูก sync ตอน freelancer เปิด LIFF (ดูที่ app/freelancer/page.tsx)
+  const FreelancerAvatar = ({ freelancer }: { freelancer: Freelancer }) => {
+    const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
+    const [failed, setFailed] = useState(false)
+
+    useEffect(() => {
+      let cancelled = false
+      if (freelancer.profileImagePath) {
+        getStorageDownloadUrl(freelancer.profileImagePath)
+          .then((url) => { if (!cancelled) setResolvedUrl(url) })
+          .catch(() => { if (!cancelled) setResolvedUrl(null) })
+      }
+      return () => { cancelled = true }
+    }, [freelancer.profileImagePath])
+
+    const url = resolvedUrl ?? freelancer.linePictureUrl
+    if (url && !failed) {
+      return (
+        <img
+          src={url}
+          alt={freelancer.name}
+          onError={() => setFailed(true)}
+          className="w-12 h-12 rounded-full object-cover bg-gray-100"
+        />
+      )
+    }
+    return (
+      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+        <UserCircleIcon className="w-8 h-8 text-gray-400" />
+      </div>
+    )
+  }
+
   // IdCardButton จัดการ loading state ของตัวเองต่อ card
   // เรียก getStorageDownloadUrl เพื่อขอ URL พร้อม token อัตโนมัติ (ต้อง login อยู่)
   const IdCardButton = ({ freelancer }: { freelancer: Freelancer }) => {
@@ -177,13 +212,7 @@ export default function FreelancersPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    {f.linePictureUrl ? (
-                      <img src={f.linePictureUrl} alt={f.name} className="w-12 h-12 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                        <UserCircleIcon className="w-8 h-8 text-gray-400" />
-                      </div>
-                    )}
+                    <FreelancerAvatar freelancer={f} />
                     <div>
                       <p className="font-semibold text-gray-900">{f.name}</p>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${f.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>

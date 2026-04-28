@@ -21,6 +21,7 @@ export interface Job {
   budget: number
   status: JobStatus
   paymentCycle?: string  // format: "YYYY-MM-mid" | "YYYY-MM-end"
+  showInLiff?: boolean   // แสดงใน job selector ของ LIFF หน้าส่งเบิกหรือไม่ (default: true ถ้าไม่ระบุ)
   createdAt: string
   updatedAt: string
   coverImage?: string
@@ -31,7 +32,8 @@ export interface Freelancer {
   id: string
   lineUserId: string
   lineDisplayName: string
-  linePictureUrl?: string
+  linePictureUrl?: string   // URL ดิบจาก LINE (ใช้ตรวจว่าเปลี่ยนรูปแล้วต้อง resync)
+  profileImagePath?: string // Storage path สำเนารูป profile ที่ sync จาก LINE (เช่น profilePictures/{uid}/profile.jpg)
   namePrefix: string        // คำนำหน้า: นาย / นาง / นางสาว
   firstName: string         // ชื่อ
   lastName: string          // นามสกุล

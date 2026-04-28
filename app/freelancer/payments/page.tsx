@@ -137,7 +137,8 @@ export default function FreelancerPaymentsPage() {
 
   const jobOptions = useMemo(() => [
     { value: '', label: '-- เลือกงาน --' },
-    ...jobs.map((j) => ({ value: j.id, label: j.title })),
+    // กรองเฉพาะงานที่ admin เปิดให้แสดงใน LIFF (showInLiff !== false)
+    ...jobs.filter((j) => j.showInLiff !== false).map((j) => ({ value: j.id, label: j.title })),
   ], [jobs])
 
   const getJobTitle = (p: Payment) =>
@@ -213,7 +214,8 @@ export default function FreelancerPaymentsPage() {
     try {
       let expenseSlipPath: string | undefined
       if (showExpense && expenseFile) {
-        expenseSlipPath = await uploadExpenseSlip(freelancer.id, expenseFile)
+        // ส่ง lineUserId (= auth.uid) เพื่อให้ Storage rule ตรวจสอบได้โดยตรง
+        expenseSlipPath = await uploadExpenseSlip(lineUserId, expenseFile)
       }
 
       await createPayment({

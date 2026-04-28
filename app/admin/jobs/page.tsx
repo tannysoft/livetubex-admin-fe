@@ -8,6 +8,8 @@ import {
   MapPinIcon,
   CalendarIcon,
   MagnifyingGlassIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -75,6 +77,20 @@ export default function JobsPage() {
     loadJobs()
   }
 
+  // toggle แสดง/ซ่อนใน LIFF (default = true ถ้าไม่เคยตั้งค่า)
+  const handleToggleShowInLiff = async (job: Job) => {
+    const current = job.showInLiff !== false  // undefined → treated as true
+    const next = !current
+    // optimistic update
+    setJobs((prev) => prev.map((j) => j.id === job.id ? { ...j, showInLiff: next } : j))
+    try {
+      await updateJob(job.id, { showInLiff: next })
+    } catch {
+      // rollback ถ้า error
+      setJobs((prev) => prev.map((j) => j.id === job.id ? { ...j, showInLiff: current } : j))
+    }
+  }
+
   const filtered = jobs.filter(
     (j) =>
       j.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -137,6 +153,23 @@ export default function JobsPage() {
                   <p className="text-sm text-gray-500 mt-1 line-clamp-1">{job.description}</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {(() => {
+                    const showing = job.showInLiff !== false
+                    return (
+                      <button
+                        onClick={() => handleToggleShowInLiff(job)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          showing
+                            ? 'text-green-600 bg-green-50 hover:bg-green-100'
+                            : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+                        }`}
+                        title={showing ? 'แสดงใน LIFF · กดเพื่อซ่อน' : 'ซ่อนจาก LIFF · กดเพื่อแสดง'}
+                      >
+                        {showing ? <EyeIcon className="w-3.5 h-3.5" /> : <EyeSlashIcon className="w-3.5 h-3.5" />}
+                        <span className="hidden sm:inline">{showing ? 'แสดงใน LIFF' : 'ซ่อนจาก LIFF'}</span>
+                      </button>
+                    )
+                  })()}
                   <button
                     onClick={() => setEditJob(job)}
                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

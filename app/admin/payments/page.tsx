@@ -635,15 +635,29 @@ export default function PaymentsPage() {
             return (
               <div key={jobTitle} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 {/* Job header */}
-                <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
+                <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="font-semibold text-gray-900">{jobTitle}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {jobDateLabel && <><span>{jobDateLabel}</span><span className="mx-1.5 text-gray-300">·</span></>}
                       {items.length} รายการ
                     </p>
                   </div>
-                  <div className="flex gap-4 text-xs">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs justify-end">
+                    {job && job.budget > 0 && (
+                      <>
+                        <span className="text-gray-500">ต้นทุน <span className="font-semibold text-gray-700">{formatCurrency(job.budget)}</span></span>
+                        {(() => {
+                          const remaining = job.budget - jobTotal
+                          const isOver = remaining < 0
+                          return (
+                            <span className={isOver ? 'text-red-500 font-medium' : 'text-green-600 font-medium'}>
+                              {isOver ? 'เกิน' : 'คงเหลือ'} {formatCurrency(Math.abs(remaining))}
+                            </span>
+                          )
+                        })()}
+                      </>
+                    )}
                     {jobPaid > 0 && (
                       <span className="text-green-600 font-medium">จ่ายแล้ว {formatCurrency(jobPaid)}</span>
                     )}

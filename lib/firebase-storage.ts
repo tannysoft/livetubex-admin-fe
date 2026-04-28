@@ -23,19 +23,22 @@ export async function uploadIdCardImage(lineUserId: string, file: File): Promise
 }
 
 /**
- * อัพโหลดสลิปค่าใช้จ่าย
- * path: expenseSlips/{freelancerId}/{timestamp}.{ext}
- * คืน storage path (ไม่ใช่ URL ที่มี token) — ใช้ getStorageDownloadUrl() เพื่อขอ URL ภายหลัง
+ * อัพโหลดสลิปค่าใช้จ่าย (freelancer เรียก)
+ * path: expenseSlips/{lineUserId}/{timestamp}.{ext}
+ * ใช้ lineUserId (= auth.uid) เป็น folder — Storage rule ตรวจ auth.uid == folderId โดยตรง
+ *
+ * หมายเหตุ: admin สร้าง payment แล้วอัพโหลด expense slip → ส่ง freelancerId ก็ได้
+ * เพราะ rule อนุญาต admin เขียนได้ทุก folder อยู่แล้ว
  */
-export async function uploadExpenseSlip(freelancerId: string, file: File): Promise<string> {
+export async function uploadExpenseSlip(uploaderUid: string, file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
   const ts = Date.now()
-  const path = `expenseSlips/${freelancerId}/${ts}.${ext}`
+  const path = `expenseSlips/${uploaderUid}/${ts}.${ext}`
   const storageRef = ref(storage, path)
 
   await uploadBytes(storageRef, file, {
     contentType: file.type,
-    customMetadata: { uploadedBy: freelancerId },
+    customMetadata: { uploadedBy: uploaderUid },
   })
 
   return path  // คืน storage path ไม่ใช่ URL
@@ -59,6 +62,32 @@ export async function uploadPayoutSlip(freelancerId: string, file: File): Promis
  */
 export async function getStorageDownloadUrl(path: string): Promise<string> {
   return await getDownloadURL(ref(storage, path))
+}
+
+/**
+ * ดาวน์โหลดรูปจาก URL ภายนอก (เช่น LINE profile picture) แล้วอัพโหลดเข้า Storage
+ * path: profilePictures/{lineUserId}/profile.jpg
+ *
+ * ใช้สำหรับ snapshot รูป profile จาก LINE มาเก็บใน Storage ของเรา
+ * เพื่อไม่ต้องพึ่ง LINE CDN URL ที่หมุนเปลี่ยนเป็นระยะ
+ *
+ * หมายเหตุ: LINE profile-scdn รองรับ CORS อยู่แล้ว — fetch จาก browser ได้
+ */
+export async function uploadProfilePictureFromUrl(
+  lineUserId: string,
+  sourceUrl: string,
+): Promise<string> {
+  const res = await fetch(sourceUrl)
+  if (!res.ok) throw new Error(`fetch profile picture failed: ${res.status}`)
+  const blob = await res.blob()
+  const contentType = blob.type || 'image/jpeg'
+  const path = `profilePictures/${lineUserId}/profile.jpg`
+  const storageRef = ref(storage, path)
+  await uploadBytes(storageRef, blob, {
+    contentType,
+    customMetadata: { uploadedBy: lineUserId, source: 'line-profile' },
+  })
+  return path
 }
 
 /**
