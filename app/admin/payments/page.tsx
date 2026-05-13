@@ -19,6 +19,7 @@ import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
 import { getPayments, getJobs, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
+import { syncExpenseFromPayment } from '@/lib/accounting/payment-expense-bridge'
 import { deleteField } from 'firebase/firestore'
 import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
@@ -171,6 +172,14 @@ export default function PaymentsPage() {
           await updatePayment(selectedPayment.id, { amount: finalAmount })
         }
         await markPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, finalAmount, adminNotes)
+        // auto-create expense (ค่าจ้างทำของ) — fire-and-forget, ไม่ block flow
+        syncExpenseFromPayment({
+          ...selectedPayment,
+          amount: finalAmount,
+          adminNotes: adminNotes || selectedPayment.adminNotes,
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+        }).catch((err) => console.error('syncExpenseFromPayment failed:', err))
       } else if (actionType === 'unapprove') {
         await updatePayment(selectedPayment.id, { status: 'pending', approvedAt: deleteField() as unknown as string })
       } else {
@@ -307,6 +316,19 @@ export default function PaymentsPage() {
       }
       if (newStatus === 'paid') {
         await markPaymentPaid(paymentId, newFreelancerId, amount)
+        // auto-create expense entry
+        syncExpenseFromPayment({
+          id: paymentId,
+          freelancerId: newFreelancerId,
+          jobId: newJobId,
+          amount,
+          status: 'paid',
+          requestedAt: new Date().toISOString(),
+          paidAt: new Date().toISOString(),
+          position: newPosition || undefined,
+          workDates,
+          expenseAmount: expAmt,
+        } as Payment).catch((err) => console.error('syncExpenseFromPayment failed:', err))
       }
       setCreateOpen(false)
       resetCreateForm()

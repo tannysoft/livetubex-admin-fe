@@ -1,14 +1,18 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import {
+  ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon,
+  PaperClipIcon, ArrowUpTrayIcon, TrashIcon, EyeIcon,
+} from '@heroicons/react/24/outline'
 import ExpenseForm, { type ExpenseFormValue } from '@/components/admin/accounting/ExpenseForm'
 import { Skeleton } from '@/components/ui/Skeleton'
 import {
   createExpense, getExpense, updateExpense, calcExpenseTotals, makeVendorSnapshot,
 } from '@/lib/accounting/expenses'
+import { uploadExpenseReceipt, getStorageDownloadUrl } from '@/lib/firebase-storage'
 import { useAuth } from '@/lib/auth-context'
 import type { Expense } from '@/lib/types'
 
@@ -22,19 +26,56 @@ function ExpenseEditor() {
   const [saving, setSaving] = useState(false)
   const [existing, setExisting] = useState<Expense | null>(null)
   const [toast, setToast] = useState<{ type: 'ok' | 'fail'; message: string } | null>(null)
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+  const receiptInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!editId) return
     let alive = true
     setLoading(true)
-    getExpense(editId).then((e) => {
-      if (alive) {
-        setExisting(e)
-        setLoading(false)
+    getExpense(editId).then(async (e) => {
+      if (!alive) return
+      setExisting(e)
+      setLoading(false)
+      if (e?.receiptImagePath) {
+        try {
+          const url = await getStorageDownloadUrl(e.receiptImagePath)
+          if (alive) setReceiptUrl(url)
+        } catch { /* ignore */ }
       }
     })
     return () => { alive = false }
   }, [editId])
+
+  const handleReceiptUpload = async (file: File) => {
+    if (!editId) return
+    setUploadingReceipt(true)
+    try {
+      const path = await uploadExpenseReceipt(editId, file)
+      await updateExpense(editId, { receiptImagePath: path })
+      const url = await getStorageDownloadUrl(path)
+      setReceiptUrl(url)
+      setExisting((prev) => prev ? { ...prev, receiptImagePath: path } : prev)
+      setToast({ type: 'ok', message: 'อัพโหลดสลิป/ใบเสร็จเรียบร้อย' })
+    } catch (e) {
+      console.error(e)
+      setToast({ type: 'fail', message: 'อัพโหลดไม่สำเร็จ' })
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
+
+  const handleReceiptRemove = async () => {
+    if (!editId) return
+    try {
+      await updateExpense(editId, { receiptImagePath: '' })
+      setReceiptUrl(null)
+      setExisting((prev) => prev ? { ...prev, receiptImagePath: undefined } : prev)
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   useEffect(() => {
     if (!toast) return
@@ -132,13 +173,89 @@ function ExpenseEditor() {
           <Skeleton className="h-48 w-full rounded-2xl" />
         </div>
       ) : (
-        <ExpenseForm
-          defaultValues={existing ?? undefined}
-          onSubmit={handleSubmit}
-          onCancel={() => router.push('/admin/accounting/expenses')}
-          isLoading={saving}
-          lockedReason={lockedReason}
-        />
+        <>
+          <ExpenseForm
+            defaultValues={existing ?? undefined}
+            onSubmit={handleSubmit}
+            onCancel={() => router.push('/admin/accounting/expenses')}
+            isLoading={saving}
+            lockedReason={lockedReason}
+          />
+
+          {/* Receipt upload — only after expense is saved */}
+          {existing && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-red-50 rounded-xl">
+                  <PaperClipIcon className="w-5 h-5 text-[#f73727]" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900">สลิป / ใบเสร็จจากผู้ขาย</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">แนบรูปสลิปการโอน หรือใบเสร็จที่ผู้ขายออกให้</p>
+                </div>
+              </div>
+
+              {receiptUrl ? (
+                <div className="space-y-3">
+                  <div className="inline-block bg-gray-50 rounded-xl p-3 border border-gray-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={receiptUrl} alt="ใบเสร็จ" className="max-h-64 max-w-full object-contain" />
+                  </div>
+                  <div className="flex gap-2">
+                    <a
+                      href={receiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                    >
+                      <EyeIcon className="w-4 h-4" />
+                      เปิดดู
+                    </a>
+                    <button
+                      onClick={() => receiptInputRef.current?.click()}
+                      disabled={uploadingReceipt}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-60"
+                    >
+                      <ArrowUpTrayIcon className="w-4 h-4" />
+                      เปลี่ยนรูป
+                    </button>
+                    <button
+                      onClick={handleReceiptRemove}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 text-sm font-medium rounded-xl hover:bg-red-100 transition-colors"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      ลบ
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => receiptInputRef.current?.click()}
+                  disabled={uploadingReceipt}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60"
+                >
+                  {uploadingReceipt
+                    ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <ArrowUpTrayIcon className="w-4 h-4" />
+                  }
+                  อัพโหลดสลิป/ใบเสร็จ
+                </button>
+              )}
+
+              <input
+                ref={receiptInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleReceiptUpload(file)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   )

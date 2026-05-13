@@ -24,6 +24,7 @@ import {
   TruckIcon,
   CreditCardIcon,
   TagIcon,
+  PresentationChartLineIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
@@ -72,6 +73,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/accounting/vendors', label: 'ผู้ขาย', icon: TruckIcon },
       { href: '/admin/accounting/expenses', label: 'รายจ่าย', icon: CreditCardIcon },
       { href: '/admin/accounting/expense-categories', label: 'หมวดค่าใช้จ่าย', icon: TagIcon },
+      { href: '/admin/accounting/expense-report', label: 'รายงานรายจ่าย', icon: PresentationChartLineIcon },
     ],
   },
   {

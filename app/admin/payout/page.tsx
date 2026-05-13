@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BanknotesIcon, CheckCircleIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import { getPayments, getJobs, getFreelancers, markPaymentPaid, sendPayoutNotification } from '@/lib/firebase-utils'
+import { syncExpenseFromPayment } from '@/lib/accounting/payment-expense-bridge'
 import { uploadPayoutSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate } from '@/lib/utils'
@@ -102,6 +103,13 @@ export default function PayoutPage() {
       )
       const freelancerId = confirmGroup.freelancer.id
       const paymentIds = confirmGroup.payments.map((p) => p.id)
+      const paidAtIso = new Date().toISOString()
+      // auto-create expense entries (ค่าจ้างทำของ) — fire-and-forget
+      Promise.all(
+        confirmGroup.payments.map((p) =>
+          syncExpenseFromPayment({ ...p, status: 'paid', paidAt: paidAtIso })
+        )
+      ).catch((err) => console.error('syncExpenseFromPayment batch failed:', err))
       setConfirmGroup(null)
       showToast(`โอนเงินให้ ${confirmGroup.freelancer.name} แล้ว`)
       load(true)
