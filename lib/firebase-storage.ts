@@ -62,6 +62,18 @@ export async function getStorageDownloadUrl(path: string): Promise<string> {
 }
 
 /**
+ * อัพโหลดลายเซ็นผู้มีอำนาจ (Admin เท่านั้น)
+ * path: companyAssets/signature.{ext}
+ */
+export async function uploadCompanySignature(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+  const path = `companyAssets/signature.${ext}`
+  const storageRef = ref(storage, path)
+  await uploadBytes(storageRef, file, { contentType: file.type })
+  return path
+}
+
+/**
  * ลบไฟล์สำเนาบัตรประชาชนเดิม (optional — ใช้ตอน replace)
  */
 export async function deleteIdCardImage(freelancerId: string): Promise<void> {

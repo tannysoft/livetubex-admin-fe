@@ -59,5 +59,14 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // ── ทรัพย์สินบริษัท: ลายเซ็น, โลโก้ (Admin เท่านั้น) ─────────────────────
+    match /companyAssets/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
   }
 }

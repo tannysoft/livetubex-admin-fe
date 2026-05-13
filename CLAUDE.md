@@ -3,8 +3,9 @@
 # LiveTubeX Admin — โครงสร้างแอปพลิเคชัน
 
 ## ภาพรวม
-ระบบจัดการงานถ่ายทอดสดของ **LiveTubeX Co., Ltd.** แบ่งเป็น 2 ส่วน:
+ระบบจัดการงานถ่ายทอดสดของ **บริษัท ไลฟ์ทูป เอ็กซ์ จำกัด** (เลขนิติฯ 0105566147487) แบ่งเป็น 3 ส่วนใหญ่:
 - **Admin Panel** (`/admin/*`) — จัดการงาน, freelancer, อนุมัติการเบิกจ่าย
+- **Admin Accounting** (`/admin/accounting/*`) — ระบบบัญชี SME: ลูกค้า, ใบเสนอราคา, ใบแจ้งหนี้, ใบกำกับภาษี, ใบเสร็จ (Phase 1 เสร็จ)
 - **Freelancer LIFF** (`/freelancer/*`) — Freelancer ดูข้อมูล ขอเบิกเงิน ผ่าน LINE LIFF
 
 ## Stack
@@ -21,6 +22,7 @@
 | Email | Resend API |
 | LINE | @line/liff v2 |
 | Date | date-fns v4 + Thai locale |
+| PDF | @react-pdf/renderer + Sarabun font (woff ใน `public/fonts/`) |
 
 ## Authentication Flow
 ```
@@ -390,6 +392,154 @@ firebase functions:log --only sendPaymentNotification
 firebase functions:log --only lineAuth
 ```
 
+## Accounting (Phase 1) — โครงสร้างเอกสารบัญชี
+
+### Collections ใหม่
+
+#### `companySettings/main`
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| name / nameEn | string | ชื่อบริษัทไทย/อังกฤษ |
+| taxId | string | เลขนิติบุคคล 13 หลัก |
+| branch | string | "สำนักงานใหญ่" / "สาขา 00001" |
+| address | string | ที่อยู่เต็ม |
+| phone / email / website | string? | |
+| signaturePath | string? | Storage path ของลายเซ็น (resolve ผ่าน `getCompanySettingsForPdf()`) |
+| bankAccounts | `BankAccount[]` | บัญชีบริษัท สำหรับลูกค้าโอนเข้า |
+| vatRate | number | default 7 |
+
+#### `customers`
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| code | string | auto: CUS-0001 (running ต่อเนื่อง ไม่ reset) |
+| name | string | ชื่อบริษัท/บุคคล |
+| type | 'company' \| 'individual' | |
+| taxId / branch | string? | เลขผู้เสียภาษี + สาขา |
+| address | string | required |
+| phone / email / contactPerson | string? | |
+| isActive | boolean | |
+
+#### `quotations`, `invoices`, `taxInvoices`, `receipts`
+- ทุก doc มี `docNumber` (auto-generated, transactional), `customerSnapshot` (frozen ณ วันที่ออก), `customerId`, `issueDate`, `items[]`, totals
+- **เลขรันเอกสาร** format PEAK: `{Prefix}{YY-พ.ศ.}{MM}-{NNNN}` reset รายเดือน — `QO6805-0001`, `IV6805-0001`, `TX6805-0001`, `RC6805-0001`
+- counter เก็บที่ `documentCounters/{YYYY-MM}` (และ `documentCounters/all` สำหรับ customer code)
+- ใช้ `runTransaction` กัน race condition
+
+#### `quotations` (เพิ่มเติม)
+- `validUntil`, `status: draft|sent|accepted|rejected|expired|converted`
+- `convertedToInvoiceId` เมื่อแปลงเป็นใบแจ้งหนี้
+
+#### `invoices` (เพิ่มเติม)
+- `dueDate`, `paidAmount` (running จาก receipts), `taxInvoiceIds[]`, `receiptIds[]`
+- `status: draft|sent|partial_paid|paid|overdue|cancelled|void`
+- `quotationId?` ถ้ามาจากใบเสนอราคา
+
+#### `taxInvoices` (immutable — แก้ไม่ได้)
+- `invoiceId` ต้นทาง
+- `issueDate` = วันที่ส่งมอบ/รับเงิน (สำคัญ — ฐานในการยื่น ภพ.30)
+- `status: issued|void` — void เก็บไว้พร้อม `voidReason` + `voidedAt`
+- `reportedInVatPeriod?` flag เมื่อยื่น ภพ.30 แล้ว
+
+#### `receipts` (immutable — แก้ไม่ได้)
+- `invoiceId`, `taxInvoiceId?`
+- `amount` (gross), `whtAmount?` (ที่ลูกค้าหัก), `whtCertReceived?` (ได้ 50 ทวิ)
+- `paymentMethod: cash|transfer|cheque|credit_card|other`, `paymentRef?`, `bankAccountReceived?`
+- ออกใบเสร็จ → atomic increment `invoices.paidAmount` + auto-update `invoices.status`
+- void → คืน paidAmount + revert status
+
+### lib/accounting/
+
+```
+lib/accounting/
+├── calc.ts                       # round2, calcLineAmount, calcTotals, bahtText, status labels
+├── doc-numbering.ts              # nextDocNumber (transactional)
+├── company-settings.ts           # CRUD + getCompanySettingsForPdf (resolve sig URL)
+├── customers.ts                  # CRUD
+├── quotations.ts                 # CRUD + makeCustomerSnapshot
+├── invoices.ts                   # CRUD + convertQuotationToInvoice
+├── tax-invoices.ts               # issue/void (immutable)
+├── receipts.ts                   # issue/void (atomic update invoice)
+└── pdf/
+    ├── setup.ts                  # Font.register Sarabun
+    ├── LogoSvg.tsx               # SVG logo สำหรับ PDF (port ตรงๆ ไม่ต้อง PNG)
+    ├── styles.ts                 # StyleSheet กลาง
+    ├── DocumentPdf.tsx           # generic template (quotation/invoice/taxInvoice)
+    ├── ReceiptPdf.tsx            # template แยกสำหรับใบเสร็จ (amount big + bahtText)
+    └── generate.ts               # downloadPdf, openPdfInNewTab (lazy import)
+```
+
+### Pages (Phase 1)
+
+```
+app/admin/accounting/
+├── customers/page.tsx                # CRUD ลูกค้า
+├── company-settings/page.tsx         # ข้อมูลบริษัท + ลายเซ็น
+├── quotations/
+│   ├── page.tsx                      # list + filter + ปุ่ม "แปลงเป็นใบแจ้งหนี้"
+│   └── new/page.tsx                  # create/edit (?id=xxx) + PDF buttons
+├── invoices/
+│   ├── page.tsx                      # list + auto-detect overdue
+│   └── new/page.tsx                  # create/edit (?id=xxx, ?fromQuotation=xxx)
+│                                     # + action panel: ออกใบกำกับภาษี / รับเงิน
+│                                     # + linked tax invoices + receipts
+├── tax-invoices/
+│   ├── page.tsx                      # list (read-only)
+│   └── view/page.tsx                 # view + void (?id=xxx) + PDF
+└── receipts/
+    ├── page.tsx                      # list (read-only)
+    └── view/page.tsx                 # view + void + PDF
+```
+
+### Flow รวม Phase 1
+
+```
+Quotation → [ปุ่ม "แปลงเป็นใบแจ้งหนี้"] → Invoice
+Invoice → [ปุ่ม "ออกใบกำกับภาษี"] → TaxInvoice (immutable)
+Invoice → [ปุ่ม "บันทึกการรับเงิน"] → Receipt (immutable)
+   → atomic update: invoices.paidAmount + receiptIds[] + auto-status
+```
+
+### Components Accounting
+
+```
+components/admin/accounting/
+├── CustomerForm.tsx           # บริษัท/บุคคล + validate taxId 13 หลัก
+├── CustomerSelect.tsx         # Combobox + ปุ่ม "เพิ่มลูกค้าใหม่"
+├── DocumentItemsTable.tsx     # ตารางรายการ — auto-calc + readonly mode
+├── DocumentSummary.tsx        # subtotal / discount / VAT / WHT / netPayable
+├── QuotationForm.tsx          # ฟอร์มใบเสนอราคา (full page)
+├── InvoiceForm.tsx            # ฟอร์มใบแจ้งหนี้ (full page)
+├── IssueTaxInvoiceModal.tsx   # modal ออกใบกำกับ (warning "ออกแล้วห้ามแก้")
+├── RecordPaymentModal.tsx     # modal บันทึกรับเงิน + WHT + ใบเสร็จ
+└── PdfButtons.tsx             # ปุ่ม "ดู PDF" + "ดาวน์โหลด" (lazy import)
+```
+
+### กฎสำคัญด้านบัญชี
+
+1. **CustomerSnapshot** — ทุก document collection (`quotation/invoice/taxInvoice/receipt`) freeze ข้อมูลลูกค้า ณ วันที่ออก ห้าม join live เพราะข้อมูลลูกค้าอาจเปลี่ยน
+2. **calcTotals** — WHT คำนวณจาก **ฐานก่อน VAT** (`baseBeforeVat`) ไม่ใช่ grandTotal
+3. **Document numbering** — ใช้ `runTransaction` เสมอ ป้องกันเลขซ้ำเมื่อมี admin หลายคน
+4. **TaxInvoice + Receipt = immutable** — ออกแล้วห้ามแก้ ทำได้แค่ void (เก็บ doc + reason + timestamp)
+5. **Receipt issue/void = atomic** — update invoice.paidAmount + status ใน transaction เดียว
+6. **PDF lazy load** — import dynamic เฉพาะตอนกดปุ่ม (react-pdf ใหญ่ ~600 packages)
+7. **PDF signaturePath** — ต้อง resolve เป็น URL ก่อน render ผ่าน `getCompanySettingsForPdf()`
+8. **bahtText** — แปลงตัวเลขเป็นข้อความไทย ใช้ในใบเสร็จ/ใบกำกับภาษี
+
+### Firestore Rules (สรุป)
+
+```
+companySettings, customers, documentCounters, quotations, invoices,
+taxInvoices, receipts: admin-only (isAdmin)
+```
+
+### Storage Paths
+
+```
+companyAssets/signature.{png|jpg}    # ลายเซ็นผู้มีอำนาจ (admin write, all auth read)
+```
+
+---
+
 ## ข้อควรระวัง / Gotchas
 
 1. **Timezone**: ใช้ `new Date(str + 'T00:00:00')` แล้วอ่าน `getFullYear/getMonth/getDate` เสมอ — ห้ามใช้ `toISOString().split('T')[0]` เพราะ convert เป็น UTC แล้วได้วันผิด (UTC+7 ทำให้ shift -1 วัน)
@@ -421,3 +571,15 @@ firebase functions:log --only lineAuth
 14. **billingCycle ใน email**: ปุ่มในหน้า settings แสดงวันจริง (15 หรือวันสุดท้ายของเดือน) แต่ใน email label ใช้ `buildPeriodLabel()` → "กลางเดือนมีนาคม 2568" / "สิ้นเดือนมีนาคม 2568"
 
 15. **expenseAmount ไม่หัก 3%**: ยอดโอนรวม = `calcTax(amount).net + (expenseAmount ?? 0)` — expenseAmount บวกเต็มไม่หักภาษี
+
+16. **Accounting: WHT ฐาน**: ใน accounting ใช้ฐาน `baseBeforeVat` (= subtotal - discountTotal) ไม่ใช่ grandTotal ห้ามคำนวณ WHT จากยอดหลัง VAT
+
+17. **Accounting: ห้ามแก้ TaxInvoice/Receipt**: ออกแล้วเป็น immutable — แก้ไม่ได้ ทำได้แค่ void เพื่อ audit trail. ถ้า user ขอแก้ → void แล้วออกใบใหม่
+
+18. **Accounting: Receipt void**: void receipt ต้อง revert `invoices.paidAmount` ด้วย (ใน transaction เดียว) ไม่งั้นยอดเพี้ยน
+
+19. **Accounting: PDF font**: ใช้ Sarabun (woff) จาก `/fonts/` — react-pdf ใช้ TTF/OTF/WOFF (ห้าม WOFF2). ปิด hyphenation เพราะคำไทย break ผิด
+
+20. **Accounting: SVG ใน PDF**: react-pdf `<Image>` ไม่รองรับ SVG — ใช้ `<Svg>` + `<Path>` ตรงๆ (`LogoSvg.tsx` port มาจาก SVG ต้นฉบับ)
+
+21. **Accounting: documentCounters**: เลขรันใช้ Firestore `runTransaction` เสมอ ห้าม read-then-write — race condition ทำให้เลขซ้ำได้

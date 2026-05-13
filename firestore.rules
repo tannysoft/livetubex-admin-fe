@@ -115,5 +115,36 @@ service cloud.firestore {
                         'jobId'
                        ]);
     }
+
+    // ── Accounting (Admin only) ──────────────────────────────────────────────
+    // ข้อมูลการเงิน/บัญชี — เฉพาะ Admin เท่านั้น
+
+    match /companySettings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /documentCounters/{periodId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /quotations/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /invoices/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /taxInvoices/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /receipts/{docId} {
+      allow read, write: if isAdmin();
+    }
   }
 }
