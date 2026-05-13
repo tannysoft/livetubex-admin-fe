@@ -26,6 +26,7 @@ import {
   TagIcon,
   PresentationChartLineIcon,
   CalculatorIcon,
+  ScaleIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
@@ -75,6 +76,12 @@ const navGroups: NavGroup[] = [
       { href: '/admin/accounting/expenses', label: 'รายจ่าย', icon: CreditCardIcon },
       { href: '/admin/accounting/expense-categories', label: 'หมวดค่าใช้จ่าย', icon: TagIcon },
       { href: '/admin/accounting/expense-report', label: 'รายงานรายจ่าย', icon: PresentationChartLineIcon },
+    ],
+  },
+  {
+    title: 'บัญชี — งบการเงิน',
+    items: [
+      { href: '/admin/accounting/profit-loss', label: 'งบกำไรขาดทุน (P&L)', icon: ScaleIcon },
     ],
   },
   {
