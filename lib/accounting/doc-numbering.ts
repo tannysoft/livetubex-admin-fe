@@ -13,7 +13,7 @@ import { db } from '../firebase'
  * ใช้ Firestore transaction กัน race condition (ไม่ซ้ำเลย แม้คน 2 คนกดพร้อมกัน)
  */
 
-export type DocCounterField = 'quotation' | 'invoice' | 'taxInvoice' | 'receipt' | 'customer'
+export type DocCounterField = 'quotation' | 'invoice' | 'taxInvoice' | 'receipt' | 'customer' | 'vendor' | 'expense'
 
 const PREFIX_MAP: Record<DocCounterField, string> = {
   quotation: 'QO',
@@ -21,6 +21,8 @@ const PREFIX_MAP: Record<DocCounterField, string> = {
   taxInvoice: 'TX',
   receipt: 'RC',
   customer: 'CUS',
+  vendor: 'VEN',
+  expense: 'EX',
 }
 
 function pad(n: number, width: number): string {
@@ -37,8 +39,9 @@ function toBuddhistYear2(date: Date): string {
  * Counter doc path: `documentCounters/all` สำหรับ customer code (ไม่ reset)
  */
 export async function nextDocNumber(field: DocCounterField, date: Date = new Date()): Promise<string> {
-  if (field === 'customer') {
-    return nextCustomerCode()
+  // customer/vendor — running ยาวต่อเนื่อง ไม่ reset
+  if (field === 'customer' || field === 'vendor') {
+    return nextRunningCode(field)
   }
 
   const yy = toBuddhistYear2(date)
@@ -63,22 +66,22 @@ export async function nextDocNumber(field: DocCounterField, date: Date = new Dat
 }
 
 /**
- * Customer code ไม่ reset รายเดือน — running ยาวต่อเนื่อง
+ * Code ไม่ reset รายเดือน — running ยาวต่อเนื่อง (CUS-0001, VEN-0001)
  * เก็บที่ documentCounters/all
  */
-async function nextCustomerCode(): Promise<string> {
+async function nextRunningCode(field: 'customer' | 'vendor'): Promise<string> {
   const counterRef = doc(db, 'documentCounters', 'all')
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef)
     const data = snap.exists() ? snap.data() : {}
-    const current = (data.customer as number | undefined) ?? 0
+    const current = (data[field] as number | undefined) ?? 0
     const incremented = current + 1
     tx.set(counterRef, {
       ...data,
-      customer: incremented,
+      [field]: incremented,
       updatedAt: new Date().toISOString(),
     }, { merge: true })
     return incremented
   })
-  return `CUS-${pad(next, 4)}`
+  return `${PREFIX_MAP[field]}-${pad(next, 4)}`
 }

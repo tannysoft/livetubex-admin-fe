@@ -146,5 +146,18 @@ service cloud.firestore {
     match /receipts/{docId} {
       allow read, write: if isAdmin();
     }
+
+    // ── Phase 2: Vendors + Expenses (Admin only) ─────────────────────────────
+    match /vendors/{vendorId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /expenseCategories/{categoryId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

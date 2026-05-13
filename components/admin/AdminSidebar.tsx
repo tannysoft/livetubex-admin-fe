@@ -21,6 +21,9 @@ import {
   DocumentDuplicateIcon,
   ReceiptPercentIcon,
   ClipboardDocumentCheckIcon,
+  TruckIcon,
+  CreditCardIcon,
+  TagIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
@@ -54,13 +57,26 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: 'บัญชี',
+    title: 'บัญชี — ขาย',
     items: [
       { href: '/admin/accounting/customers', label: 'ลูกค้า', icon: UserGroupIcon },
       { href: '/admin/accounting/quotations', label: 'ใบเสนอราคา', icon: DocumentTextIcon },
       { href: '/admin/accounting/invoices', label: 'ใบแจ้งหนี้', icon: DocumentDuplicateIcon },
       { href: '/admin/accounting/tax-invoices', label: 'ใบกำกับภาษี', icon: ReceiptPercentIcon },
       { href: '/admin/accounting/receipts', label: 'ใบเสร็จรับเงิน', icon: ClipboardDocumentCheckIcon },
+    ],
+  },
+  {
+    title: 'บัญชี — รายจ่าย',
+    items: [
+      { href: '/admin/accounting/vendors', label: 'ผู้ขาย', icon: TruckIcon },
+      { href: '/admin/accounting/expenses', label: 'รายจ่าย', icon: CreditCardIcon },
+      { href: '/admin/accounting/expense-categories', label: 'หมวดค่าใช้จ่าย', icon: TagIcon },
+    ],
+  },
+  {
+    title: 'บัญชี — ทั่วไป',
+    items: [
       { href: '/admin/accounting/company-settings', label: 'ข้อมูลบริษัท', icon: BuildingOffice2Icon },
     ],
   },

@@ -311,5 +311,84 @@ export interface DocumentCounter {
   taxInvoice: number
   receipt: number
   customer: number
+  expense: number
+  vendor: number
+  updatedAt: string
+}
+
+// ─── Accounting Phase 2 — Vendors + Expenses ─────────────────────────────────
+
+export type VendorType = 'company' | 'individual' | 'freelancer'
+
+export interface Vendor {
+  id: string
+  code: string                // VEN-0001
+  name: string
+  type: VendorType            // freelancer = ผูกกับ freelancerId
+  taxId?: string
+  branch?: string
+  address?: string
+  phone?: string
+  email?: string
+  contactPerson?: string
+  bankAccount?: string
+  bankName?: string
+  freelancerId?: string       // ถ้า type='freelancer' — ผูกกับ freelancers/{id}
+  notes?: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExpenseCategory {
+  id: string
+  name: string                // "ค่าจ้างทำของ", "ค่าเช่า", "ค่าน้ำ-ไฟ", "อุปกรณ์", ฯลฯ
+  defaultWhtRate?: number     // default WHT % สำหรับ category นี้ (เช่น "ค่าจ้างทำของ" = 3%)
+  isFixed?: boolean           // category พื้นฐาน (ห้ามลบ) เช่น "ค่าจ้างทำของ" สำหรับ freelancer
+  order?: number              // sort order
+  createdAt: string
+}
+
+export type ExpenseStatus = 'draft' | 'recorded' | 'paid' | 'cancelled'
+
+export type ExpenseSourceType = 'manual' | 'freelancer_payment'
+
+/**
+ * รายจ่ายของบริษัท — ใช้บันทึก expense ทุกรายการที่ส่งผลต่องบกำไรขาดทุน
+ *
+ * ที่มา:
+ *   manual:              admin บันทึกเอง (ค่าเช่า อุปกรณ์ ฯลฯ)
+ *   freelancer_payment:  สร้างอัตโนมัติเมื่อ admin mark payment ของ freelancer เป็น "paid"
+ */
+export interface Expense {
+  id: string
+  code: string                // EX-0001
+  sourceType: ExpenseSourceType
+  paymentId?: string          // ถ้า sourceType='freelancer_payment' — ref ไปยัง payments/{id}
+  vendorId?: string           // ถ้าซื้อจาก vendor (manual)
+  vendorSnapshot?: {
+    code: string
+    name: string
+    taxId?: string
+  }
+  categoryId: string
+  categoryName: string        // snapshot ตอนสร้าง
+  date: string                // ISO date (วันที่เกิดค่าใช้จ่ายจริง)
+  description: string
+  amount: number              // ยอดก่อน VAT (gross expense ที่ไม่หัก WHT)
+  hasVat: boolean
+  vatRate: number             // default 7 ถ้า hasVat
+  vatAmount: number           // amount * vatRate / 100 ถ้า hasVat else 0
+  whtRate?: number            // 3, 5, 1, ...
+  whtAmount?: number          // amount * whtRate / 100
+  totalAmount: number         // amount + vatAmount (รวม VAT) - WHT ที่บริษัทหักจ่ายให้
+  paidAmount: number          // เงินที่จ่ายจริง (default = totalAmount)
+  paymentMethod?: 'cash' | 'transfer' | 'cheque' | 'credit_card' | 'other'
+  paymentRef?: string
+  receiptImagePath?: string   // สลิป/ใบเสร็จที่ vendor ออกให้
+  status: ExpenseStatus
+  notes?: string
+  createdBy: string
+  createdAt: string
   updatedAt: string
 }

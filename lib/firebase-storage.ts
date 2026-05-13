@@ -74,6 +74,18 @@ export async function uploadCompanySignature(file: File): Promise<string> {
 }
 
 /**
+ * อัพโหลดสลิป/ใบเสร็จค่าใช้จ่ายบริษัท (Phase 2 — Admin เท่านั้น)
+ * path: expenseReceipts/{expenseId}/{timestamp}.{ext}
+ */
+export async function uploadExpenseReceipt(expenseId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+  const path = `expenseReceipts/${expenseId}/${Date.now()}.${ext}`
+  const storageRef = ref(storage, path)
+  await uploadBytes(storageRef, file, { contentType: file.type })
+  return path
+}
+
+/**
  * ลบไฟล์สำเนาบัตรประชาชนเดิม (optional — ใช้ตอน replace)
  */
 export async function deleteIdCardImage(freelancerId: string): Promise<void> {
