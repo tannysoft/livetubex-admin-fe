@@ -25,6 +25,7 @@ import {
   CreditCardIcon,
   TagIcon,
   PresentationChartLineIcon,
+  CalculatorIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
@@ -74,6 +75,13 @@ const navGroups: NavGroup[] = [
       { href: '/admin/accounting/expenses', label: 'รายจ่าย', icon: CreditCardIcon },
       { href: '/admin/accounting/expense-categories', label: 'หมวดค่าใช้จ่าย', icon: TagIcon },
       { href: '/admin/accounting/expense-report', label: 'รายงานรายจ่าย', icon: PresentationChartLineIcon },
+    ],
+  },
+  {
+    title: 'บัญชี — ภาษี',
+    items: [
+      { href: '/admin/accounting/tax-reports/vat', label: 'ภพ.30 (VAT)', icon: ReceiptPercentIcon },
+      { href: '/admin/accounting/tax-reports/wht', label: 'ภงด.3/53 (WHT)', icon: CalculatorIcon },
     ],
   },
   {
