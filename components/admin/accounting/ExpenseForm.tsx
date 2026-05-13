@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import FormListbox from '@/components/ui/FormListbox'
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import VendorSelect from './VendorSelect'
 import { calcExpenseTotals } from '@/lib/accounting/expenses'
 import { getExpenseCategories } from '@/lib/accounting/expense-categories'
@@ -203,16 +204,12 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
             />
           </div>
           <div className="flex items-end gap-3 pb-1">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={hasVat}
-                onChange={(e) => setHasVat(e.target.checked)}
-                className="w-4 h-4 rounded text-[#f73727]"
-                disabled={locked}
-              />
-              มี VAT (ผู้ขายจดทะเบียน VAT)
-            </label>
+            <FormCheckbox
+              checked={hasVat}
+              onChange={setHasVat}
+              label="มี VAT (ผู้ขายจดทะเบียน VAT)"
+              disabled={locked}
+            />
             {hasVat && (
               <span className="flex items-center gap-1">
                 <input

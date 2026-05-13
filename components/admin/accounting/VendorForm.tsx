@@ -2,6 +2,7 @@
 
 import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import type { Vendor, VendorType } from '@/lib/types'
 
 export type VendorFormData = {
@@ -150,10 +151,17 @@ export default function VendorForm({ defaultValues, onSubmit, onCancel, isLoadin
         </div>
 
         <div className="sm:col-span-2">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" {...register('isActive')} className="w-4 h-4 rounded text-[#f73727]" />
-            ใช้งานอยู่
-          </label>
+          <Controller
+            name="isActive"
+            control={control}
+            render={({ field }) => (
+              <FormCheckbox
+                checked={field.value}
+                onChange={field.onChange}
+                label="ใช้งานอยู่"
+              />
+            )}
+          />
         </div>
       </div>
 

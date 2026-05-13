@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Modal from '@/components/ui/Modal'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import FormListbox from '@/components/ui/FormListbox'
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { issueReceipt } from '@/lib/accounting/receipts'
 import { formatCurrency } from '@/lib/utils'
 import { round2 } from '@/lib/accounting/calc'
@@ -149,15 +150,11 @@ export default function RecordPaymentModal({ invoice, taxInvoices = [], isOpen, 
 
           {/* WHT section */}
           <div className="sm:col-span-2">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={hasWht}
-                onChange={(e) => setHasWht(e.target.checked)}
-                className="w-4 h-4 rounded text-[#f73727]"
-              />
-              ลูกค้าหัก ณ ที่จ่าย
-            </label>
+            <FormCheckbox
+              checked={hasWht}
+              onChange={setHasWht}
+              label="ลูกค้าหัก ณ ที่จ่าย"
+            />
           </div>
 
           {hasWht && (
@@ -173,16 +170,12 @@ export default function RecordPaymentModal({ invoice, taxInvoices = [], isOpen, 
                   step="any"
                 />
               </div>
-              <div className="flex items-end">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700 pb-2.5">
-                  <input
-                    type="checkbox"
-                    checked={whtCertReceived}
-                    onChange={(e) => setWhtCertReceived(e.target.checked)}
-                    className="w-4 h-4 rounded text-[#f73727]"
-                  />
-                  ได้รับหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)
-                </label>
+              <div className="flex items-end pb-2.5">
+                <FormCheckbox
+                  checked={whtCertReceived}
+                  onChange={setWhtCertReceived}
+                  label="ได้รับหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)"
+                />
               </div>
             </>
           )}
