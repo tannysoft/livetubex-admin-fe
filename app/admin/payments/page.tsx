@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -13,6 +14,7 @@ import {
   PlusIcon,
   CalendarDaysIcon,
   PencilSquareIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
@@ -446,6 +448,15 @@ export default function PaymentsPage() {
         >
           <ArrowUturnLeftIcon className="w-4 h-4" />
         </button>
+      )}
+      {payment.status === 'paid' && (
+        <Link
+          href={`/admin/accounting/expenses?paymentId=${payment.id}`}
+          className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+          title="ดู Expense ที่ผูกอยู่ในระบบบัญชี"
+        >
+          <CreditCardIcon className="w-4 h-4" />
+        </Link>
       )}
       {(payment.status === 'paid' || payment.status === 'rejected') && !payment.expenseSlipPath && !payment.expenseSlipUrl && (
         <span className="text-xs text-gray-300">-</span>

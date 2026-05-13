@@ -8,10 +8,12 @@ import {
   PaperClipIcon, ArrowUpTrayIcon, TrashIcon, EyeIcon,
 } from '@heroicons/react/24/outline'
 import ExpenseForm, { type ExpenseFormValue } from '@/components/admin/accounting/ExpenseForm'
+import PdfButtons from '@/components/admin/accounting/PdfButtons'
 import { Skeleton } from '@/components/ui/Skeleton'
 import {
   createExpense, getExpense, updateExpense, calcExpenseTotals, makeVendorSnapshot,
 } from '@/lib/accounting/expenses'
+import { getCompanySettingsForPdf } from '@/lib/accounting/company-settings'
 import { uploadExpenseReceipt, getStorageDownloadUrl } from '@/lib/firebase-storage'
 import { useAuth } from '@/lib/auth-context'
 import type { Expense } from '@/lib/types'
@@ -150,9 +152,21 @@ function ExpenseEditor() {
           <ArrowLeftIcon className="w-4 h-4" />
           รายจ่าย
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {editId ? `แก้ไขรายจ่าย${existing?.code ? ` — ${existing.code}` : ''}` : 'บันทึกค่าใช้จ่าย'}
-        </h1>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {editId ? `แก้ไขรายจ่าย${existing?.code ? ` — ${existing.code}` : ''}` : 'บันทึกค่าใช้จ่าย'}
+          </h1>
+          {existing && existing.whtAmount && existing.whtAmount > 0 && (
+            <PdfButtons
+              buildPdfElement={async () => {
+                const company = await getCompanySettingsForPdf()
+                const WhtCertPdf = (await import('@/lib/accounting/pdf/WhtCertPdf')).default
+                return <WhtCertPdf expense={existing} company={company} />
+              }}
+              filename={`50TawiCert-${existing.code}`}
+            />
+          )}
+        </div>
       </div>
 
       {toast && (

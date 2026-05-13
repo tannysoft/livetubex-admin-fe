@@ -82,6 +82,7 @@ const navGroups: NavGroup[] = [
     title: 'บัญชี — งบการเงิน',
     items: [
       { href: '/admin/accounting/profit-loss', label: 'งบกำไรขาดทุน (P&L)', icon: ScaleIcon },
+      { href: '/admin/accounting/cash-flow', label: 'งบกระแสเงินสด', icon: BanknotesIcon },
     ],
   },
   {

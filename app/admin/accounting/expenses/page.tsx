@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
-  PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, BanknotesIcon,
+  PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, BanknotesIcon, XMarkIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
@@ -15,7 +16,9 @@ import { getExpenseCategories } from '@/lib/accounting/expense-categories'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Expense, ExpenseCategory } from '@/lib/types'
 
-export default function ExpensesPage() {
+function ExpensesPageInner() {
+  const searchParams = useSearchParams()
+  const paymentIdFilter = searchParams.get('paymentId')
   const [items, setItems] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,6 +47,7 @@ export default function ExpensesPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return items.filter((it) => {
+      if (paymentIdFilter && it.paymentId !== paymentIdFilter) return false
       if (statusFilter && it.status !== statusFilter) return false
       if (categoryFilter && it.categoryId !== categoryFilter) return false
       if (!q) return true
@@ -51,7 +55,7 @@ export default function ExpensesPage() {
         || it.description.toLowerCase().includes(q)
         || (it.vendorSnapshot?.name ?? '').toLowerCase().includes(q)
     })
-  }, [items, search, statusFilter, categoryFilter])
+  }, [items, search, statusFilter, categoryFilter, paymentIdFilter])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -85,6 +89,14 @@ export default function ExpensesPage() {
             <span className="font-semibold text-[#f73727]">{formatCurrency(totalPaid)}</span>
           </p>
         </div>
+        {paymentIdFilter && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 text-purple-700 text-xs rounded-xl">
+            <span>🔗 กรองด้วย paymentId: <code className="font-mono">{paymentIdFilter.slice(0, 8)}…</code></span>
+            <Link href="/admin/accounting/expenses" className="hover:bg-purple-100 rounded-md p-1">
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
         <Link
           href="/admin/accounting/expenses/new"
           className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
@@ -211,5 +223,18 @@ export default function ExpensesPage() {
         danger
       />
     </div>
+  )
+}
+
+export default function ExpensesPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48 rounded-md" />
+        <Skeleton className="h-12 w-full rounded-2xl" />
+      </div>
+    }>
+      <ExpensesPageInner />
+    </Suspense>
   )
 }

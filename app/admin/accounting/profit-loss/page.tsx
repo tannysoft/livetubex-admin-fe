@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import { Skeleton } from '@/components/ui/Skeleton'
+import TrendChart, { type TrendPoint } from '@/components/admin/accounting/TrendChart'
 import { getTaxInvoicesByPeriod } from '@/lib/accounting/tax-reports'
 import { getExpensesByPeriod } from '@/lib/accounting/expenses'
 import { formatCurrency } from '@/lib/utils'
@@ -90,12 +91,26 @@ export default function ProfitLossPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [current, setCurrent] = useState<PeriodData | null>(null)
   const [previous, setPrevious] = useState<PeriodData | null>(null)
+  const [trend, setTrend] = useState<TrendPoint[]>([])
+  const [trendLoading, setTrendLoading] = useState(true)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let alive = true
     setLoading(true)
+    setTrendLoading(true)
     const prev = prevMonth(year, month)
+
+    // last 6 months ending at current
+    const trendPeriods: Array<{ year: number; month: number }> = []
+    let py = year, pm = month
+    for (let i = 0; i < 6; i++) {
+      trendPeriods.unshift({ year: py, month: pm })
+      const p = prevMonth(py, pm)
+      py = p.year
+      pm = p.month
+    }
+
     Promise.all([loadPeriod(year, month), loadPeriod(prev.year, prev.month)])
       .then(([cur, p]) => {
         if (!alive) return
@@ -104,6 +119,22 @@ export default function ProfitLossPage() {
         setLoading(false)
       })
       .catch(() => { if (alive) setLoading(false) })
+
+    Promise.all(trendPeriods.map((p) => loadPeriod(p.year, p.month)))
+      .then((results) => {
+        if (!alive) return
+        const buddhistYY = (y: number) => String((y + 543) % 100).padStart(2, '0')
+        const points: TrendPoint[] = results.map((r, i) => ({
+          label: `${MONTHS[trendPeriods[i].month - 1].slice(0, 3)} ${buddhistYY(trendPeriods[i].year)}`,
+          revenue: r.revenue,
+          expense: r.expenseTotal,
+          profit: r.profit,
+        }))
+        setTrend(points)
+        setTrendLoading(false)
+      })
+      .catch(() => { if (alive) setTrendLoading(false) })
+
     return () => { alive = false }
   }, [year, month])
 
@@ -319,6 +350,26 @@ export default function ProfitLossPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Trend chart 6 months */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+          <div className="p-2 bg-red-50 rounded-xl">
+            <ChartBarIcon className="w-5 h-5 text-[#f73727]" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">แนวโน้ม 6 เดือนล่าสุด</h2>
+            <p className="text-xs text-gray-500 mt-0.5">รายได้ / รายจ่าย (แท่ง) + กำไรสุทธิ (เส้น)</p>
+          </div>
+        </div>
+        <div className="p-5">
+          {trendLoading ? (
+            <Skeleton className="h-60 w-full rounded-md" />
+          ) : (
+            <TrendChart data={trend} />
+          )}
+        </div>
       </div>
 
       {/* Comparison with previous month */}

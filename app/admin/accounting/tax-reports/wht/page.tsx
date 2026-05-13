@@ -162,7 +162,7 @@ export default function WhtReportPage() {
               <td className="px-5 py-2 text-right text-gray-600">{e.whtRate}%</td>
               <td className="px-5 py-2 text-right font-semibold tabular-nums text-red-600">{formatCurrency(e.whtAmount ?? 0)}</td>
               <td className="px-5 py-2 text-right">
-                <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-[#f73727] hover:underline text-xs">ดู</Link>
+                <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-[#f73727] hover:underline text-xs">ดู / 50 ทวิ</Link>
               </td>
             </tr>
           ))}

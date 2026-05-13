@@ -21,6 +21,23 @@ export async function getReceiptsByInvoice(invoiceId: string): Promise<Receipt[]
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Receipt))
 }
 
+export async function getReceiptsByPeriod(year: number, month: number): Promise<Receipt[]> {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const endMonth = month === 12 ? 1 : month + 1
+  const endYear = month === 12 ? year + 1 : year
+  const end = `${endYear}-${String(endMonth).padStart(2, '0')}-01`
+  const q = query(
+    collection(db, COL),
+    where('issueDate', '>=', start),
+    where('issueDate', '<', end),
+    orderBy('issueDate', 'asc'),
+  )
+  const snap = await getDocs(q)
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Receipt))
+    .filter((r) => r.status !== 'void')
+}
+
 export async function getReceipt(id: string): Promise<Receipt | null> {
   const snap = await getDoc(doc(db, COL, id))
   if (!snap.exists()) return null
