@@ -80,9 +80,10 @@ jobs:
           # [DEBUG] ตรวจโครงสร้าง credential (เฉพาะ field ที่ไม่ลับ)
           node -e "const d=require('$SA'); console.log('type:', d.type); console.log('keys:', Object.keys(d).join(',')); console.log('has private_key:', !!d.private_key); console.log('client_email:', d.client_email || '(none)');"
           export GOOGLE_APPLICATION_CREDENTIALS="$SA"
-          # [DEBUG] ลอง auth-only ก่อน (แยกปัญหา auth ออกจาก deploy)
-          echo "--- firebase login:list ---"; npx firebase-tools@13 login:list || true
-          echo "--- firebase projects:list ---"; npx firebase-tools@13 projects:list --project livetubex-admin || true
+          # [DEBUG] ยืนยัน env + ไฟล์ + ดูเหตุผล auth จริงด้วย --debug
+          echo "GAC=$GOOGLE_APPLICATION_CREDENTIALS"; ls -la "$SA"
+          echo "--- projects:list --debug ---"
+          npx firebase-tools@13 projects:list --debug 2>&1 | grep -iE "credential|auth|adc|GOOGLE_APP|account|token|scope|Error" | head -25 || true
           echo "--- deploy ---"
           npx firebase-tools@13 deploy \
             --only hosting,firestore:rules,storage,functions \
