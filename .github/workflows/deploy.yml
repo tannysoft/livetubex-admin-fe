@@ -77,14 +77,12 @@ jobs:
           else
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > "$SA"
           fi
-          # [DEBUG] ตรวจโครงสร้าง credential (เฉพาะ field ที่ไม่ลับ)
-          node -e "const d=require('$SA'); console.log('type:', d.type); console.log('keys:', Object.keys(d).join(',')); console.log('has private_key:', !!d.private_key); console.log('client_email:', d.client_email || '(none)');"
+          node -e "const d=require('$SA'); if(!d.client_email) throw new Error('SA JSON ไม่มี client_email'); console.log('Using service account:', d.client_email);"
           export GOOGLE_APPLICATION_CREDENTIALS="$SA"
-          # [DEBUG] ยืนยัน env + ไฟล์ + ดูเหตุผล auth จริงด้วย --debug
-          echo "GAC=$GOOGLE_APPLICATION_CREDENTIALS"; ls -la "$SA"
-          echo "--- projects:list --debug ---"
-          npx firebase-tools@13 projects:list --debug 2>&1 | grep -iE "credential|auth|adc|GOOGLE_APP|account|token|scope|Error" | head -25 || true
-          echo "--- deploy ---"
+          # บังคับ IPv4 ก่อน: Node 17+ เลือก IPv6 ก่อน แล้ว IPv6 ของ runner ไป
+          # googleapis oauth2 endpoint ถูก reset ("Premature close") ทำให้ขอ token ไม่ได้
+          # firebase รายงานหลอกเป็น "Failed to authenticate" (firebase-tools#10726)
+          export NODE_OPTIONS="--dns-result-order=ipv4first"
           npx firebase-tools@13 deploy \
             --only hosting,firestore:rules,storage,functions \
             --project livetubex-admin \
