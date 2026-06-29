@@ -84,11 +84,18 @@ jobs:
           # googleapis oauth2 endpoint ถูก reset ("Premature close") ทำให้ขอ token ไม่ได้
           # firebase รายงานหลอกเป็น "Failed to authenticate" (firebase-tools#10726)
           export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
+          echo "dns order: $(node -e 'console.log(require("dns").getDefaultResultOrder())')"
+          for mode in 4 6 ""; do
+            printf 'curl -%s : ' "${mode:-auto}"
+            curl -${mode} -sS -m 15 -o /dev/null -w "http=%{http_code} t=%{time_total}s ip=%{remote_ip}\n" \
+              https://www.googleapis.com/oauth2/v4/token 2>&1 || echo "FAILED"
+          done
+          echo "--- deploy ---"
           npx firebase-tools@13 deploy \
             --only hosting,firestore:rules,storage,functions \
             --project livetubex-admin \
             --non-interactive \
             --force \
-            --debug 2>&1 | grep -ivE "apiv2|>>>|<<<|\[body\]|\[query\]|\[stream\]" | tail -60
+            --debug 2>&1 | grep -ivE "apiv2|>>>|<<<|\[body\]|\[query\]|\[stream\]" | tail -50
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN }}
