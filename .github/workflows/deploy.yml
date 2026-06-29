@@ -1,8 +1,9 @@
 name: Deploy to Firebase
 
 # Auto-deploy เมื่อ push เข้า main (กดรันเองได้ผ่าน workflow_dispatch)
-# ทำหน้าที่แทนคำสั่ง manual เดิม:
-#   pnpm build → functions build → firebase deploy (hosting, rules, functions)
+# build static (pnpm) → deploy hosting ขึ้น Firebase
+# หมายเหตุ: deploy เฉพาะ hosting — functions/rules deploy มือ
+#   (firebase deploy --only functions,firestore:rules,storage)
 #
 # ── Secrets ที่ต้องตั้งใน repo (Settings → Secrets and variables → Actions) ──
 #   FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN : เนื้อ JSON ของ service account (ทั้งไฟล์)
@@ -58,16 +59,7 @@ jobs:
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
           NEXT_PUBLIC_LINE_LIFF_ID: ${{ secrets.NEXT_PUBLIC_LINE_LIFF_ID }}
 
-      # ── Functions: TypeScript → lib/ (ใช้ npm lockfile แยกของตัวเอง) ──
-      - name: Install functions deps
-        run: npm ci
-        working-directory: functions
-
-      - name: Build functions
-        run: npm run build
-        working-directory: functions
-
-      # ── Deploy ทั้ง hosting + rules + functions ──
+      # ── Deploy hosting ──
       # ใช้ w9jds/firebase-action (รันใน Docker, runtime ของตัวเอง) เลี่ยง bug
       # HTTP client ของ firebase-tools บน Node ของ runner ("Premature close")
       - name: Deploy to Firebase
