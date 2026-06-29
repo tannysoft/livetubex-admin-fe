@@ -70,8 +70,16 @@ jobs:
       # ── Deploy ทั้ง hosting + rules + functions ด้วย service account ──
       - name: Deploy to Firebase
         run: |
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/service-account.json"
+          SA="$RUNNER_TEMP/service-account.json"
+          # secret อาจเป็น raw JSON หรือ base64 (แล้วแต่เวอร์ชัน firebase init) — รองรับทั้งคู่
+          if printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | grep -q '^[[:space:]]*{'; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA"
+          else
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > "$SA"
+          fi
+          # validate ว่าเป็น JSON จริง + log ว่าใช้ SA ตัวไหน (กันงงเรื่อง IAM)
+          node -e "const d=require('$SA'); if(!d.client_email) throw new Error('SA JSON ไม่มี client_email'); console.log('Using service account:', d.client_email);"
+          export GOOGLE_APPLICATION_CREDENTIALS="$SA"
           npx firebase-tools@14 deploy \
             --only hosting,firestore:rules,storage,functions \
             --project livetubex-admin \
