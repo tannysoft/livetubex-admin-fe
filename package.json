@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "yarn build && cd functions && yarn build && cd .. && firebase deploy"
+    "deploy": "echo 'Deploy ผ่าน GitHub: push/merge เข้า main → GitHub Actions deploy ให้อัตโนมัติ (.github/workflows/deploy.yml). ฉุกเฉินใช้: pnpm run deploy:manual' && exit 1",
+    "deploy:manual": "pnpm build && cd functions && npm run build && cd .. && firebase deploy"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
