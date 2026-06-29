@@ -73,7 +73,9 @@ jobs:
       - name: Deploy to Firebase
         uses: w9jds/firebase-action@v15.22.3
         with:
-          args: deploy --only hosting,firestore:rules,storage,functions --force
+          # hosting อย่างเดียว: SA จาก firebase init มีสิทธิ์นี้อยู่แล้ว
+          # functions/rules ต้องการ IAM roles เพิ่ม — deploy มือ หรือเพิ่มสิทธิ์ทีหลัง
+          args: deploy --only hosting --force
         env:
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN }}
           PROJECT_ID: livetubex-admin
