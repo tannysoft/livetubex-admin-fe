@@ -77,11 +77,13 @@ jobs:
           else
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > "$SA"
           fi
-          # validate ว่าเป็น JSON จริง + log ว่าใช้ SA ตัวไหน (กันงงเรื่อง IAM)
-          node -e "const d=require('$SA'); if(!d.client_email) throw new Error('SA JSON ไม่มี client_email'); console.log('Using service account:', d.client_email);"
+          # [DEBUG] ตรวจโครงสร้าง credential (เฉพาะ field ที่ไม่ลับ)
+          node -e "const d=require('$SA'); console.log('type:', d.type); console.log('keys:', Object.keys(d).join(',')); console.log('has private_key:', !!d.private_key); console.log('client_email:', d.client_email || '(none)');"
           export GOOGLE_APPLICATION_CREDENTIALS="$SA"
-          # pin @13: firebase-tools 14/15 มี bug timeout ทำให้ ADC auth ใน CI ล้ม
-          # (firebase/firebase-tools#10726) — 13.x ใช้ GOOGLE_APPLICATION_CREDENTIALS ได้ปกติ
+          # [DEBUG] ลอง auth-only ก่อน (แยกปัญหา auth ออกจาก deploy)
+          echo "--- firebase login:list ---"; npx firebase-tools@13 login:list || true
+          echo "--- firebase projects:list ---"; npx firebase-tools@13 projects:list --project livetubex-admin || true
+          echo "--- deploy ---"
           npx firebase-tools@13 deploy \
             --only hosting,firestore:rules,storage,functions \
             --project livetubex-admin \
