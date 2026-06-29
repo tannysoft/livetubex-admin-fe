@@ -70,6 +70,7 @@ jobs:
       # ── Deploy ทั้ง hosting + rules + functions ด้วย service account ──
       - name: Deploy to Firebase
         run: |
+          set -o pipefail
           SA="$RUNNER_TEMP/service-account.json"
           # secret อาจเป็น raw JSON หรือ base64 (แล้วแต่เวอร์ชัน firebase init) — รองรับทั้งคู่
           if printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | grep -q '^[[:space:]]*{'; then
@@ -82,11 +83,12 @@ jobs:
           # บังคับ IPv4 ก่อน: Node 17+ เลือก IPv6 ก่อน แล้ว IPv6 ของ runner ไป
           # googleapis oauth2 endpoint ถูก reset ("Premature close") ทำให้ขอ token ไม่ได้
           # firebase รายงานหลอกเป็น "Failed to authenticate" (firebase-tools#10726)
-          export NODE_OPTIONS="--dns-result-order=ipv4first"
+          export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
           npx firebase-tools@13 deploy \
             --only hosting,firestore:rules,storage,functions \
             --project livetubex-admin \
             --non-interactive \
-            --force
+            --force \
+            --debug 2>&1 | grep -ivE "apiv2|>>>|<<<|\[body\]|\[query\]|\[stream\]" | tail -60
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN }}
