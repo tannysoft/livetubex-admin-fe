@@ -67,18 +67,13 @@ jobs:
         run: npm run build
         working-directory: functions
 
-      # ── Deploy ทั้ง hosting + rules + functions ด้วย service account ──
+      # ── Deploy ทั้ง hosting + rules + functions ──
+      # ใช้ w9jds/firebase-action (รันใน Docker, runtime ของตัวเอง) เลี่ยง bug
+      # HTTP client ของ firebase-tools บน Node ของ runner ("Premature close")
       - name: Deploy to Firebase
-        run: |
-          # GitHub-hosted runner ไม่มี IPv6 ที่ใช้ได้ แต่ Node ต่อ IPv6 ก่อน ทำให้
-          # ขอ OAuth token จาก googleapis ไม่ได้ ("Premature close") → ปิด IPv6 ทั้งเครื่อง
-          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx firebase-tools@13 deploy \
-            --only hosting,firestore:rules,storage,functions \
-            --project livetubex-admin \
-            --non-interactive \
-            --force
+        uses: w9jds/firebase-action@v15.22.3
+        with:
+          args: deploy --only hosting,firestore:rules,storage,functions --force
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN }}
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIVETUBEX_ADMIN }}
+          PROJECT_ID: livetubex-admin
