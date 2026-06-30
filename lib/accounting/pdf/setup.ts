@@ -16,6 +16,11 @@ export function registerPdfFonts() {
       { src: '/fonts/Sarabun-Regular.woff', fontWeight: 'normal' },
       { src: '/fonts/Sarabun-SemiBold.woff', fontWeight: 'semibold' },
       { src: '/fonts/Sarabun-Bold.woff', fontWeight: 'bold' },
+      // Sarabun ไม่มีไฟล์ italic → map italic ไปใช้ตัวปกติของแต่ละน้ำหนัก
+      // กัน react-pdf หา font ไม่เจอแล้ว throw ("Could not resolve font ... italic")
+      { src: '/fonts/Sarabun-Regular.woff', fontWeight: 'normal', fontStyle: 'italic' },
+      { src: '/fonts/Sarabun-SemiBold.woff', fontWeight: 'semibold', fontStyle: 'italic' },
+      { src: '/fonts/Sarabun-Bold.woff', fontWeight: 'bold', fontStyle: 'italic' },
     ],
   })
 
