@@ -53,6 +53,8 @@ export async function syncExpenseFromPayment(payment: Payment): Promise<void> {
   const payload = {
     sourceType: 'freelancer_payment' as const,
     paymentId: payment.id,
+    jobId: payment.jobId || undefined,
+    jobTitle: job?.title || undefined,
     categoryId: category.id,
     categoryName: category.name,
     date: payment.paidAt ? payment.paidAt.slice(0, 10) : new Date().toISOString().slice(0, 10),

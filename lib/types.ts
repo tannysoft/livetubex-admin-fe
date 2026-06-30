@@ -367,6 +367,8 @@ export interface Expense {
   code: string                // EX-0001
   sourceType: ExpenseSourceType
   paymentId?: string          // ถ้า sourceType='freelancer_payment' — ref ไปยัง payments/{id}
+  jobId?: string              // โปรเจกต์/งานที่ผูกค่าใช้จ่ายนี้ (optional) → jobs/{id}
+  jobTitle?: string           // snapshot ชื่องาน ณ ตอนบันทึก (กัน join live)
   vendorId?: string           // ถ้าซื้อจาก vendor (manual)
   vendorSnapshot?: {
     code: string

@@ -7,13 +7,16 @@ import FormCheckbox from '@/components/ui/FormCheckbox'
 import VendorSelect from './VendorSelect'
 import { calcExpenseTotals } from '@/lib/accounting/expenses'
 import { getExpenseCategories } from '@/lib/accounting/expense-categories'
+import { getJobs } from '@/lib/firebase-utils'
 import { formatCurrency } from '@/lib/utils'
 import type {
-  Expense, ExpenseCategory, ExpenseStatus, Vendor,
+  Expense, ExpenseCategory, ExpenseStatus, Job, Vendor,
 } from '@/lib/types'
 
 export interface ExpenseFormValue {
   vendor: Vendor | null
+  jobId?: string
+  jobTitle?: string
   categoryId: string
   categoryName: string
   date: string
@@ -60,6 +63,8 @@ function todayYmd(): string {
 
 export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoading, lockedReason }: Props) {
   const [vendor, setVendor] = useState<Vendor | null>(null)
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [jobId, setJobId] = useState<string>(defaultValues?.jobId ?? '')
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [categoryId, setCategoryId] = useState<string>(defaultValues?.categoryId ?? '')
   const [date, setDate] = useState<string>(defaultValues?.date?.slice(0, 10) ?? todayYmd())
@@ -74,9 +79,10 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
   const [notes, setNotes] = useState(defaultValues?.notes ?? '')
   const [error, setError] = useState('')
 
-  // load categories
+  // load categories + jobs
   useEffect(() => {
     getExpenseCategories().then(setCategories)
+    getJobs().then(setJobs).catch(() => {})
   }, [])
 
   // load default vendor from snapshot (สำหรับ edit)
@@ -105,6 +111,11 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
     ...categories.map((c) => ({ value: c.id, label: c.name })),
   ], [categories])
 
+  const jobOptions = useMemo(() => [
+    { value: '', label: '— ไม่ผูกโปรเจกต์ (ค่าใช้จ่ายส่วนกลาง) —' },
+    ...jobs.map((j) => ({ value: j.id, label: j.title })),
+  ], [jobs])
+
   const handleCategoryChange = (id: string) => {
     setCategoryId(id)
     // auto-suggest WHT จาก category default (เฉพาะตอนเปลี่ยน category และยังไม่ได้ตั้ง)
@@ -125,6 +136,8 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
 
     await onSubmit({
       vendor,
+      jobId: jobId || undefined,
+      jobTitle: jobId ? (jobs.find((j) => j.id === jobId)?.title || undefined) : undefined,
       categoryId,
       categoryName: cat.name,
       date,
@@ -169,6 +182,17 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
               buttonClassName={inputCls}
               disabled={locked}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>โปรเจกต์ / งาน (ถ้ามี)</label>
+            <FormListbox
+              value={jobId}
+              onChange={setJobId}
+              options={jobOptions}
+              buttonClassName={inputCls}
+              disabled={locked}
+            />
+            <p className="text-xs text-gray-400 mt-1">ผูกค่าใช้จ่ายกับงาน เพื่อให้สรุปต้นทุนต่อโปรเจกต์ได้</p>
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>ผู้ขาย / ผู้รับเงิน {selectedCategory?.name === 'ค่าจ้างทำของ' ? '' : '(ถ้ามี)'}</label>

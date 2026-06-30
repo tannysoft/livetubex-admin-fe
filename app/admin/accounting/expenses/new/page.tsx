@@ -98,6 +98,8 @@ function ExpenseEditor() {
       const baseFields: Partial<Expense> = {
         sourceType: existing?.sourceType ?? 'manual',
         paymentId: existing?.paymentId,
+        jobId: v.jobId,
+        jobTitle: v.jobTitle,
         vendorId: v.vendor?.id,
         vendorSnapshot: v.vendor ? makeVendorSnapshot(v.vendor) : undefined,
         categoryId: v.categoryId,

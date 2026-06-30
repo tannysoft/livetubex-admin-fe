@@ -13,27 +13,34 @@ import {
   getExpenses, deleteExpense, expenseStatusColor, expenseStatusLabel,
 } from '@/lib/accounting/expenses'
 import { getExpenseCategories } from '@/lib/accounting/expense-categories'
+import { getJobs } from '@/lib/firebase-utils'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import type { Expense, ExpenseCategory } from '@/lib/types'
+import type { Expense, ExpenseCategory, Job } from '@/lib/types'
+
+// sentinel สำหรับ filter ค่าใช้จ่ายที่ไม่ผูกโปรเจกต์
+const NO_PROJECT = '__none__'
 
 function ExpensesPageInner() {
   const searchParams = useSearchParams()
   const paymentIdFilter = searchParams.get('paymentId')
   const [items, setItems] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
+  const [projectFilter, setProjectFilter] = useState<string>('')
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
   const [deleting, setDeleting] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [exp, cats] = await Promise.all([getExpenses(), getExpenseCategories()])
+      const [exp, cats, jbs] = await Promise.all([getExpenses(), getExpenseCategories(), getJobs()])
       setItems(exp)
       setCategories(cats)
+      setJobs(jbs)
     } finally { setLoading(false) }
   }
 
@@ -44,18 +51,32 @@ function ExpensesPageInner() {
     [items]
   )
 
+  // ดึงชื่อหมวดจาก relation (expense-categories) แบบ live — fallback ไป snapshot ถ้าหมวดถูกลบ
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.name])),
+    [categories]
+  )
+
+  // ดึงชื่อโปรเจกต์จาก relation (jobs) แบบ live — fallback ไป snapshot ถ้างานถูกลบ
+  const jobTitleById = useMemo(
+    () => new Map(jobs.map((j) => [j.id, j.title])),
+    [jobs]
+  )
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return items.filter((it) => {
       if (paymentIdFilter && it.paymentId !== paymentIdFilter) return false
       if (statusFilter && it.status !== statusFilter) return false
       if (categoryFilter && it.categoryId !== categoryFilter) return false
+      if (projectFilter === NO_PROJECT && it.jobId) return false
+      if (projectFilter && projectFilter !== NO_PROJECT && it.jobId !== projectFilter) return false
       if (!q) return true
       return it.code.toLowerCase().includes(q)
         || it.description.toLowerCase().includes(q)
         || (it.vendorSnapshot?.name ?? '').toLowerCase().includes(q)
     })
-  }, [items, search, statusFilter, categoryFilter, paymentIdFilter])
+  }, [items, search, statusFilter, categoryFilter, projectFilter, paymentIdFilter])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -77,6 +98,11 @@ function ExpensesPageInner() {
   const categoryOpts = [
     { value: '', label: 'ทุกหมวด' },
     ...categories.map((c) => ({ value: c.id, label: c.name })),
+  ]
+  const projectOpts = [
+    { value: '', label: 'ทุกโปรเจกต์' },
+    { value: NO_PROJECT, label: '— ไม่ผูกโปรเจกต์ —' },
+    ...jobs.map((j) => ({ value: j.id, label: j.title })),
   ]
 
   return (
@@ -123,6 +149,9 @@ function ExpensesPageInner() {
         <div className="w-48">
           <FormListbox value={categoryFilter} onChange={setCategoryFilter} options={categoryOpts} />
         </div>
+        <div className="w-52">
+          <FormListbox value={projectFilter} onChange={setProjectFilter} options={projectOpts} />
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -138,9 +167,9 @@ function ExpensesPageInner() {
           <div className="py-16 text-center">
             <BanknotesIcon className="w-10 h-10 text-gray-300 mx-auto" />
             <p className="text-gray-400 text-sm mt-3">
-              {search || statusFilter || categoryFilter ? 'ไม่พบรายการที่ตรงเงื่อนไข' : 'ยังไม่มีรายจ่าย'}
+              {search || statusFilter || categoryFilter || projectFilter ? 'ไม่พบรายการที่ตรงเงื่อนไข' : 'ยังไม่มีรายจ่าย'}
             </p>
-            {!search && !statusFilter && !categoryFilter && (
+            {!search && !statusFilter && !categoryFilter && !projectFilter && (
               <Link href="/admin/accounting/expenses/new" className="inline-block text-[#f73727] hover:underline text-sm mt-2">
                 บันทึกค่าใช้จ่ายรายการแรก
               </Link>
@@ -168,13 +197,20 @@ function ExpensesPageInner() {
                     <td className="px-5 py-3 font-mono text-gray-900">{e.code}</td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(e.date)}</td>
                     <td className="px-5 py-3">
-                      <div className="font-medium text-gray-900">{e.categoryName}</div>
+                      <div className="font-medium text-gray-900">{categoryNameById.get(e.categoryId) ?? e.categoryName}</div>
                       <div className="text-xs text-gray-500 truncate max-w-md">{e.description}</div>
-                      {e.sourceType === 'freelancer_payment' && (
-                        <span className="inline-block text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full mt-1">
-                          จาก Payment Freelancer
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1 mt-1">
+                        {e.jobId && (
+                          <span className="inline-block text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                            📁 {jobTitleById.get(e.jobId) ?? e.jobTitle ?? 'โปรเจกต์'}
+                          </span>
+                        )}
+                        {e.sourceType === 'freelancer_payment' && (
+                          <span className="inline-block text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full">
+                            จาก Payment Freelancer
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-gray-700">{e.vendorSnapshot?.name ?? '—'}</td>
                     <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(e.amount)}</td>
