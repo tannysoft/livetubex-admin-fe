@@ -195,7 +195,7 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel, isLoadi
             <p className="text-xs text-gray-400 mt-1">ผูกค่าใช้จ่ายกับงาน เพื่อให้สรุปต้นทุนต่อโปรเจกต์ได้</p>
           </div>
           <div className="sm:col-span-2">
-            <label className={labelCls}>ผู้ขาย / ผู้รับเงิน {selectedCategory?.name === 'ค่าจ้างทำของ' ? '' : '(ถ้ามี)'}</label>
+            <label className={labelCls}>ผู้ขาย / ผู้รับเงิน {selectedCategory?.isFixed ? '' : '(ถ้ามี)'}</label>
             <VendorSelect value={vendor?.id ?? null} onChange={setVendor} allowEmpty />
           </div>
           <div className="sm:col-span-2">

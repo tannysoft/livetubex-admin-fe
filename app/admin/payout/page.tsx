@@ -104,7 +104,7 @@ export default function PayoutPage() {
       const freelancerId = confirmGroup.freelancer.id
       const paymentIds = confirmGroup.payments.map((p) => p.id)
       const paidAtIso = new Date().toISOString()
-      // auto-create expense entries (ค่าจ้างทำของ) — fire-and-forget
+      // auto-create expense entries (ค่าจ้างทีมงาน) — fire-and-forget
       Promise.all(
         confirmGroup.payments.map((p) =>
           syncExpenseFromPayment({ ...p, status: 'paid', paidAt: paidAtIso })

@@ -174,7 +174,7 @@ export default function PaymentsPage() {
           await updatePayment(selectedPayment.id, { amount: finalAmount })
         }
         await markPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, finalAmount, adminNotes)
-        // auto-create expense (ค่าจ้างทำของ) — fire-and-forget, ไม่ block flow
+        // auto-create expense (ค่าจ้างทีมงาน) — fire-and-forget, ไม่ block flow
         syncExpenseFromPayment({
           ...selectedPayment,
           amount: finalAmount,

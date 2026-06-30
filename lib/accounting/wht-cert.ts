@@ -43,9 +43,9 @@ export function deriveIncomeTypeCode(categoryName: string): IncomeTypeCode {
   if (n.includes('ลิขสิทธิ์') || n.includes('ดวิลล์') || n.includes('goodwill')) return '40(3)'
   if (n.includes('ดอกเบี้ย') || n.includes('ปันผล')) return '40(4)'
   if (n.includes('เงินเดือน')) return '40(1)'
-  // ค่าจ้างทำของ (freelancer ปกติ) — ใช้ 40(2) ตามที่กรมสรรพากรแนะนำสำหรับ freelance service
+  // ค่าจ้างทีมงาน/ทำของ (freelancer ปกติ) — ใช้ 40(2) ตามที่กรมสรรพากรแนะนำสำหรับ freelance service
   // (ทำของจริงๆ ที่ใช้ 40(8) ต้องเป็นการรับจ้างทำสินค้าด้วยวัสดุของผู้รับจ้าง)
-  if (n.includes('ค่าจ้างทำของ')) return '40(2)'
+  if (n.includes('ค่าจ้างทำของ') || n.includes('ทีมงาน')) return '40(2)'
   if (n.includes('โฆษณา') || n.includes('marketing')) return '40(2)'
   // default
   return '40(2)'

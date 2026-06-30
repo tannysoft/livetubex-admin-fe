@@ -6,12 +6,15 @@ import type { ExpenseCategory } from '../types'
 
 const COL = 'expenseCategories'
 
+// ชื่อหมวดสำหรับค่าจ้าง freelancer (ระบุหมวดจริงด้วย isFixed ไม่ใช่ชื่อ)
+export const FREELANCER_PAYMENT_CATEGORY = 'ค่าจ้างทีมงาน'
+
 /**
  * default categories ที่จะ seed ครั้งแรก
- * "ค่าจ้างทำของ" คือ fixed — เกี่ยวกับ freelancer payments
+ * "ค่าจ้างทีมงาน" คือ fixed — เกี่ยวกับ freelancer payments
  */
 export const DEFAULT_CATEGORIES: Omit<ExpenseCategory, 'id' | 'createdAt'>[] = [
-  { name: 'ค่าจ้างทำของ',     defaultWhtRate: 3, isFixed: true, order: 10 },
+  { name: FREELANCER_PAYMENT_CATEGORY, defaultWhtRate: 3, isFixed: true, order: 10 },
   { name: 'ค่าบริการ',         defaultWhtRate: 3, order: 20 },
   { name: 'ค่าเช่า',           defaultWhtRate: 5, order: 30 },
   { name: 'ค่าน้ำ-ไฟ-อินเทอร์เน็ต', order: 40 },
@@ -68,22 +71,30 @@ export async function deleteExpenseCategory(id: string): Promise<void> {
 }
 
 /**
- * Get or create "ค่าจ้างทำของ" — ใช้สำหรับ link freelancer payments
+ * Get or create หมวดค่าจ้าง freelancer ("ค่าจ้างทีมงาน")
+ *   - ระบุหมวดด้วย isFixed (ไม่ผูกชื่อ) → rename ได้โดยไม่หลุด
+ *   - ถ้าหมวด fixed เดิมยังชื่อเก่า ("ค่าจ้างทำของ") จะ rename ให้เป็น "ค่าจ้างทีมงาน"
  */
 export async function getOrCreateFreelancerPaymentCategory(): Promise<ExpenseCategory> {
   const all = await getExpenseCategories()
-  const found = all.find((c) => c.name === 'ค่าจ้างทำของ' && c.isFixed)
-  if (found) return found
+  const found = all.find((c) => c.isFixed)
+  if (found) {
+    if (found.name !== FREELANCER_PAYMENT_CATEGORY) {
+      await updateExpenseCategory(found.id, { name: FREELANCER_PAYMENT_CATEGORY })
+      return { ...found, name: FREELANCER_PAYMENT_CATEGORY }
+    }
+    return found
+  }
 
   // สร้างใหม่ถ้าหายไป (เผื่อ admin ลบโดยไม่ตั้งใจ)
   const now = new Date().toISOString()
   const docRef = doc(collection(db, COL))
   await setDoc(docRef, {
-    name: 'ค่าจ้างทำของ',
+    name: FREELANCER_PAYMENT_CATEGORY,
     defaultWhtRate: 3,
     isFixed: true,
     order: 10,
     createdAt: now,
   })
-  return { id: docRef.id, name: 'ค่าจ้างทำของ', defaultWhtRate: 3, isFixed: true, order: 10, createdAt: now }
+  return { id: docRef.id, name: FREELANCER_PAYMENT_CATEGORY, defaultWhtRate: 3, isFixed: true, order: 10, createdAt: now }
 }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
   PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, BanknotesIcon, XMarkIcon,
+  ArrowPathIcon, CheckCircleIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
@@ -13,6 +14,7 @@ import {
   getExpenses, deleteExpense, expenseStatusColor, expenseStatusLabel,
 } from '@/lib/accounting/expenses'
 import { getExpenseCategories } from '@/lib/accounting/expense-categories'
+import { syncAllPaidPaymentsToExpenses } from '@/lib/accounting/payment-expense-bridge'
 import { getJobs } from '@/lib/firebase-utils'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Expense, ExpenseCategory, Job } from '@/lib/types'
@@ -33,6 +35,11 @@ function ExpensesPageInner() {
   const [projectFilter, setProjectFilter] = useState<string>('')
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // migration: sync ค่าจ้าง freelancer ที่จ่ายแล้วเข้า expenses
+  const [syncOpen, setSyncOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ total: number; ok: number; failed: number } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -88,6 +95,24 @@ function ExpensesPageInner() {
     } finally { setDeleting(false) }
   }
 
+  const handleSync = async () => {
+    setSyncOpen(false)
+    setSyncing(true)
+    setSyncResult(null)
+    setSyncProgress({ done: 0, total: 0 })
+    try {
+      const result = await syncAllPaidPaymentsToExpenses((done, total) => setSyncProgress({ done, total }))
+      setSyncResult(result)
+      await load()
+    } catch (err) {
+      console.error('sync all failed:', err)
+      setSyncResult({ total: 0, ok: 0, failed: -1 })
+    } finally {
+      setSyncing(false)
+      setSyncProgress(null)
+    }
+  }
+
   const statusOpts = [
     { value: '', label: 'ทุกสถานะ' },
     { value: 'draft', label: 'แบบร่าง' },
@@ -123,14 +148,45 @@ function ExpensesPageInner() {
             </Link>
           </div>
         )}
-        <Link
-          href="/admin/accounting/expenses/new"
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
-        >
-          <PlusIcon className="w-4 h-4" />
-          บันทึกค่าใช้จ่าย
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSyncOpen(true)}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60"
+            title="สร้าง/อัปเดตรายจ่ายค่าจ้างจาก payment freelancer ที่จ่ายแล้วทั้งหมด"
+          >
+            <ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing
+              ? `กำลังซิงค์${syncProgress ? ` ${syncProgress.done}/${syncProgress.total}` : ''}…`
+              : 'ซิงค์ค่าจ้าง freelancer'}
+          </button>
+          <Link
+            href="/admin/accounting/expenses/new"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+          >
+            <PlusIcon className="w-4 h-4" />
+            บันทึกค่าใช้จ่าย
+          </Link>
+        </div>
       </div>
+
+      {syncResult && (
+        <div className={`flex items-center justify-between gap-3 px-5 py-3.5 rounded-2xl text-sm ${
+          syncResult.failed > 0 || syncResult.failed < 0
+            ? 'bg-amber-50 border border-amber-200 text-amber-800'
+            : 'bg-green-50 border border-green-200 text-green-800'
+        }`}>
+          <span className="flex items-center gap-2">
+            <CheckCircleIcon className="w-5 h-5 shrink-0" />
+            {syncResult.failed < 0
+              ? 'ซิงค์ไม่สำเร็จ กรุณาลองใหม่'
+              : `ซิงค์เสร็จ: ${syncResult.ok}/${syncResult.total} รายการ${syncResult.failed > 0 ? ` (ล้มเหลว ${syncResult.failed})` : ''}`}
+          </span>
+          <button onClick={() => setSyncResult(null)} className="p-1 hover:bg-black/5 rounded-md">
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-[240px]">
@@ -257,6 +313,15 @@ function ExpensesPageInner() {
         onConfirm={handleDelete}
         onClose={() => setDeleteTarget(null)}
         danger
+      />
+
+      <ConfirmDialog
+        isOpen={syncOpen}
+        title="ซิงค์ค่าจ้าง freelancer เข้ารายจ่าย"
+        message="สร้าง/อัปเดตรายจ่ายค่าจ้างทีมงานจาก payment ทุกรายการที่จ่ายเงินแล้ว และผูกโปรเจกต์ให้ถูกต้อง — ทำซ้ำได้ปลอดภัย ไม่สร้างรายการซ้ำ"
+        confirmLabel="เริ่มซิงค์"
+        onConfirm={handleSync}
+        onClose={() => setSyncOpen(false)}
       />
     </div>
   )

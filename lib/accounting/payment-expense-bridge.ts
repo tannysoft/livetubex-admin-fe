@@ -1,6 +1,6 @@
 import { calcExpenseTotals, createExpense, getExpenseByPaymentId, updateExpense } from './expenses'
 import { getOrCreateFreelancerPaymentCategory } from './expense-categories'
-import { getFreelancer, getJob } from '../firebase-utils'
+import { getFreelancer, getJob, getPayments } from '../firebase-utils'
 import { formatDate } from '../utils'
 import { round2 } from './calc'
 import type { Payment } from '../types'
@@ -77,4 +77,34 @@ export async function syncExpenseFromPayment(payment: Payment): Promise<void> {
   } else {
     await createExpense({ ...payload, createdBy: 'system' })
   }
+}
+
+/**
+ * Migration / backfill: sync ทุก payment ที่ status='paid' เข้า expenses
+ *   - สร้าง expense ที่ยังไม่มี + อัปเดตของเดิม (เติม jobId/jobTitle ให้รายการเก่า)
+ *   - idempotent: รันซ้ำได้ ปลอดภัย (เช็ค paymentId ก่อนเสมอ)
+ *   - sequential เพื่อกัน doc-numbering transaction ชน (เลขรัน expense เดือนเดียวกัน)
+ *
+ * คืนค่าสรุปผล — caller เอาไปแสดงได้
+ */
+export async function syncAllPaidPaymentsToExpenses(
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ total: number; ok: number; failed: number; failedIds: string[] }> {
+  const payments = await getPayments()
+  const paid = payments.filter((p) => p.status === 'paid')
+  let ok = 0
+  const failedIds: string[] = []
+
+  for (let i = 0; i < paid.length; i++) {
+    try {
+      await syncExpenseFromPayment(paid[i])
+      ok += 1
+    } catch (err) {
+      console.error('sync failed for payment', paid[i].id, err)
+      if (paid[i].id) failedIds.push(paid[i].id)
+    }
+    onProgress?.(i + 1, paid.length)
+  }
+
+  return { total: paid.length, ok, failed: failedIds.length, failedIds }
 }
