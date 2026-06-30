@@ -30,11 +30,25 @@ export async function downloadPdf(element: PdfElement, filename: string): Promis
 }
 
 /**
- * Open PDF in new tab (for preview / printing)
+ * สร้าง object URL ของ PDF (caller จัดการเปิด/revoke เอง)
  */
-export async function openPdfInNewTab(element: PdfElement): Promise<void> {
+export async function createPdfObjectUrl(element: PdfElement): Promise<string> {
   const blob = await generatePdfBlob(element)
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
+  return URL.createObjectURL(blob)
+}
+
+/**
+ * Open PDF in new tab (for preview / printing)
+ *
+ * ⚠️ ถ้าต้องเปิดหลัง async ให้ส่ง `targetWindow` ที่ window.open() ไว้ตอน click
+ * (อยู่ใน user gesture) เข้ามา — กัน popup blocker
+ */
+export async function openPdfInNewTab(element: PdfElement, targetWindow?: Window | null): Promise<void> {
+  const url = await createPdfObjectUrl(element)
+  if (targetWindow) {
+    targetWindow.location.href = url
+  } else {
+    window.open(url, '_blank')
+  }
   setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
