@@ -53,10 +53,14 @@ function ExpensesPageInner() {
 
   useEffect(() => { load() }, [])
 
-  const totalPaid = useMemo(() =>
-    items.filter((e) => e.status !== 'cancelled').reduce((s, e) => s + (e.paidAmount ?? 0), 0),
-    [items]
-  )
+  // ยอดรวม: ก่อนหัก ณ ที่จ่าย (totalAmount) และ จ่ายจริงหลังหัก (paidAmount)
+  const totals = useMemo(() => {
+    const active = items.filter((e) => e.status !== 'cancelled')
+    return {
+      beforeWht: active.reduce((s, e) => s + (e.totalAmount ?? 0), 0),
+      paid: active.reduce((s, e) => s + (e.paidAmount ?? 0), 0),
+    }
+  }, [items])
 
   // ดึงชื่อหมวดจาก relation (expense-categories) แบบ live — fallback ไป snapshot ถ้าหมวดถูกลบ
   const categoryNameById = useMemo(
@@ -136,8 +140,10 @@ function ExpensesPageInner() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">รายจ่าย</h1>
           <p className="text-gray-500 mt-1">
-            {items.length} รายการ — ยอดจ่ายรวม{' '}
-            <span className="font-semibold text-[#f73727]">{formatCurrency(totalPaid)}</span>
+            {items.length} รายการ — ยอดรวม (ไม่หัก ณ ที่จ่าย){' '}
+            <span className="font-semibold text-gray-900">{formatCurrency(totals.beforeWht)}</span>
+            {' · '}จ่ายจริง (หัก ณ ที่จ่ายแล้ว){' '}
+            <span className="font-semibold text-[#f73727]">{formatCurrency(totals.paid)}</span>
           </p>
         </div>
         {paymentIdFilter && (
