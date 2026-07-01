@@ -1,4 +1,5 @@
-import { Document, Page, View, Text, Image } from '@react-pdf/renderer'
+import { Document, Page, View, Image } from '@react-pdf/renderer'
+import { Text } from './PdfText'
 import { styles, BRAND_RED, MUTED } from './styles'
 import { bahtText, round2 } from '../calc'
 import { INCOME_TYPES, deriveIncomeTypeCode } from '../wht-cert'

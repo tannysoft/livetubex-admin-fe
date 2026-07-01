@@ -1,4 +1,5 @@
-import { Document, Page, View, Text, Image } from '@react-pdf/renderer'
+import { Document, Page, View, Image } from '@react-pdf/renderer'
+import { Text } from './PdfText'
 import LogoSvg from './LogoSvg'
 import { styles } from './styles'
 import { bahtText } from '../calc'
