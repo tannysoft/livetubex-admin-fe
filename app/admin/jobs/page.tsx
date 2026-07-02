@@ -6,13 +6,9 @@ import {
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  MapPinIcon,
-  CalendarIcon,
   MagnifyingGlassIcon,
   EyeIcon,
   EyeSlashIcon,
-  BuildingOffice2Icon,
-  BanknotesIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
@@ -22,8 +18,8 @@ import {
   deleteJob,
 } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
-import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
-import { SkeletonCard } from '@/components/ui/Skeleton'
+import { formatCurrency, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
+import { SkeletonTableRow } from '@/components/ui/Skeleton'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -100,92 +96,117 @@ export default function JobsPage() {
         />
       </div>
 
-      {/* Job cards */}
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-lg font-medium">ไม่พบงาน</p>
-          <p className="text-sm mt-1">ลองเปลี่ยนคำค้นหา หรือเพิ่มงานใหม่</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {filtered.map((job) => {
-            const showing = job.showInLiff !== false
-            const dateLabel = `${formatDate(job.date)}${job.endDate && job.endDate !== job.date ? ` – ${formatDate(job.endDate)}` : ''}`
-            return (
-              <div
-                key={job.id}
-                className="group flex bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all overflow-hidden"
-              >
-                {/* แถบสีสถานะด้านซ้าย */}
-                <div className={`w-1.5 shrink-0 ${jobStatusBar(job.status)}`} />
+      {/* Job table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50/70 text-left text-xs font-medium text-gray-400">
+                <th className="px-5 py-3 whitespace-nowrap w-px">วันงาน</th>
+                <th className="px-5 py-3">งาน</th>
+                <th className="px-5 py-3 hidden md:table-cell">สถานที่</th>
+                <th className="px-2 py-3 whitespace-nowrap w-px">สถานะ</th>
+                <th className="px-5 py-3 text-right whitespace-nowrap">ราคาขาย</th>
+                <th className="px-5 py-3 text-right w-32"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6} />)
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-16 text-gray-400">
+                    <p className="text-base font-medium">ไม่พบงาน</p>
+                    <p className="text-sm mt-1">ลองเปลี่ยนคำค้นหา หรือเพิ่มงานใหม่</p>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((job) => {
+                  const showing = job.showInLiff !== false
+                  const d = new Date(job.date + 'T00:00:00')
+                  const multiDay = !!job.endDate && job.endDate !== job.date
+                  const dEnd = new Date((multiDay ? job.endDate! : job.date) + 'T00:00:00')
+                  return (
+                    <tr
+                      key={job.id}
+                      className={`group hover:bg-gray-50/60 transition-colors ${
+                        job.status === 'cancelled' ? 'opacity-50' : ''
+                      }`}
+                    >
+                      {/* วันงาน */}
+                      <td className="px-5 py-4 whitespace-nowrap align-top">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-700">
+                          {jobDateLabel(d, dEnd, multiDay)}
+                        </span>
+                      </td>
 
-                <div className="flex-1 min-w-0 p-5">
-                  {/* header */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      {/* งาน */}
+                      <td className="px-5 py-4 align-top min-w-[200px] max-w-[320px]">
                         <Link
                           href={`/admin/jobs/new?id=${job.id}`}
-                          className="font-semibold text-gray-900 leading-snug hover:text-[#f73727] transition-colors"
+                          className="font-semibold text-gray-900 hover:text-[#f73727] transition-colors line-clamp-2 leading-snug"
                         >
                           {job.title}
                         </Link>
+                        {/* ลูกค้าใต้ชื่องาน (จอเล็กพ่วงสถานที่ด้วย) */}
+                        <p className="text-xs text-gray-500 mt-1 truncate">
+                          {job.clientName || '—'}
+                          <span className="md:hidden">{job.location ? ` · ${job.location}` : ''}</span>
+                        </p>
+                      </td>
+
+                      {/* สถานที่ */}
+                      <td className="px-5 py-4 align-top hidden md:table-cell max-w-[180px]">
+                        <span className="text-gray-600 truncate block">{job.location || '—'}</span>
+                      </td>
+
+                      {/* สถานะ */}
+                      <td className="px-2 py-4 align-top whitespace-nowrap">
                         <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
-                      </div>
-                      {job.description && (
-                        <p className="text-sm text-gray-500 mt-1 line-clamp-1">{job.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => handleToggleShowInLiff(job)}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          showing ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-300 hover:bg-gray-100'
-                        }`}
-                        title={showing ? 'แสดงใน LIFF · กดเพื่อซ่อน' : 'ซ่อนจาก LIFF · กดเพื่อแสดง'}
-                      >
-                        {showing ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
-                      </button>
-                      <Link
-                        href={`/admin/jobs/new?id=${job.id}`}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      >
-                        <PencilIcon className="w-4 h-4" />
-                      </Link>
-                      <button
-                        onClick={() => setDeleteJobId(job.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                      </td>
 
-                  {/* meta grid */}
-                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
-                    <MetaItem icon={CalendarIcon} label="วันงาน" value={dateLabel} />
-                    <MetaItem icon={MapPinIcon} label="สถานที่" value={job.location || '—'} />
-                    <MetaItem icon={BuildingOffice2Icon} label="ลูกค้า" value={job.clientName || '—'} />
-                    <MetaItem icon={BanknotesIcon} label="ราคาขาย" value={formatCurrency(job.budget)} valueClass="text-[#f73727] font-bold" />
-                  </div>
+                      {/* ราคาขาย */}
+                      <td className="px-5 py-4 align-top text-right whitespace-nowrap">
+                        <div className="font-bold text-[#f73727]">{formatCurrency(job.budget)}</div>
+                        {job.paymentCycle && (
+                          <div className="text-[11px] text-blue-600 mt-0.5">{paymentCycleLabel(job.paymentCycle)}</div>
+                        )}
+                      </td>
 
-                  {job.paymentCycle && (
-                    <div className="mt-3 pt-3 border-t border-gray-50">
-                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-xs font-medium">
-                        รอบจ่าย: {paymentCycleLabel(job.paymentCycle)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+                      {/* actions */}
+                      <td className="px-5 py-4 align-top">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleToggleShowInLiff(job)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              showing ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-300 hover:bg-gray-100'
+                            }`}
+                            title={showing ? 'แสดงใน LIFF · กดเพื่อซ่อน' : 'ซ่อนจาก LIFF · กดเพื่อแสดง'}
+                          >
+                            {showing ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
+                          </button>
+                          <Link
+                            href={`/admin/jobs/new?id=${job.id}`}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </Link>
+                          <button
+                            onClick={() => setDeleteJobId(job.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {/* Delete Dialog */}
       <ConfirmDialog
@@ -202,30 +223,14 @@ export default function JobsPage() {
   )
 }
 
-// สีแถบสถานะด้านซ้ายของ card
-function jobStatusBar(status: string): string {
-  switch (status) {
-    case 'published': return 'bg-blue-400'
-    case 'in_progress': return 'bg-amber-400'
-    case 'completed': return 'bg-green-400'
-    case 'cancelled': return 'bg-red-300'
-    default: return 'bg-gray-200' // draft
-  }
-}
-
-function MetaItem({ icon: Icon, label, value, valueClass = 'text-gray-700' }: {
-  icon: typeof CalendarIcon
-  label: string
-  value: string
-  valueClass?: string
-}) {
-  return (
-    <div className="flex items-start gap-2 min-w-0">
-      <Icon className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
-      <div className="min-w-0">
-        <div className="text-[11px] text-gray-400 leading-tight">{label}</div>
-        <div className={`text-sm font-medium truncate ${valueClass}`}>{value}</div>
-      </div>
-    </div>
-  )
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+// วันที่แบบกระชับบรรทัดเดียว: "3 ก.ค. 68" / "3–5 ก.ค. 68" / "28 ก.ค. – 2 ส.ค. 68"
+function jobDateLabel(d: Date, dEnd: Date, multiDay: boolean): string {
+  const yy = (dd: Date) => String((dd.getFullYear() + 543) % 100)
+  if (!multiDay) return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)}`
+  if (d.getFullYear() !== dEnd.getFullYear())
+    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)} – ${dEnd.getDate()} ${THAI_MONTHS[dEnd.getMonth()]} ${yy(dEnd)}`
+  if (d.getMonth() !== dEnd.getMonth())
+    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} – ${dEnd.getDate()} ${THAI_MONTHS[dEnd.getMonth()]} ${yy(d)}`
+  return `${d.getDate()}–${dEnd.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)}`
 }
