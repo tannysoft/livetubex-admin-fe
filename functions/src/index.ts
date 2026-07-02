@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin'
-import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { setGlobalOptions } from 'firebase-functions/v2'
 import * as https from 'https'
@@ -943,3 +943,157 @@ export const migrateProfilePictures = onCall(
     return result
   }
 )
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Admin Users & Roles — จัดการผู้ใช้แอดมิน + role (owner เท่านั้น)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BOOTSTRAP_OWNER_EMAIL = 't@livetubex.com'
+type AdminRole = 'owner' | 'admin' | 'accountant'
+const VALID_ROLES: AdminRole[] = ['owner', 'admin', 'accountant']
+
+const ADMIN_CORS: (string | RegExp)[] = [
+  'https://livetubex-admin.web.app',
+  'https://livetubex-admin.firebaseapp.com',
+  'https://console.livetubex.com',
+  /localhost/,
+]
+
+/** ตรวจว่า caller เป็น owner (bootstrap email หรือ role=owner) — ไม่ใช่ → throw */
+async function requireOwner(request: CallableRequest): Promise<void> {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+  const token = request.auth.token as { firebase?: { sign_in_provider?: string }; email?: string; role?: string }
+  if (token.firebase?.sign_in_provider !== 'password') {
+    throw new HttpsError('permission-denied', 'Admin only')
+  }
+  const email = token.email?.toLowerCase()
+  if (email === BOOTSTRAP_OWNER_EMAIL) return
+  if (token.role === 'owner') return
+  const doc = await admin.firestore().collection('adminUsers').doc(request.auth.uid).get()
+  if (doc.exists && (doc.data()?.role as string) === 'owner') return
+  throw new HttpsError('permission-denied', 'เฉพาะ Owner เท่านั้นที่จัดการผู้ใช้ได้')
+}
+
+function assertRole(role: unknown): AdminRole {
+  if (typeof role !== 'string' || !VALID_ROLES.includes(role as AdminRole)) {
+    throw new HttpsError('invalid-argument', 'role ไม่ถูกต้อง')
+  }
+  return role as AdminRole
+}
+
+export const adminListUsers = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const db = admin.firestore()
+  const [list, docsSnap] = await Promise.all([
+    admin.auth().listUsers(1000),
+    db.collection('adminUsers').get(),
+  ])
+  const roleDocs = new Map<string, FirebaseFirestore.DocumentData>()
+  docsSnap.forEach((d) => roleDocs.set(d.id, d.data()))
+
+  const users = list.users
+    .filter((u) => u.providerData.some((p) => p.providerId === 'password'))
+    .map((u) => {
+      const doc = roleDocs.get(u.uid)
+      const email = (u.email ?? '').toLowerCase()
+      const role: AdminRole = (doc?.role as AdminRole) ?? (email === BOOTSTRAP_OWNER_EMAIL ? 'owner' : 'admin')
+      return {
+        uid: u.uid,
+        email: u.email ?? '',
+        name: (doc?.name as string) ?? u.displayName ?? '',
+        role,
+        disabled: u.disabled,
+        createdAt: (doc?.createdAt as string)
+          ?? (u.metadata.creationTime ? new Date(u.metadata.creationTime).toISOString() : ''),
+      }
+    })
+    .sort((a, b) => a.email.localeCompare(b.email))
+
+  return { users }
+})
+
+export const adminCreateUser = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const { email, password, name, role } = request.data ?? {}
+  if (typeof email !== 'string' || !email.includes('@')) throw new HttpsError('invalid-argument', 'อีเมลไม่ถูกต้อง')
+  if (typeof password !== 'string' || password.length < 6) throw new HttpsError('invalid-argument', 'รหัสผ่านอย่างน้อย 6 ตัว')
+  const validRole = assertRole(role)
+
+  const userRecord = await admin.auth().createUser({
+    email: email.trim(),
+    password,
+    displayName: typeof name === 'string' ? name.trim() : undefined,
+  }).catch((e) => { throw new HttpsError('already-exists', (e as Error)?.message ?? 'สร้างผู้ใช้ไม่สำเร็จ') })
+
+  await admin.auth().setCustomUserClaims(userRecord.uid, { role: validRole })
+  const now = new Date().toISOString()
+  await admin.firestore().collection('adminUsers').doc(userRecord.uid).set({
+    email: email.trim(),
+    name: typeof name === 'string' ? name.trim() : '',
+    role: validRole,
+    disabled: false,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: request.auth?.token?.email ?? request.auth?.uid ?? '',
+  })
+  return { uid: userRecord.uid }
+})
+
+export const adminUpdateUserRole = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const { uid, role } = request.data ?? {}
+  if (typeof uid !== 'string') throw new HttpsError('invalid-argument', 'uid ไม่ถูกต้อง')
+  const validRole = assertRole(role)
+
+  const target = await admin.auth().getUser(uid).catch(() => null)
+  if (!target) throw new HttpsError('not-found', 'ไม่พบผู้ใช้')
+  if ((target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL && validRole !== 'owner') {
+    throw new HttpsError('failed-precondition', 'เปลี่ยน role ของ owner ตั้งต้นไม่ได้')
+  }
+
+  await admin.auth().setCustomUserClaims(uid, { role: validRole })
+  await admin.firestore().collection('adminUsers').doc(uid).set({
+    email: target.email ?? '',
+    name: target.displayName ?? '',
+    role: validRole,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true })
+  return { ok: true }
+})
+
+export const adminSetUserDisabled = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const { uid, disabled } = request.data ?? {}
+  if (typeof uid !== 'string' || typeof disabled !== 'boolean') throw new HttpsError('invalid-argument', 'ข้อมูลไม่ถูกต้อง')
+  if (uid === request.auth?.uid) throw new HttpsError('failed-precondition', 'ปิดใช้งานบัญชีตัวเองไม่ได้')
+  const target = await admin.auth().getUser(uid).catch(() => null)
+  if (target && (target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL) {
+    throw new HttpsError('failed-precondition', 'ปิดใช้งาน owner ตั้งต้นไม่ได้')
+  }
+  await admin.auth().updateUser(uid, { disabled })
+  await admin.firestore().collection('adminUsers').doc(uid).set({ disabled, updatedAt: new Date().toISOString() }, { merge: true })
+  return { ok: true }
+})
+
+export const adminDeleteUser = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const { uid } = request.data ?? {}
+  if (typeof uid !== 'string') throw new HttpsError('invalid-argument', 'uid ไม่ถูกต้อง')
+  if (uid === request.auth?.uid) throw new HttpsError('failed-precondition', 'ลบบัญชีตัวเองไม่ได้')
+  const target = await admin.auth().getUser(uid).catch(() => null)
+  if (target && (target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL) {
+    throw new HttpsError('failed-precondition', 'ลบ owner ตั้งต้นไม่ได้')
+  }
+  await admin.auth().deleteUser(uid)
+  await admin.firestore().collection('adminUsers').doc(uid).delete().catch(() => {})
+  return { ok: true }
+})
+
+export const adminResetUserPassword = onCall({ cors: ADMIN_CORS }, async (request) => {
+  await requireOwner(request)
+  const { uid, password } = request.data ?? {}
+  if (typeof uid !== 'string') throw new HttpsError('invalid-argument', 'uid ไม่ถูกต้อง')
+  if (typeof password !== 'string' || password.length < 6) throw new HttpsError('invalid-argument', 'รหัสผ่านอย่างน้อย 6 ตัว')
+  await admin.auth().updateUser(uid, { password })
+  return { ok: true }
+})

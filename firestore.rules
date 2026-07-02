@@ -159,5 +159,12 @@ service cloud.firestore {
     match /expenses/{expenseId} {
       allow read, write: if isAdmin();
     }
+
+    // ผู้ใช้แอดมิน + role — admin อ่านได้ (ใช้ resolve role ตัวเอง + แสดงรายการ)
+    // เขียนผ่าน Cloud Functions (admin SDK) เท่านั้น — client เขียนไม่ได้
+    match /adminUsers/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

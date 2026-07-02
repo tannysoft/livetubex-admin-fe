@@ -28,11 +28,13 @@ import {
   CalculatorIcon,
   ScaleIcon,
   RectangleStackIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useState } from 'react'
 import { adminLogout } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
+import { sectionForPath, canAccessSection } from '@/lib/roles'
 
 type NavItemDef = {
   href: string
@@ -101,9 +103,10 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: 'อื่นๆ',
+    title: 'ระบบ',
     items: [
       { href: '/admin/settings', label: 'ตั้งค่าระบบ', icon: Cog6ToothIcon },
+      { href: '/admin/users', label: 'จัดการผู้ใช้', icon: ShieldCheckIcon },
     ],
   },
 ]
@@ -130,12 +133,20 @@ function NavItem({ href, label, icon: Icon, exact }: NavItemDef) {
 export default function AdminSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, role } = useAuth()
 
   const handleLogout = async () => {
     await adminLogout()
     router.replace('/login')
   }
+
+  // กรองเมนูตามสิทธิ์ของ role — ซ่อนกลุ่มที่ไม่มีรายการเข้าถึงได้
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => role != null && canAccessSection(role, sectionForPath(item.href))),
+    }))
+    .filter((group) => group.items.length > 0)
 
   return (
     <>
@@ -168,7 +179,7 @@ export default function AdminSidebar() {
 
         {/* Nav */}
         <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
-          {navGroups.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.title} className="space-y-1">
               <p className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">{group.title}</p>
               {group.items.map((item) => (

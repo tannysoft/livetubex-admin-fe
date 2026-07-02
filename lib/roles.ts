@@ -1,0 +1,59 @@
+import type { AdminRole } from './types'
+
+/**
+ * อีเมล owner ตั้งต้น (bootstrap) — ถือเป็น owner เสมอ แม้ยังไม่มี doc ใน adminUsers
+ * ใช้แก้ปัญหา "ไก่กับไข่" ตอนยังไม่มีใครเป็น owner
+ */
+export const BOOTSTRAP_OWNER_EMAIL = 't@livetubex.com'
+
+export const ADMIN_ROLES: AdminRole[] = ['owner', 'admin', 'accountant']
+
+export const ROLE_LABELS: Record<AdminRole, string> = {
+  owner: 'เจ้าของระบบ',
+  admin: 'ผู้ดูแล',
+  accountant: 'บัญชี',
+}
+
+export const ROLE_DESCRIPTIONS: Record<AdminRole, string> = {
+  owner: 'เข้าถึงทุกส่วน + จัดการผู้ใช้',
+  admin: 'จัดการงาน, freelancer, การเบิกจ่าย',
+  accountant: 'เข้าถึงเฉพาะโมดูลบัญชี',
+}
+
+export const ROLE_BADGE_COLOR: Record<AdminRole, string> = {
+  owner: 'bg-purple-100 text-purple-700',
+  admin: 'bg-blue-100 text-blue-700',
+  accountant: 'bg-emerald-100 text-emerald-700',
+}
+
+// ── Sections & access ─────────────────────────────────────────────────────────
+export type AdminSection = 'dashboard' | 'operations' | 'accounting' | 'users'
+
+const ROLE_SECTIONS: Record<AdminRole, AdminSection[]> = {
+  owner: ['dashboard', 'operations', 'accounting', 'users'],
+  admin: ['dashboard', 'operations'],
+  accountant: ['dashboard', 'accounting'],
+}
+
+/** map path → section (ใช้ทั้ง sidebar filter และ route guard เพื่อให้เป็นแหล่งเดียว) */
+export function sectionForPath(pathname: string): AdminSection {
+  if (pathname === '/admin' || pathname === '/admin/') return 'dashboard'
+  if (pathname.startsWith('/admin/users')) return 'users'
+  if (pathname.startsWith('/admin/accounting')) return 'accounting'
+  return 'operations'
+}
+
+export function canAccessSection(role: AdminRole, section: AdminSection): boolean {
+  return ROLE_SECTIONS[role].includes(section)
+}
+
+export function canAccessPath(role: AdminRole, pathname: string): boolean {
+  return canAccessSection(role, sectionForPath(pathname))
+}
+
+/** หน้าแรกที่ role นี้เข้าได้ (ใช้ตอน redirect เมื่อเข้าหน้าที่ไม่มีสิทธิ์) */
+export function defaultLandingForRole(role: AdminRole): string {
+  if (canAccessSection(role, 'dashboard')) return '/admin'
+  if (canAccessSection(role, 'accounting')) return '/admin/accounting/customers'
+  return '/admin'
+}

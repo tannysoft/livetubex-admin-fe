@@ -4,6 +4,20 @@ export interface LiffUserProfile {
   pictureUrl?: string
 }
 
+// ── Admin users & roles ──────────────────────────────────────────────────────
+export type AdminRole = 'owner' | 'admin' | 'accountant'
+
+export interface AdminUser {
+  uid: string
+  email: string
+  name?: string
+  role: AdminRole
+  disabled: boolean
+  createdAt?: string
+  updatedAt?: string
+  createdBy?: string
+}
+
 export type JobStatus = 'draft' | 'published' | 'in_progress' | 'completed' | 'cancelled'
 
 export type PaymentStatus = 'pending' | 'approved' | 'paid' | 'rejected'
