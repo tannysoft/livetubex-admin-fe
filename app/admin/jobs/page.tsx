@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   PlusIcon,
   PencilIcon,
@@ -11,29 +12,23 @@ import {
   EyeIcon,
   EyeSlashIcon,
 } from '@heroicons/react/24/outline'
-import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
-import JobForm from '@/components/admin/JobForm'
 import {
   getJobs,
-  createJob,
   updateJob,
   deleteJob,
 } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
 import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
-import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
+import { SkeletonCard } from '@/components/ui/Skeleton'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editJob, setEditJob] = useState<Job | null>(null)
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
 
   const loadJobs = async () => {
     setLoading(true)
@@ -48,29 +43,6 @@ export default function JobsPage() {
   useEffect(() => {
     loadJobs()
   }, [])
-
-  const handleCreate = async (data: Parameters<typeof createJob>[0]) => {
-    setSaving(true)
-    try {
-      await createJob(data)
-      setCreateOpen(false)
-      loadJobs()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleEdit = async (data: Parameters<typeof createJob>[0]) => {
-    if (!editJob) return
-    setSaving(true)
-    try {
-      await updateJob(editJob.id, data)
-      setEditJob(null)
-      loadJobs()
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleDelete = async (id: string) => {
     await deleteJob(id)
@@ -106,13 +78,13 @@ export default function JobsPage() {
           <h1 className="text-2xl font-bold text-gray-900">จัดการงานถ่ายทอดสด</h1>
           <p className="text-gray-500 mt-1">{jobs.length} งานทั้งหมด</p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
+        <Link
+          href="/admin/jobs/new"
           className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มงานใหม่
-        </button>
+        </Link>
       </div>
 
       {/* Search */}
@@ -170,12 +142,12 @@ export default function JobsPage() {
                       </button>
                     )
                   })()}
-                  <button
-                    onClick={() => setEditJob(job)}
+                  <Link
+                    href={`/admin/jobs/new?id=${job.id}`}
                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
                     <PencilIcon className="w-4 h-4" />
-                  </button>
+                  </Link>
                   <button
                     onClick={() => setDeleteJobId(job.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -213,27 +185,6 @@ export default function JobsPage() {
           ))}
         </div>
       )}
-
-      {/* Create Modal */}
-      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="เพิ่มงานถ่ายทอดสดใหม่" size="xl">
-        <JobForm
-          onSubmit={handleCreate}
-          onCancel={() => setCreateOpen(false)}
-          isLoading={saving}
-        />
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal isOpen={!!editJob} onClose={() => setEditJob(null)} title="แก้ไขข้อมูลงาน" size="xl">
-        {editJob && (
-          <JobForm
-            defaultValues={editJob}
-            onSubmit={handleEdit}
-            onCancel={() => setEditJob(null)}
-            isLoading={saving}
-          />
-        )}
-      </Modal>
 
       {/* Delete Dialog */}
       <ConfirmDialog

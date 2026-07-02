@@ -87,7 +87,7 @@ export default function PaymentsPage() {
 
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<PaymentStatus | 'all'>('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, setViewMode] = useState<ViewMode>('grouped')
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [editAmount, setEditAmount] = useState('')
@@ -652,7 +652,14 @@ export default function PaymentsPage() {
       ) : (
         /* ── Grouped view ── */
         <div className="space-y-4">
-          {Object.entries(grouped).map(([jobTitle, items]) => {
+          {Object.entries(grouped)
+            .sort(([, a], [, b]) => {
+              // เรียงกลุ่มตามวันของงาน (ใหม่ → เก่า); งานที่ไม่ระบุวันไว้ท้ายสุด
+              const da = (a[0]?.jobId ? jobsMap.get(a[0].jobId)?.date : '') ?? ''
+              const db = (b[0]?.jobId ? jobsMap.get(b[0].jobId)?.date : '') ?? ''
+              return db.localeCompare(da)
+            })
+            .map(([jobTitle, items]) => {
             const jobPaid = items.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
             const jobPending = items.filter((p) => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
             const jobTotal = jobPaid + jobPending  // ไม่นับ rejected
