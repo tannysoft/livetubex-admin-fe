@@ -686,7 +686,7 @@ export default function PaymentsPage() {
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs justify-end">
                     {job && job.budget > 0 && (
                       <>
-                        <span className="text-gray-500">ต้นทุน <span className="font-semibold text-gray-700">{formatCurrency(job.budget)}</span></span>
+                        <span className="text-gray-500">ราคาขาย <span className="font-semibold text-gray-700">{formatCurrency(job.budget)}</span></span>
                         {(() => {
                           const remaining = job.budget - jobTotal
                           const isOver = remaining < 0
