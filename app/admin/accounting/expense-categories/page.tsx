@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PlusIcon, PencilIcon, TrashIcon, CheckIcon, XMarkIcon,
-  TagIcon, ArrowDownTrayIcon,
+  TagIcon, ArrowDownTrayIcon, ArrowsPointingInIcon, ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import {
   getExpenseCategories, createExpenseCategory, updateExpenseCategory,
   deleteExpenseCategory, seedDefaultCategoriesIfEmpty,
+  mergeDuplicateCategories, countDuplicateCategories,
 } from '@/lib/accounting/expense-categories'
 import type { ExpenseCategory } from '@/lib/types'
 
@@ -33,6 +34,12 @@ export default function ExpenseCategoriesPage() {
   const [deleteTarget, setDeleteTarget] = useState<ExpenseCategory | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+
+  // merge duplicates
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeMsg, setMergeMsg] = useState('')
+  const dupCount = useMemo(() => countDuplicateCategories(items), [items])
 
   const load = async () => {
     setLoading(true)
@@ -98,6 +105,21 @@ export default function ExpenseCategoriesPage() {
     }
   }
 
+  const handleMerge = async () => {
+    setMergeOpen(false)
+    setMerging(true)
+    setMergeMsg('')
+    try {
+      const r = await mergeDuplicateCategories()
+      await load()
+      setMergeMsg(`รวมหมวดซ้ำเสร็จ: ลบ ${r.deleted} หมวด, ย้าย ${r.reassigned} รายการ`)
+    } catch (e) {
+      setMergeMsg(`รวมไม่สำเร็จ: ${(e as Error)?.message ?? 'error'}`)
+    } finally {
+      setMerging(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
@@ -133,6 +155,32 @@ export default function ExpenseCategoriesPage() {
           </button>
         )}
       </div>
+
+      {/* Duplicate warning + merge */}
+      {(dupCount > 0 || mergeMsg) && (
+        <div className={`flex items-center justify-between gap-3 px-5 py-3.5 rounded-2xl text-sm ${
+          dupCount > 0 ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-green-50 border border-green-200 text-green-800'
+        }`}>
+          <span className="flex items-center gap-2">
+            {dupCount > 0 ? <ExclamationTriangleIcon className="w-5 h-5 shrink-0" /> : <CheckIcon className="w-5 h-5 shrink-0" />}
+            {dupCount > 0
+              ? `พบหมวดที่ชื่อซ้ำกัน ${dupCount} รายการ — กด "รวมหมวดซ้ำ" เพื่อย้าย expense ไปหมวดหลักแล้วลบตัวซ้ำ`
+              : mergeMsg}
+          </span>
+          {dupCount > 0 && (
+            <button
+              onClick={() => setMergeOpen(true)}
+              disabled={merging}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-60 shrink-0"
+            >
+              {merging
+                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <ArrowsPointingInIcon className="w-4 h-4" />}
+              รวมหมวดซ้ำ
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Add */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -261,6 +309,15 @@ export default function ExpenseCategoriesPage() {
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={mergeOpen}
+        title="รวมหมวดที่ซ้ำกัน"
+        message="ระบบจะเก็บหมวดหลัก (พื้นฐาน/เก่าสุด) แล้วย้าย expense ทั้งหมดจากหมวดชื่อซ้ำมาไว้ที่หมวดหลัก จากนั้นลบหมวดซ้ำทิ้ง — ทำซ้ำได้ปลอดภัย"
+        confirmLabel="รวมหมวดซ้ำ"
+        onConfirm={handleMerge}
+        onClose={() => setMergeOpen(false)}
+      />
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
