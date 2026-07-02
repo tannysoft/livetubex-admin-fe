@@ -11,6 +11,8 @@ import {
   MagnifyingGlassIcon,
   EyeIcon,
   EyeSlashIcon,
+  BuildingOffice2Icon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
@@ -100,7 +102,7 @@ export default function JobsPage() {
 
       {/* Job cards */}
       {loading ? (
-        <div className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : filtered.length === 0 ? (
@@ -109,80 +111,79 @@ export default function JobsPage() {
           <p className="text-sm mt-1">ลองเปลี่ยนคำค้นหา หรือเพิ่มงานใหม่</p>
         </div>
       ) : (
-        <div className="grid gap-4">
-          {filtered.map((job) => (
-            <div
-              key={job.id}
-              className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow"
-            >
-              {/* แถวบน: ชื่องาน + badge + ปุ่ม */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-gray-900 leading-snug">{job.title}</h3>
-                    <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-1">{job.description}</p>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {(() => {
-                    const showing = job.showInLiff !== false
-                    return (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {filtered.map((job) => {
+            const showing = job.showInLiff !== false
+            const dateLabel = `${formatDate(job.date)}${job.endDate && job.endDate !== job.date ? ` – ${formatDate(job.endDate)}` : ''}`
+            return (
+              <div
+                key={job.id}
+                className="group flex bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all overflow-hidden"
+              >
+                {/* แถบสีสถานะด้านซ้าย */}
+                <div className={`w-1.5 shrink-0 ${jobStatusBar(job.status)}`} />
+
+                <div className="flex-1 min-w-0 p-5">
+                  {/* header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={`/admin/jobs/new?id=${job.id}`}
+                          className="font-semibold text-gray-900 leading-snug hover:text-[#f73727] transition-colors"
+                        >
+                          {job.title}
+                        </Link>
+                        <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
+                      </div>
+                      {job.description && (
+                        <p className="text-sm text-gray-500 mt-1 line-clamp-1">{job.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleToggleShowInLiff(job)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
-                          showing
-                            ? 'text-green-600 bg-green-50 hover:bg-green-100'
-                            : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          showing ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-300 hover:bg-gray-100'
                         }`}
                         title={showing ? 'แสดงใน LIFF · กดเพื่อซ่อน' : 'ซ่อนจาก LIFF · กดเพื่อแสดง'}
                       >
-                        {showing ? <EyeIcon className="w-3.5 h-3.5" /> : <EyeSlashIcon className="w-3.5 h-3.5" />}
-                        <span className="hidden sm:inline">{showing ? 'แสดงใน LIFF' : 'ซ่อนจาก LIFF'}</span>
+                        {showing ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
                       </button>
-                    )
-                  })()}
-                  <Link
-                    href={`/admin/jobs/new?id=${job.id}`}
-                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                  </Link>
-                  <button
-                    onClick={() => setDeleteJobId(job.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
+                      <Link
+                        href={`/admin/jobs/new?id=${job.id}`}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <PencilIcon className="w-4 h-4" />
+                      </Link>
+                      <button
+                        onClick={() => setDeleteJobId(job.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* meta grid */}
+                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <MetaItem icon={CalendarIcon} label="วันงาน" value={dateLabel} />
+                    <MetaItem icon={MapPinIcon} label="สถานที่" value={job.location || '—'} />
+                    <MetaItem icon={BuildingOffice2Icon} label="ลูกค้า" value={job.clientName || '—'} />
+                    <MetaItem icon={BanknotesIcon} label="ราคาขาย" value={formatCurrency(job.budget)} valueClass="text-[#f73727] font-bold" />
+                  </div>
+
+                  {job.paymentCycle && (
+                    <div className="mt-3 pt-3 border-t border-gray-50">
+                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-xs font-medium">
+                        รอบจ่าย: {paymentCycleLabel(job.paymentCycle)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* แถวล่าง: meta info */}
-              <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-gray-400">
-                <span className="flex items-center gap-1">
-                  <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
-                  {formatDate(job.date)}{job.endDate && job.endDate !== job.date ? ` – ${formatDate(job.endDate)}` : ''}
-                </span>
-                <span className="text-gray-200">|</span>
-                <span className="flex items-center gap-1">
-                  <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
-                  {job.location}
-                </span>
-                <span className="text-gray-200">|</span>
-                <span className="font-medium text-gray-600">{job.clientName}</span>
-                <span className="text-gray-200">|</span>
-                <span className="font-semibold text-[#f73727]">{formatCurrency(job.budget)}</span>
-                {job.paymentCycle && (
-                  <>
-                    <span className="text-gray-200">|</span>
-                    <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-medium whitespace-nowrap">
-                      รอบ: {paymentCycleLabel(job.paymentCycle)}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -197,6 +198,34 @@ export default function JobsPage() {
         danger
       />
 
+    </div>
+  )
+}
+
+// สีแถบสถานะด้านซ้ายของ card
+function jobStatusBar(status: string): string {
+  switch (status) {
+    case 'published': return 'bg-blue-400'
+    case 'in_progress': return 'bg-amber-400'
+    case 'completed': return 'bg-green-400'
+    case 'cancelled': return 'bg-red-300'
+    default: return 'bg-gray-200' // draft
+  }
+}
+
+function MetaItem({ icon: Icon, label, value, valueClass = 'text-gray-700' }: {
+  icon: typeof CalendarIcon
+  label: string
+  value: string
+  valueClass?: string
+}) {
+  return (
+    <div className="flex items-start gap-2 min-w-0">
+      <Icon className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
+      <div className="min-w-0">
+        <div className="text-[11px] text-gray-400 leading-tight">{label}</div>
+        <div className={`text-sm font-medium truncate ${valueClass}`}>{value}</div>
+      </div>
     </div>
   )
 }
