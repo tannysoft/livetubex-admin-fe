@@ -7,7 +7,7 @@ import {
   ScaleIcon, ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { getJobs, getPayments } from '@/lib/firebase-utils'
+import { getJobsWithBudget, getPayments } from '@/lib/firebase-utils'
 import { getExpenses } from '@/lib/accounting/expenses'
 import { formatCurrency, formatDate, jobStatusLabel, jobStatusColor } from '@/lib/utils'
 import type { Job, Payment, Expense } from '@/lib/types'
@@ -32,7 +32,7 @@ export default function ProjectCostsPage() {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    Promise.all([getJobs(), getPayments(), getExpenses()])
+    Promise.all([getJobsWithBudget(), getPayments(), getExpenses()])
       .then(([j, p, e]) => {
         if (!alive) return
         setJobs(j)

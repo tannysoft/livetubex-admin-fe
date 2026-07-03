@@ -11,12 +11,17 @@ import {
   where,
   orderBy,
   increment,
+  writeBatch,
+  deleteField,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
 import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings, LineMessageLog } from './types'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
+
+// ⚠️ budget เป็นข้อมูลลับ — เก็บแยกที่ jobFinance/{jobId} (Firestore rules: admin-only)
+// jobs doc หลักไม่มี budget เพื่อไม่ให้หลุดไปกับ getJobs() ฝั่ง LIFF
 
 export async function getJobs(): Promise<Job[]> {
   const q = query(collection(db, 'jobs'), orderBy('date', 'desc'))
@@ -30,21 +35,64 @@ export async function getJob(id: string): Promise<Job | null> {
   return { id: snap.id, ...snap.data() } as Job
 }
 
+// Admin เท่านั้น — join budget จาก jobFinance + auto-migrate budget เก่าที่ยังค้างใน jobs doc
+export async function getJobsWithBudget(): Promise<Job[]> {
+  const [jobsSnap, finSnap] = await Promise.all([
+    getDocs(query(collection(db, 'jobs'), orderBy('date', 'desc'))),
+    getDocs(collection(db, 'jobFinance')),
+  ])
+  const budgets = new Map(finSnap.docs.map((d) => [d.id, (d.data().budget as number | undefined) ?? 0]))
+  const jobs = jobsSnap.docs.map((d) => {
+    const data = d.data()
+    return { id: d.id, ...data, budget: budgets.get(d.id) ?? (data.budget as number | undefined) ?? 0 } as Job
+  })
+  // migrate: ย้าย budget ที่ยังอยู่ใน jobs doc → jobFinance แล้วลบออกจาก doc หลัก (idempotent, ไม่ block UI)
+  const legacy = jobsSnap.docs.filter((d) => d.data().budget !== undefined)
+  if (legacy.length > 0) {
+    const batch = writeBatch(db)
+    legacy.forEach((d) => {
+      if (!budgets.has(d.id)) batch.set(doc(db, 'jobFinance', d.id), { budget: d.data().budget ?? 0 })
+      batch.update(d.ref, { budget: deleteField() })
+    })
+    batch.commit().catch(() => {})
+  }
+  return jobs
+}
+
+export async function getJobWithBudget(id: string): Promise<Job | null> {
+  const [jobSnap, finSnap] = await Promise.all([
+    getDoc(doc(db, 'jobs', id)),
+    getDoc(doc(db, 'jobFinance', id)),
+  ])
+  if (!jobSnap.exists()) return null
+  const data = jobSnap.data()
+  const budget = (finSnap.exists() ? (finSnap.data().budget as number | undefined) : undefined)
+    ?? (data.budget as number | undefined) ?? 0
+  return { id: jobSnap.id, ...data, budget } as Job
+}
+
 export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  const { budget, ...rest } = data
   const ref = await addDoc(collection(db, 'jobs'), {
-    ...data,
+    ...rest,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   })
+  await setDoc(doc(db, 'jobFinance', ref.id), { budget: budget ?? 0 })
   return ref.id
 }
 
 export async function updateJob(id: string, data: Partial<Job>): Promise<void> {
-  await updateDoc(doc(db, 'jobs', id), { ...data, updatedAt: new Date().toISOString() })
+  const { budget, ...rest } = data
+  await updateDoc(doc(db, 'jobs', id), { ...rest, updatedAt: new Date().toISOString() })
+  if (budget !== undefined) await setDoc(doc(db, 'jobFinance', id), { budget })
 }
 
 export async function deleteJob(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'jobs', id))
+  await Promise.all([
+    deleteDoc(doc(db, 'jobs', id)),
+    deleteDoc(doc(db, 'jobFinance', id)),
+  ])
 }
 
 // ─── Freelancers ─────────────────────────────────────────────────────────────

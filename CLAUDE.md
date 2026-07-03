@@ -49,9 +49,18 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | endDate | string? | ถ้าเป็นงานหลายวัน |
 | location | string | |
 | clientName | string | |
-| budget | number | **ลับ — ไม่แสดงใน LIFF** |
 | status | 'draft' \| 'published' \| 'in_progress' \| 'completed' \| 'cancelled' | |
 | createdAt / updatedAt | string | ISO datetime |
+
+> ⚠️ **budget (ราคาขาย) ไม่อยู่ใน jobs doc แล้ว** — ย้ายไปเก็บที่ `jobFinance/{jobId}` (rules: admin-only)
+> เพื่อไม่ให้หลุดไปกับ network response ของ LIFF ที่อ่าน `jobs` ได้
+> ฝั่ง admin ใช้ `getJobsWithBudget()` / `getJobWithBudget(id)` join ให้อัตโนมัติ
+> (`getJobsWithBudget` มี auto-migrate: เจอ budget ค้างใน jobs doc จะย้ายไป jobFinance แล้วลบออก)
+
+### `jobFinance` (admin-only)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| budget | number | ราคาขายของงาน — doc id = jobId |
 
 ### `freelancers`
 | Field | Type | หมายเหตุ |
@@ -221,10 +230,12 @@ deleteIdCardImage(lineUserId): Promise<void>
 ## lib/firebase-utils.ts — Functions ทั้งหมด
 
 ```typescript
-// Jobs
-getJobs(): Promise<Job[]>
-getJob(id): Promise<Job | null>
-createJob(data), updateJob(id, data), deleteJob(id)
+// Jobs — budget เก็บแยกที่ jobFinance/{jobId} (admin-only)
+getJobs(): Promise<Job[]>                 // ไม่มี budget — ปลอดภัยสำหรับ LIFF
+getJob(id): Promise<Job | null>           // ไม่มี budget
+getJobsWithBudget(): Promise<Job[]>       // Admin — join budget + auto-migrate budget เก่า
+getJobWithBudget(id): Promise<Job | null> // Admin — join budget
+createJob(data), updateJob(id, data), deleteJob(id)  // แยกเขียน/ลบ budget → jobFinance ให้เอง
 
 // Freelancers
 getFreelancers(): Promise<Freelancer[]>
@@ -331,6 +342,7 @@ isAdmin()      = sign_in_provider == 'password'
 isFreelancer() = sign_in_provider == 'custom' && lineUser == true
 
 jobs:           read: authenticated, write: admin
+jobFinance:     admin เท่านั้น (budget/ราคาขายของงาน)
 freelancers:    admin: all | freelancer: read/create/update ของตัวเอง
                   create: ต้องมี totalEarned=0, isActive=true
                   update: ห้ามแก้ totalEarned, createdAt, isActive
@@ -667,7 +679,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 
 3. **totalEarned**: ต้อง update ด้วย `increment(amount)` เสมอ ห้ามทำ read-then-write
 
-4. **budget ลับ**: ไม่แสดง job.budget ใน LIFF ไม่ว่าจะที่ใดก็ตาม
+4. **budget ลับ**: budget (ราคาขาย) เก็บแยกที่ `jobFinance/{jobId}` (admin-only rules) — ห้ามเขียน budget ลงใน jobs doc เด็ดขาด เพราะ LIFF อ่าน `jobs` ได้ทั้ง collection. ฝั่ง admin join ผ่าน `getJobsWithBudget()` / `getJobWithBudget(id)` ส่วน `createJob`/`updateJob`/`deleteJob` จัดการแยก-รวม budget ให้เองแล้ว
 
 5. **Firestore Trigger v2 ไม่ได้**: Firestore database อยู่ที่ region `asia-southeast3` ซึ่ง Eventarc ไม่รองรับ → ใช้ HTTPS Callable แทน และเรียกจาก frontend
 

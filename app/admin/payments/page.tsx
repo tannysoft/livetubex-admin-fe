@@ -20,7 +20,7 @@ import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
-import { getPayments, getJobs, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
+import { getPayments, getJobsWithBudget, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
 import { syncExpenseFromPayment } from '@/lib/accounting/payment-expense-bridge'
 import { deleteField } from 'firebase/firestore'
 import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
@@ -108,7 +108,7 @@ export default function PaymentsPage() {
     if (!silent) setLoading(true)
     try {
       const [data, jobData, freelancerData, positionData] = await Promise.all([
-        getPayments(), getJobs(), getFreelancers(), getPositions(),
+        getPayments(), getJobsWithBudget(), getFreelancers(), getPositions(),
       ])
       setPayments(data)
       setJobs(jobData)
@@ -684,11 +684,11 @@ export default function PaymentsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs justify-end">
-                    {job && job.budget > 0 && (
+                    {job && (job.budget ?? 0) > 0 && (
                       <>
-                        <span className="text-gray-500">ราคาขาย <span className="font-semibold text-gray-700">{formatCurrency(job.budget)}</span></span>
+                        <span className="text-gray-500">ราคาขาย <span className="font-semibold text-gray-700">{formatCurrency(job.budget ?? 0)}</span></span>
                         {(() => {
-                          const remaining = job.budget - jobTotal
+                          const remaining = (job.budget ?? 0) - jobTotal
                           const isOver = remaining < 0
                           return (
                             <span className={isOver ? 'text-red-500 font-medium' : 'text-green-600 font-medium'}>

@@ -13,7 +13,7 @@ import {
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
 import {
-  getJobs,
+  getJobsWithBudget,
   updateJob,
   deleteJob,
 } from '@/lib/firebase-utils'
@@ -31,7 +31,7 @@ export default function JobsPage() {
   const loadJobs = async () => {
     setLoading(true)
     try {
-      const data = await getJobs()
+      const data = await getJobsWithBudget()
       setJobs(data)
     } finally {
       setLoading(false)
@@ -167,7 +167,7 @@ export default function JobsPage() {
 
                       {/* ราคาขาย */}
                       <td className="px-5 py-4 align-top text-right whitespace-nowrap">
-                        <div className="font-bold text-[#f73727]">{formatCurrency(job.budget)}</div>
+                        <div className="font-bold text-[#f73727]">{formatCurrency(job.budget ?? 0)}</div>
                         {job.paymentCycle && (
                           <div className="text-[11px] text-blue-600 mt-0.5">{paymentCycleLabel(job.paymentCycle)}</div>
                         )}

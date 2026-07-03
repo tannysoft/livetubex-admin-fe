@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import JobForm, { type JobFormData } from '@/components/admin/JobForm'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { getJob, createJob, updateJob } from '@/lib/firebase-utils'
+import { getJobWithBudget, createJob, updateJob } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
 
 function JobEditor() {
@@ -22,7 +22,7 @@ function JobEditor() {
     if (!editId) return
     let alive = true
     setLoading(true)
-    getJob(editId).then((j) => {
+    getJobWithBudget(editId).then((j) => {
       if (!alive) return
       setExisting(j)
       setLoading(false)

@@ -32,7 +32,7 @@ export interface Job {
   endDate?: string
   location: string
   clientName: string
-  budget: number
+  budget?: number // ลับ — เก็บแยกที่ jobFinance/{jobId} (admin-only) ไม่เก็บใน jobs doc; ฝั่ง admin join ผ่าน getJobsWithBudget
   status: JobStatus
   paymentCycle?: string  // format: "YYYY-MM-mid" | "YYYY-MM-end"
   showInLiff?: boolean   // แสดงใน job selector ของ LIFF หน้าส่งเบิกหรือไม่ (default: true ถ้าไม่ระบุ)

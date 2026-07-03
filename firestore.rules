@@ -30,6 +30,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── jobFinance: ราคาขาย (budget) ของงาน — ลับ, admin เท่านั้น ────────────
+    match /jobFinance/{jobId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── freelancers ──────────────────────────────────────────────────────────
     match /freelancers/{freelancerId} {
       // Admin อ่าน/เขียนได้ทุกอย่าง
