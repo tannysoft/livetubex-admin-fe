@@ -11,8 +11,6 @@ import {
   where,
   orderBy,
   increment,
-  writeBatch,
-  deleteField,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
@@ -35,28 +33,14 @@ export async function getJob(id: string): Promise<Job | null> {
   return { id: snap.id, ...snap.data() } as Job
 }
 
-// Admin เท่านั้น — join budget จาก jobFinance + auto-migrate budget เก่าที่ยังค้างใน jobs doc
+// Admin เท่านั้น — join budget จาก jobFinance
 export async function getJobsWithBudget(): Promise<Job[]> {
   const [jobsSnap, finSnap] = await Promise.all([
     getDocs(query(collection(db, 'jobs'), orderBy('date', 'desc'))),
     getDocs(collection(db, 'jobFinance')),
   ])
   const budgets = new Map(finSnap.docs.map((d) => [d.id, (d.data().budget as number | undefined) ?? 0]))
-  const jobs = jobsSnap.docs.map((d) => {
-    const data = d.data()
-    return { id: d.id, ...data, budget: budgets.get(d.id) ?? (data.budget as number | undefined) ?? 0 } as Job
-  })
-  // migrate: ย้าย budget ที่ยังอยู่ใน jobs doc → jobFinance แล้วลบออกจาก doc หลัก (idempotent, ไม่ block UI)
-  const legacy = jobsSnap.docs.filter((d) => d.data().budget !== undefined)
-  if (legacy.length > 0) {
-    const batch = writeBatch(db)
-    legacy.forEach((d) => {
-      if (!budgets.has(d.id)) batch.set(doc(db, 'jobFinance', d.id), { budget: d.data().budget ?? 0 })
-      batch.update(d.ref, { budget: deleteField() })
-    })
-    batch.commit().catch(() => {})
-  }
-  return jobs
+  return jobsSnap.docs.map((d) => ({ id: d.id, ...d.data(), budget: budgets.get(d.id) ?? 0 } as Job))
 }
 
 export async function getJobWithBudget(id: string): Promise<Job | null> {
@@ -65,10 +49,8 @@ export async function getJobWithBudget(id: string): Promise<Job | null> {
     getDoc(doc(db, 'jobFinance', id)),
   ])
   if (!jobSnap.exists()) return null
-  const data = jobSnap.data()
-  const budget = (finSnap.exists() ? (finSnap.data().budget as number | undefined) : undefined)
-    ?? (data.budget as number | undefined) ?? 0
-  return { id: jobSnap.id, ...data, budget } as Job
+  const budget = (finSnap.exists() ? (finSnap.data().budget as number | undefined) : undefined) ?? 0
+  return { id: jobSnap.id, ...jobSnap.data(), budget } as Job
 }
 
 export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {

@@ -55,7 +55,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 > ⚠️ **budget (ราคาขาย) ไม่อยู่ใน jobs doc แล้ว** — ย้ายไปเก็บที่ `jobFinance/{jobId}` (rules: admin-only)
 > เพื่อไม่ให้หลุดไปกับ network response ของ LIFF ที่อ่าน `jobs` ได้
 > ฝั่ง admin ใช้ `getJobsWithBudget()` / `getJobWithBudget(id)` join ให้อัตโนมัติ
-> (`getJobsWithBudget` มี auto-migrate: เจอ budget ค้างใน jobs doc จะย้ายไป jobFinance แล้วลบออก)
+> (ข้อมูลเก่า migrate ครบแล้ว ก.ค. 2569)
 
 ### `jobFinance` (admin-only)
 | Field | Type | หมายเหตุ |
@@ -233,7 +233,7 @@ deleteIdCardImage(lineUserId): Promise<void>
 // Jobs — budget เก็บแยกที่ jobFinance/{jobId} (admin-only)
 getJobs(): Promise<Job[]>                 // ไม่มี budget — ปลอดภัยสำหรับ LIFF
 getJob(id): Promise<Job | null>           // ไม่มี budget
-getJobsWithBudget(): Promise<Job[]>       // Admin — join budget + auto-migrate budget เก่า
+getJobsWithBudget(): Promise<Job[]>       // Admin — join budget จาก jobFinance
 getJobWithBudget(id): Promise<Job | null> // Admin — join budget
 createJob(data), updateJob(id, data), deleteJob(id)  // แยกเขียน/ลบ budget → jobFinance ให้เอง
 
