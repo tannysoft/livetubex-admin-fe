@@ -252,6 +252,8 @@ createPayment(data, freelancerEmail?): Promise<string>     // trigger email อ�
 updatePayment(id, data)
 approvePayment(id, adminNotes?)
 markPaymentPaid(id, freelancerId, amount, adminNotes?)     // atomic increment totalEarned
+revertPaymentPaid(id, freelancerId, amount)                // ย้อน paid → approved: decrement totalEarned + ถอด paidAt/payoutSlipPath
+                                                           // ⚠️ ต้องเรียก removeExpenseForPayment(paymentId) ควบคู่เสมอ (ลบ Expense จาก bridge)
 rejectPayment(id, adminNotes?)
 
 // Positions

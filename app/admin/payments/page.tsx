@@ -20,8 +20,8 @@ import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
-import { getPayments, getJobsWithBudget, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment } from '@/lib/firebase-utils'
-import { syncExpenseFromPayment } from '@/lib/accounting/payment-expense-bridge'
+import { getPayments, getJobsWithBudget, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment, revertPaymentPaid } from '@/lib/firebase-utils'
+import { syncExpenseFromPayment, removeExpenseForPayment } from '@/lib/accounting/payment-expense-bridge'
 import { deleteField } from 'firebase/firestore'
 import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
@@ -91,7 +91,7 @@ export default function PaymentsPage() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [editAmount, setEditAmount] = useState('')
-  const [actionType, setActionType] = useState<'approve' | 'paid' | 'reject' | 'unapprove' | null>(null)
+  const [actionType, setActionType] = useState<'approve' | 'paid' | 'reject' | 'unapprove' | 'unpay' | null>(null)
   const [saving, setSaving] = useState(false)
   const [slipUrl, setSlipUrl] = useState<string | null>(null)
   const [showCelebration, setShowCelebration] = useState(false)
@@ -149,7 +149,7 @@ export default function PaymentsPage() {
 
   useEffect(() => { load() }, [])
 
-  const openAction = (payment: Payment, type: 'approve' | 'paid' | 'reject' | 'unapprove') => {
+  const openAction = (payment: Payment, type: 'approve' | 'paid' | 'reject' | 'unapprove' | 'unpay') => {
     setSelectedPayment(payment)
     setAdminNotes('')
     setEditAmount(String(payment.amount))
@@ -184,13 +184,17 @@ export default function PaymentsPage() {
         }).catch((err) => console.error('syncExpenseFromPayment failed:', err))
       } else if (actionType === 'unapprove') {
         await updatePayment(selectedPayment.id, { status: 'pending', approvedAt: deleteField() as unknown as string })
+      } else if (actionType === 'unpay') {
+        // ย้อนการยืนยันโอน: paid → approved (หักคืน totalEarned + ถอดสลิป) แล้วลบ Expense ที่ sync ไว้
+        await revertPaymentPaid(selectedPayment.id, selectedPayment.freelancerId, selectedPayment.amount)
+        removeExpenseForPayment(selectedPayment.id).catch((err) => console.error('removeExpenseForPayment failed:', err))
       } else {
         await rejectPayment(selectedPayment.id, adminNotes)
       }
       setSelectedPayment(null)
       setActionType(null)
-      const label = actionType === 'approve' ? 'อนุมัติแล้ว' : actionType === 'paid' ? 'บันทึกการโอนแล้ว' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติแล้ว' : 'ปฏิเสธแล้ว'
-      const toastType = actionType === 'reject' ? 'error' : actionType === 'unapprove' ? 'warning' : 'success'
+      const label = actionType === 'approve' ? 'อนุมัติแล้ว' : actionType === 'paid' ? 'บันทึกการโอนแล้ว' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติแล้ว' : actionType === 'unpay' ? 'ยกเลิกการโอนแล้ว' : 'ปฏิเสธแล้ว'
+      const toastType = actionType === 'reject' ? 'error' : actionType === 'unapprove' || actionType === 'unpay' ? 'warning' : 'success'
       if (actionType === 'paid') setShowCelebration(true)
       else showToast(label, toastType)
       load(true)
@@ -363,7 +367,7 @@ export default function PaymentsPage() {
   const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0)
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
 
-  const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติ' : 'ปฏิเสธการเบิกจ่าย'
+  const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติ' : actionType === 'unpay' ? 'ยกเลิกการโอนเงิน' : 'ปฏิเสธการเบิกจ่าย'
 
   // Group by workDescription (job title)
   const grouped = filtered.reduce<Record<string, Payment[]>>((acc, p) => {
@@ -450,13 +454,22 @@ export default function PaymentsPage() {
         </button>
       )}
       {payment.status === 'paid' && (
-        <Link
-          href={`/admin/accounting/expenses?paymentId=${payment.id}`}
-          className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-          title="ดู Expense ที่ผูกอยู่ในระบบบัญชี"
-        >
-          <CreditCardIcon className="w-4 h-4" />
-        </Link>
+        <>
+          <Link
+            href={`/admin/accounting/expenses?paymentId=${payment.id}`}
+            className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+            title="ดู Expense ที่ผูกอยู่ในระบบบัญชี"
+          >
+            <CreditCardIcon className="w-4 h-4" />
+          </Link>
+          <button
+            onClick={() => openAction(payment, 'unpay')}
+            className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+            title="ยกเลิกการโอน (ย้อนกลับเพื่อโอน/แนบสลิปใหม่)"
+          >
+            <ArrowUturnLeftIcon className="w-4 h-4" />
+          </button>
+        </>
       )}
       {(payment.status === 'paid' || payment.status === 'rejected') && !payment.expenseSlipPath && !payment.expenseSlipUrl && (
         <span className="text-xs text-gray-300">-</span>
@@ -827,7 +840,7 @@ export default function PaymentsPage() {
               )}
             </div>
             {/* Amount editor */}
-            {actionType !== 'unapprove' && (() => {
+            {actionType !== 'unapprove' && actionType !== 'unpay' && (() => {
               const amt = parseFloat(editAmount) || 0
               const { tax, net } = calcTax(amt)
               const isEdited = amt !== selectedPayment.amount
@@ -871,7 +884,19 @@ export default function PaymentsPage() {
               </p>
             )}
 
-            {actionType !== 'unapprove' && <div>
+            {actionType === 'unpay' && (
+              <div className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 space-y-1">
+                <p>รายการนี้จะกลับสู่สถานะ <span className="font-semibold">อนุมัติแล้ว</span> และระบบจะย้อนให้อัตโนมัติ:</p>
+                <ul className="list-disc list-inside text-xs space-y-0.5">
+                  <li>หักยอดสะสม (totalEarned) ของ freelancer คืน {formatCurrency(selectedPayment.amount)}</li>
+                  <li>ถอดสลิปการโอนที่แนบไว้ (ถ้ามี)</li>
+                  <li>ลบรายจ่าย (Expense) ที่ระบบบัญชีสร้างอัตโนมัติ</li>
+                </ul>
+                <p className="text-xs">จากนั้นรายการจะกลับไปรอโอนที่หน้า Payout — ยืนยันโอนใหม่พร้อมแนบสลิปได้เลย</p>
+              </div>
+            )}
+
+            {actionType !== 'unapprove' && actionType !== 'unpay' && <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ Admin</label>
               <textarea
                 value={adminNotes}
@@ -892,11 +917,11 @@ export default function PaymentsPage() {
                 onClick={handleAction}
                 disabled={saving}
                 className={`px-5 py-2 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-60 flex items-center gap-2 ${
-                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : actionType === 'unapprove' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-[#f73727] hover:bg-red-600'
+                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : actionType === 'unapprove' || actionType === 'unpay' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-[#f73727] hover:bg-red-600'
                 }`}
               >
                 {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                {actionType === 'approve' ? 'อนุมัติ' : actionType === 'paid' ? 'ยืนยันโอนเงิน' : actionType === 'unapprove' ? 'ยืนยัน' : 'ปฏิเสธ'}
+                {actionType === 'approve' ? 'อนุมัติ' : actionType === 'paid' ? 'ยืนยันโอนเงิน' : actionType === 'unapprove' || actionType === 'unpay' ? 'ยืนยัน' : 'ปฏิเสธ'}
               </button>
             </div>
           </div>

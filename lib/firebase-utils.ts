@@ -11,6 +11,7 @@ import {
   where,
   orderBy,
   increment,
+  deleteField,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
@@ -283,6 +284,20 @@ export async function markPaymentPaid(id: string, freelancerId: string, amount: 
   // ใช้ increment() เพื่อหลีกเลี่ยง race condition (atomic server-side add)
   await updateDoc(doc(db, 'freelancers', freelancerId), {
     totalEarned: increment(amount),
+  })
+}
+
+// ย้อนการยืนยันโอน: paid → approved — หักคืน totalEarned + ถอด paidAt/payoutSlipPath
+// ⚠️ caller ต้องเรียก removeExpenseForPayment() ควบคู่เพื่อลบ Expense ที่ bridge สร้างไว้
+export async function revertPaymentPaid(id: string, freelancerId: string, amount: number): Promise<void> {
+  await updateDoc(doc(db, 'payments', id), {
+    status: 'approved',
+    paidAt: deleteField(),
+    payoutSlipPath: deleteField(),
+  })
+  // atomic decrement — ย้อนยอดที่ markPaymentPaid บวกไว้
+  await updateDoc(doc(db, 'freelancers', freelancerId), {
+    totalEarned: increment(-amount),
   })
 }
 

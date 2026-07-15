@@ -1,4 +1,4 @@
-import { calcExpenseTotals, createExpense, getExpenseByPaymentId, updateExpense } from './expenses'
+import { calcExpenseTotals, createExpense, deleteExpense, getExpenseByPaymentId, updateExpense } from './expenses'
 import { getOrCreateFreelancerPaymentCategory } from './expense-categories'
 import { getFreelancer, getJob, getPayments } from '../firebase-utils'
 import { formatDate } from '../utils'
@@ -77,6 +77,15 @@ export async function syncExpenseFromPayment(payment: Payment): Promise<void> {
   } else {
     await createExpense({ ...payload, createdBy: 'system' })
   }
+}
+
+/**
+ * ลบ Expense ที่ bridge สร้างจาก payment นี้ — ใช้ตอนย้อนการยืนยันโอน (revertPaymentPaid)
+ * ถ้าไม่พบ expense (ยังไม่เคย sync / ถูกลบไปแล้ว) → no-op
+ */
+export async function removeExpenseForPayment(paymentId: string): Promise<void> {
+  const existing = await getExpenseByPaymentId(paymentId)
+  if (existing) await deleteExpense(existing.id)
 }
 
 /**
