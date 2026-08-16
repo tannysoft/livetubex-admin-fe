@@ -369,9 +369,10 @@ export default function PaymentsPage() {
 
   const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติ' : actionType === 'unpay' ? 'ยกเลิกการโอนเงิน' : 'ปฏิเสธการเบิกจ่าย'
 
-  // Group by workDescription (job title)
+  // Group by jobId — งานคนละ doc ต้องแยกกลุ่มเสมอ แม้ชื่องานจะซ้ำกัน
+  // (payment เก่าที่ไม่มี jobId ค่อย fallback ไปจัดกลุ่มตามชื่อ)
   const grouped = filtered.reduce<Record<string, Payment[]>>((acc, p) => {
-    const key = getJobTitle(p) || 'ไม่ระบุงาน'
+    const key = p.jobId ? `job:${p.jobId}` : `title:${getJobTitle(p) || 'ไม่ระบุงาน'}`
     if (!acc[key]) acc[key] = []
     acc[key].push(p)
     return acc
@@ -670,15 +671,18 @@ export default function PaymentsPage() {
               // เรียงกลุ่มตามวันของงาน (ใหม่ → เก่า); งานที่ไม่ระบุวันไว้ท้ายสุด
               const da = (a[0]?.jobId ? jobsMap.get(a[0].jobId)?.date : '') ?? ''
               const db = (b[0]?.jobId ? jobsMap.get(b[0].jobId)?.date : '') ?? ''
-              return db.localeCompare(da)
+              if (db !== da) return db.localeCompare(da)
+              // ชื่องานซ้ำ/วันเดียวกัน — เรียงตามชื่อให้ลำดับคงที่
+              return (a[0] ? getJobTitle(a[0]) : '').localeCompare(b[0] ? getJobTitle(b[0]) : '')
             })
-            .map(([jobTitle, items]) => {
+            .map(([groupKey, items]) => {
             const jobPaid = items.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
             const jobPending = items.filter((p) => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
             const jobTotal = jobPaid + jobPending  // ไม่นับ rejected
             const jobNetTotal = calcTax(jobTotal).net
             const jobId = items[0]?.jobId
             const job = jobId ? jobsMap.get(jobId) : undefined
+            const jobTitle = items[0] ? getJobTitle(items[0]) || 'ไม่ระบุงาน' : 'ไม่ระบุงาน'
             const jobDateLabel = job
               ? job.endDate && job.endDate !== job.date
                 ? `${formatDate(job.date)} – ${formatDate(job.endDate)}`
@@ -686,7 +690,7 @@ export default function PaymentsPage() {
               : undefined
 
             return (
-              <div key={jobTitle} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div key={groupKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 {/* Job header */}
                 <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                   <div className="min-w-0">
