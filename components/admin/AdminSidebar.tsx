@@ -9,6 +9,7 @@ import {
   BanknotesIcon,
   BriefcaseIcon,
   ChartBarIcon,
+  ChartBarSquareIcon,
   Cog6ToothIcon,
   Bars3Icon,
   XMarkIcon,
@@ -59,6 +60,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/payments', label: 'การเบิกจ่าย', icon: BanknotesIcon },
       { href: '/admin/payout', label: 'เตรียมจ่ายเงิน', icon: QueueListIcon },
       { href: '/admin/report', label: 'รายงานการจ่ายเงิน', icon: ChartBarIcon },
+      { href: '/admin/earnings', label: 'รายได้รายเดือน', icon: ChartBarSquareIcon },
       { href: '/admin/line-messages', label: 'LINE Message Report', icon: ChatBubbleLeftRightIcon },
     ],
   },
@@ -125,7 +127,8 @@ function NavItem({ href, label, icon: Icon, exact }: NavItemDef) {
       }`}
     >
       <Icon className="w-5 h-5 flex-shrink-0" />
-      <span>{label}</span>
+      {/* truncate — กันเมนูชื่อยาวตกบรรทัดจนแถวสูงไม่เท่ากัน */}
+      <span className="min-w-0 truncate" title={label}>{label}</span>
     </Link>
   )
 }

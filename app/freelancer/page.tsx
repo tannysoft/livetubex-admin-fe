@@ -12,6 +12,7 @@ import {
   PlusIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
+  ChartBarSquareIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import Badge from '@/components/ui/Badge'
@@ -397,6 +398,20 @@ export default function FreelancerPage() {
           <PlusIcon className="w-5 h-5" />
           ขอเบิกจ่ายเงิน
         </button>
+
+        {/* ลิงก์ดูรายได้รายเดือน */}
+        <Link
+          href="/freelancer/earnings"
+          className="flex items-center justify-between bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-50 rounded-xl">
+              <ChartBarSquareIcon className="w-5 h-5 text-[#f73727]" />
+            </div>
+            <span className="font-medium text-gray-900 text-sm">รายได้รายเดือน</span>
+          </div>
+          <span className="text-xs text-gray-400">ดูทั้งหมด →</span>
+        </Link>
 
         {/* ลิงก์ดูประวัติ */}
         <Link

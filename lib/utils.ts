@@ -84,10 +84,25 @@ export function paymentStatusColor(status: string): string {
   return map[status] || 'bg-gray-100 text-gray-600'
 }
 
-const THAI_MONTHS = [
+export const THAI_MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ]
+
+export const THAI_MONTHS_SHORT = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+]
+
+/** ค.ศ. → พ.ศ. */
+export function thaiYear(year: number): number {
+  return year + 543
+}
+
+/** เช่น (2026, 8) → "สิงหาคม 2569" */
+export function thaiMonthYearLabel(year: number, month: number): string {
+  return `${THAI_MONTHS[month - 1] ?? month} ${thaiYear(year)}`
+}
 
 /** แปลง paymentCycle value → label ภาษาไทย เช่น "2026-04-mid" → "กลางเดือนเมษายน 2569" */
 export function paymentCycleLabel(value: string): string {

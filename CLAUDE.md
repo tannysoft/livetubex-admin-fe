@@ -140,11 +140,13 @@ app/
 │   ├── payments/page.tsx       # อนุมัติ/ปฏิเสธ payment (list + grouped view)
 │   ├── positions/page.tsx      # จัดการตำแหน่งงาน (CRUD)
 │   ├── report/page.tsx         # รายงานสรุปรายได้ + ส่งอีเมล
+│   ├── earnings/page.tsx       # รายได้ Freelancer รายเดือน (matrix 12 เดือน × คน + drill-down + CSV)
 │   └── settings/page.tsx       # ตั้งค่าระบบ (รอบการจ่ายเงิน)
 └── freelancer/
     ├── layout.tsx              # Freelancer layout
     ├── page.tsx                # หน้าหลัก LIFF: stats, ปุ่มขอเบิก, modal
     ├── register/page.tsx       # สมัคร/แก้ไขโปรไฟล์ + อัพโหลดบัตร
+    ├── earnings/page.tsx       # รายได้รายเดือนของตัวเอง (เลือกปี + การ์ดรายเดือน + drill-down)
     └── payments/page.tsx       # ประวัติการเบิกจ่าย + ขอเบิกใหม่
 ```
 
@@ -181,7 +183,8 @@ lib/
 ├── firebase-storage.ts         # upload/storage helpers (ดูด้านล่าง)
 ├── line-liff.ts                # initLiff, liffLogin, liffLogout, signInFirebaseWithLiff
 ├── types.ts                    # TS interfaces: Job, Freelancer, Payment, etc.
-├── utils.ts                    # formatDate, formatCurrency, calcTax, status labels/colors
+├── utils.ts                    # formatDate, formatCurrency, calcTax, status labels/colors, Thai month/year
+├── earnings.ts                 # สรุปรายได้ freelancer รายเดือน — ใช้ร่วม admin + LIFF
 └── auth-context/               # Admin auth context
 ```
 
@@ -289,7 +292,30 @@ jobStatusColor(status): string     // Tailwind classes
 paymentStatusLabel(status): string
 paymentStatusColor(status): string
 assignmentStatusLabel(status): string
+THAI_MONTHS / THAI_MONTHS_SHORT  // "มกราคม" / "ม.ค."
+thaiYear(year): number             // ค.ศ. → พ.ศ.
+thaiMonthYearLabel(year, month)    // (2026, 8) → "สิงหาคม 2569"
 ```
+
+## lib/earnings.ts — สรุปรายได้ Freelancer รายเดือน
+
+```typescript
+toEarningsEntries(payments, jobTitleOf): EarningsEntry[]
+  // นับเฉพาะ status='paid' + มี paidAt → คำนวณ gross/tax/net/expense/payout ให้พร้อม
+  // payout = net + expenseAmount (ค่าใช้จ่ายเบิกคืนเต็ม ไม่หัก 3%)
+paidMonthParts(paidAt): { year, month, key } | null   // "YYYY-MM" ตามเวลาท้องถิ่น
+groupByMonth(entries, year?): MonthlyEarnings[]       // เดือนที่มีรายการ (ใหม่ → เก่า)
+monthlyTotals(entries, year): EarningsTotals[]        // 12 ช่อง index 0 = ม.ค. (สำหรับ matrix)
+sumEarnings(list): EarningsTotals
+earningsYears(entries): number[]                      // ปีที่มีรายได้ (ใหม่ → เก่า)
+basisAmount(totals, basis): number                    // basis: 'gross' | 'net' | 'payout'
+```
+
+> **เกณฑ์เข้าเดือน** = วันที่โอนจริง (`paidAt`) ไม่ใช่ `workDates` — ตรงกับเงินที่ออกจริง
+> และตรงกับ Expense/ภงด. ที่ bridge สร้างตอน mark paid
+>
+> ⚠️ ห้าม `paidAt.slice(0,7)` — paidAt เป็น UTC, ต้อง `new Date(paidAt)` แล้วอ่าน local
+> ไม่งั้นรายการที่จ่ายช่วงเช้ามืด (00:00–07:00 ICT) ตกไปเดือนก่อนหน้า
 
 ## Admin Payments Page — Feature สำคัญ
 
