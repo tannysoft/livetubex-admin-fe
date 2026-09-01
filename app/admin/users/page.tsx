@@ -15,7 +15,7 @@ import {
   setAdminUserDisabled, deleteAdminUser, resetAdminUserPassword,
 } from '@/lib/adminUsers'
 import {
-  ADMIN_ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_BADGE_COLOR, BOOTSTRAP_OWNER_EMAIL,
+  ADMIN_ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_BADGE_COLOR, isBootstrapOwnerEmail,
 } from '@/lib/roles'
 import { formatDate } from '@/lib/utils'
 import type { AdminUser, AdminRole } from '@/lib/types'
@@ -63,7 +63,7 @@ export default function UsersPage() {
 
   const showToast = (ok: boolean, msg: string) => setToast({ ok, msg })
 
-  const isBootstrap = (u: AdminUser) => u.email.toLowerCase() === BOOTSTRAP_OWNER_EMAIL
+  const isBootstrap = (u: AdminUser) => isBootstrapOwnerEmail(u.email)
   const isSelf = (u: AdminUser) => u.uid === user?.uid
 
   const handleRoleChange = async (u: AdminUser, newRole: AdminRole) => {
@@ -128,7 +128,7 @@ export default function UsersPage() {
         </div>
         <button
           onClick={() => setAddOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มผู้ใช้
@@ -155,7 +155,7 @@ export default function UsersPage() {
             <ExclamationCircleIcon className="w-10 h-10 text-amber-400 mx-auto" />
             <p className="text-gray-500 text-sm mt-3">โหลดรายชื่อไม่สำเร็จ: {loadError}</p>
             <p className="text-xs text-gray-400 mt-1">(ต้อง deploy Cloud Functions ก่อนใช้งาน)</p>
-            <button onClick={load} className="mt-3 text-[#f73727] hover:underline text-sm">ลองใหม่</button>
+            <button onClick={load} className="mt-3 text-brand hover:underline text-sm">ลองใหม่</button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -280,7 +280,7 @@ export default function UsersPage() {
   )
 }
 
-const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
 
 function AddUserModal({ isOpen, onClose, onCreated, onError }: {
@@ -340,7 +340,7 @@ function AddUserModal({ isOpen, onClose, onCreated, onError }: {
 
         <div className="flex justify-end gap-3 pt-2">
           <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="px-6 py-2.5 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2">
+          <button onClick={submit} disabled={saving} className="px-6 py-2.5 text-sm font-medium text-white bg-brand rounded-xl hover:bg-brand-dark disabled:opacity-60 flex items-center gap-2">
             {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             เพิ่มผู้ใช้
           </button>
@@ -387,7 +387,7 @@ function ResetPasswordModal({ target, onClose, onDone, onError }: {
         {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
         <div className="flex justify-end gap-3 pt-2">
           <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200">ยกเลิก</button>
-          <button onClick={submit} disabled={saving} className="px-6 py-2.5 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2">
+          <button onClick={submit} disabled={saving} className="px-6 py-2.5 text-sm font-medium text-white bg-brand rounded-xl hover:bg-brand-dark disabled:opacity-60 flex items-center gap-2">
             {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             บันทึก
           </button>

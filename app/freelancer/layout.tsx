@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 
 export const metadata: Metadata = {
-  title: 'LiveTubeX Freelancer Portal',
-  description: 'ระบบจัดการงานและการเบิกจ่าย Freelancer LiveTubeX',
+  title: 'Freelancer Portal',
+  description: 'ระบบจัดการงานและการเบิกจ่าย Freelancer',
 }
 
 // ป้องกัน iOS zoom เมื่อแตะ input — เฉพาะหน้า freelancer เท่านั้น

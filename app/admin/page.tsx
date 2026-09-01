@@ -16,8 +16,10 @@ import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentStat
 import Badge from '@/components/ui/Badge'
 import { Skeleton, SkeletonCard, SkeletonStat } from '@/components/ui/Skeleton'
 import Link from 'next/link'
+import { useBrand } from '@/components/BrandProvider'
 
 export default function AdminDashboard() {
+  const brand = useBrand()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recentJobs, setRecentJobs] = useState<Job[]>([])
   const [recentPayments, setRecentPayments] = useState<Payment[]>([])
@@ -77,7 +79,7 @@ export default function AdminDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">ภาพรวมระบบจัดการงานถ่ายทอดสด LiveTubeX</p>
+        <p className="text-gray-500 mt-1">ภาพรวม{brand.tagline} {brand.appName}</p>
       </div>
 
       {/* Stats */}
@@ -125,7 +127,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-900">งานล่าสุด</h2>
-            <Link href="/admin/jobs" className="text-sm text-[#f73727] hover:underline font-medium">ดูทั้งหมด</Link>
+            <Link href="/admin/jobs" className="text-sm text-brand hover:underline font-medium">ดูทั้งหมด</Link>
           </div>
           <div className="divide-y divide-gray-50">
             {recentJobs.length === 0 ? (
@@ -148,7 +150,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-900">การเบิกจ่ายล่าสุด</h2>
-            <Link href="/admin/payments" className="text-sm text-[#f73727] hover:underline font-medium">ดูทั้งหมด</Link>
+            <Link href="/admin/payments" className="text-sm text-brand hover:underline font-medium">ดูทั้งหมด</Link>
           </div>
           <div className="divide-y divide-gray-50">
             {recentPayments.length === 0 ? (

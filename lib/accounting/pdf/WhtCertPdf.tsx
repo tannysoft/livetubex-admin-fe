@@ -1,6 +1,7 @@
 import { Document, Page, View, Image } from '@react-pdf/renderer'
 import { Text } from './PdfText'
-import { styles, BRAND_RED, MUTED } from './styles'
+import { styles, MUTED } from './styles'
+import { pdfBrand } from './brand-runtime'
 import { bahtText, round2 } from '../calc'
 import { INCOME_TYPES, deriveIncomeTypeCode } from '../wht-cert'
 import type { CompanySettings, Expense } from '../../types'
@@ -137,7 +138,7 @@ function CertBlock({ expense, company, copyLabel }: { expense: Expense; company:
           <Text style={{ flex: 1, fontSize: 8, fontWeight: 'bold', padding: 3 }}>รวมเงินที่จ่ายและภาษีที่หักนำส่ง</Text>
           <Text style={{ width: 75, fontSize: 8, padding: 3, textAlign: 'center', borderLeftWidth: 0.3, borderLeftColor: '#000' }}></Text>
           <Text style={{ width: 80, fontSize: 8, fontWeight: 'bold', padding: 3, textAlign: 'right', borderLeftWidth: 0.3, borderLeftColor: '#000' }}>{formatMoney(gross)}</Text>
-          <Text style={{ width: 60, fontSize: 8, fontWeight: 'bold', padding: 3, textAlign: 'right', borderLeftWidth: 0.3, borderLeftColor: '#000', color: BRAND_RED }}>{formatMoney(wht)}</Text>
+          <Text style={{ width: 60, fontSize: 8, fontWeight: 'bold', padding: 3, textAlign: 'right', borderLeftWidth: 0.3, borderLeftColor: '#000', color: pdfBrand().color }}>{formatMoney(wht)}</Text>
         </View>
       </View>
 

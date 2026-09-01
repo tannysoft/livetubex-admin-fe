@@ -11,11 +11,13 @@ import {
   ChartBarIcon,
   ChartBarSquareIcon,
   Cog6ToothIcon,
+  SwatchIcon,
   Bars3Icon,
   XMarkIcon,
   ArrowRightOnRectangleIcon,
   QueueListIcon,
   ChatBubbleLeftRightIcon,
+  EnvelopeIcon,
   UserGroupIcon,
   BuildingOffice2Icon,
   DocumentTextIcon,
@@ -32,6 +34,7 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
+import { useBrand } from '@/components/BrandProvider'
 import { useState } from 'react'
 import { adminLogout } from '@/lib/auth'
 import { useAuth } from '@/lib/auth-context'
@@ -107,7 +110,10 @@ const navGroups: NavGroup[] = [
   {
     title: 'ระบบ',
     items: [
-      { href: '/admin/settings', label: 'ตั้งค่าระบบ', icon: Cog6ToothIcon },
+      { href: '/admin/settings', label: 'ตั้งค่าระบบ', icon: Cog6ToothIcon, exact: true },
+      { href: '/admin/settings/brand', label: 'แบรนด์ / โลโก้', icon: SwatchIcon },
+      { href: '/admin/settings/line', label: 'ตั้งค่า LINE', icon: ChatBubbleLeftRightIcon },
+      { href: '/admin/settings/mail', label: 'ตั้งค่าอีเมล', icon: EnvelopeIcon },
       { href: '/admin/users', label: 'จัดการผู้ใช้', icon: ShieldCheckIcon },
     ],
   },
@@ -122,7 +128,7 @@ function NavItem({ href, label, icon: Icon, exact }: NavItemDef) {
       href={href}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
         active
-          ? 'bg-[#f73727] text-white shadow-md shadow-red-200'
+          ? 'bg-brand text-white shadow-md shadow-brand-tint'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
@@ -134,6 +140,7 @@ function NavItem({ href, label, icon: Icon, exact }: NavItemDef) {
 }
 
 export default function AdminSidebar() {
+  const brand = useBrand()
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
   const { user, role } = useAuth()
@@ -195,10 +202,10 @@ export default function AdminSidebar() {
         {/* Footer */}
         <div className="p-4 border-t border-gray-100 space-y-2">
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
-            <div className="w-8 h-8 bg-[#f73727] rounded-full flex items-center justify-center text-white text-sm font-bold">A</div>
+            <div className="w-8 h-8 bg-brand rounded-full flex items-center justify-center text-white text-sm font-bold">A</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.email ?? 'Admin'}</p>
-              <p className="text-xs text-gray-500">LiveTubeX</p>
+              <p className="text-xs text-gray-500">{brand.appName}</p>
             </div>
           </div>
           <button

@@ -24,6 +24,14 @@ service cloud.firestore {
       return isFreelancer() && request.auth.uid == lineUserId;
     }
 
+    // ── publicSettings: แบรนด์ของ tenant (ชื่อระบบ, โลโก้, สี) ───────────────
+    // อ่านได้โดยไม่ต้อง login — หน้า /login และ LIFF ต้องโชว์โลโก้ตั้งแต่ยังไม่มี auth
+    // ⚠️ ห้ามเก็บข้อมูลลับใน collection นี้เด็ดขาด (public จริงๆ)
+    match /publicSettings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── jobs: Admin เขียนได้, ทุกคนที่ login อ่านได้ ────────────────────────
     match /jobs/{jobId} {
       allow read: if request.auth != null;

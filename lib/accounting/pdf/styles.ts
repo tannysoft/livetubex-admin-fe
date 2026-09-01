@@ -1,5 +1,10 @@
 import { StyleSheet } from '@react-pdf/renderer'
 
+/**
+ * สีแบรนด์ fallback — StyleSheet ของ react-pdf เป็นค่าคงที่ตอน import
+ * จุดที่ต้องเปลี่ยนตาม tenant ให้ override ด้วย pdfBrand().color ตอน render
+ * (ดู brand-runtime.ts) — อย่าใช้ค่านี้ตรงๆ ในที่ใหม่
+ */
 export const BRAND_RED = '#f73727'
 export const TEXT = '#1a1a1a'
 export const MUTED = '#666666'

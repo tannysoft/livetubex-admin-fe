@@ -3,7 +3,7 @@
 import { httpsCallable } from 'firebase/functions'
 import { doc, getDoc } from 'firebase/firestore'
 import { db, functions } from './firebase'
-import { BOOTSTRAP_OWNER_EMAIL } from './roles'
+import { isBootstrapOwnerEmail } from './roles'
 import type { AdminUser, AdminRole } from './types'
 
 export async function listAdminUsers(): Promise<AdminUser[]> {
@@ -52,6 +52,6 @@ export async function resolveMyRole(uid: string, email: string | null): Promise<
   } catch {
     /* ignore — ใช้ fallback */
   }
-  if (email && email.toLowerCase() === BOOTSTRAP_OWNER_EMAIL) return 'owner'
+  if (isBootstrapOwnerEmail(email)) return 'owner'
   return 'admin'
 }

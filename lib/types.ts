@@ -148,7 +148,7 @@ export interface BankAccount {
 }
 
 export interface CompanySettings {
-  name: string                // บริษัท ไลฟ์ทูป เอ็กซ์ จำกัด
+  name: string                // ชื่อนิติบุคคลเต็ม เช่น บริษัท ตัวอย่าง จำกัด
   nameEn?: string
   taxId: string               // เลขทะเบียนนิติบุคคล 13 หลัก
   branch: string              // "สำนักงานใหญ่" หรือ "สาขา 00001"

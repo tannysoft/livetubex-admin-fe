@@ -1,6 +1,7 @@
 import { Document, Page, View, Image } from '@react-pdf/renderer'
 import { Text } from './PdfText'
-import LogoSvg from './LogoSvg'
+import PdfLogo from './PdfLogo'
+import { pdfBrand } from './brand-runtime'
 import { styles } from './styles'
 import { bahtText } from '../calc'
 import type { CompanySettings, PaymentMethod, Receipt } from '../../types'
@@ -44,9 +45,9 @@ export default function ReceiptPdf({ receipt, company, invoiceDocNumber, taxInvo
         <View style={styles.header}>
           <View style={styles.companyBlock}>
             <View style={{ marginBottom: 6 }}>
-              <LogoSvg width={140} />
+              <PdfLogo width={140} />
             </View>
-            <Text style={styles.companyName}>{company.name}</Text>
+            <Text style={[styles.companyName, { color: pdfBrand().color }]}>{company.name}</Text>
             {company.nameEn ? <Text style={styles.companyInfo}>{company.nameEn}</Text> : null}
             <Text style={styles.companyInfo}>เลขประจำตัวผู้เสียภาษี: {company.taxId} ({company.branch})</Text>
             <Text style={styles.companyInfo}>{company.address}</Text>
@@ -94,9 +95,9 @@ export default function ReceiptPdf({ receipt, company, invoiceDocNumber, taxInvo
         </View>
 
         {/* Amount big box */}
-        <View style={styles.amountBigBox}>
+        <View style={[styles.amountBigBox, { borderColor: pdfBrand().color }]}>
           <Text style={styles.amountBigLabel}>จำนวนเงินที่ได้รับสุทธิ</Text>
-          <Text style={styles.amountBigValue}>฿ {formatMoney(netReceived)}</Text>
+          <Text style={[styles.amountBigValue, { color: pdfBrand().color }]}>฿ {formatMoney(netReceived)}</Text>
           <Text style={styles.amountText}>({bahtText(netReceived)})</Text>
         </View>
 

@@ -4,10 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/lib/auth'
 import Logo from '@/components/ui/Logo'
+import { useBrand } from '@/components/BrandProvider'
 import { LockClosedIcon } from '@heroicons/react/24/outline'
 
 export default function LoginPage() {
   const router = useRouter()
+  const brand = useBrand()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -32,7 +34,7 @@ export default function LoginPage() {
     }
   }
 
-  const inputCls = 'w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+  const inputCls = 'w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all'
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -51,7 +53,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputCls}
-                placeholder="admin@livetubex.com"
+                placeholder={brand.loginEmailPlaceholder}
                 required
                 autoComplete="email"
               />
@@ -76,7 +78,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-[#f73727] text-white font-semibold rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60 mt-2"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-brand text-white font-semibold rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60 mt-2"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

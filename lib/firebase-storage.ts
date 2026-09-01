@@ -103,6 +103,21 @@ export async function uploadCompanySignature(file: File): Promise<string> {
 }
 
 /**
+ * อัพโหลดไฟล์ภาพของแบรนด์ — โลโก้สำหรับ PDF / รูปฉลอง (Admin เท่านั้น)
+ * path: companyAssets/{kind}.{ext}
+ *
+ * ⚠️ โลโก้บนเว็บใช้ inline SVG (brand.logoSvg) ไม่ใช่ไฟล์นี้ —
+ *    ไฟล์นี้มีไว้เพราะ react-pdf <Image> ไม่รองรับ SVG
+ */
+export async function uploadBrandAsset(kind: 'brand-logo' | 'celebration', file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+  const path = `companyAssets/${kind}.${ext}`
+  const storageRef = ref(storage, path)
+  await uploadBytes(storageRef, file, { contentType: file.type })
+  return path
+}
+
+/**
  * อัพโหลดสลิป/ใบเสร็จค่าใช้จ่ายบริษัท (Phase 2 — Admin เท่านั้น)
  * path: expenseReceipts/{expenseId}/{timestamp}.{ext}
  */
