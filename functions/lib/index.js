@@ -33,19 +33,122 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
+exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const v2_1 = require("firebase-functions/v2");
 const https = __importStar(require("https"));
-const resend_1 = require("resend");
+const mail_1 = require("./mail");
 admin.initializeApp();
 (0, v2_1.setGlobalOptions)({ region: 'asia-southeast1' });
+// ── Whitelabel config (ตั้งใน functions/.env — ดู functions/.env.example) ───
+// APP_ORIGINS: โดเมนของ tenant คั่นด้วย comma (ตัวแรกใช้เป็นลิงก์ใน email)
+// ไม่ตั้ง → เดาจาก default hosting domain ของ project เอง
+const PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GCP_PROJECT ?? '';
+const CONFIGURED_ORIGINS = (process.env.APP_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+const DEFAULT_ORIGINS = PROJECT_ID
+    ? [`https://${PROJECT_ID}.web.app`, `https://${PROJECT_ID}.firebaseapp.com`]
+    : [];
+const ALLOWED_ORIGINS = CONFIGURED_ORIGINS.length ? CONFIGURED_ORIGINS : DEFAULT_ORIGINS;
+/** ใช้กับ onCall ทุกตัว — origin ที่อนุญาต + localhost ตอน dev */
+const CORS_ORIGINS = [...ALLOWED_ORIGINS, /localhost/];
+/** URL หลักของแอป (ใช้ทำลิงก์ในอีเมล) */
+const APP_URL = ALLOWED_ORIGINS[0] ?? '';
+/** LIFF ID fallback จาก env — ใช้ตอนอ่าน publicSettings/line ไม่ได้ */
+const LIFF_ID_FALLBACK = process.env.LINE_LIFF_ID ?? '';
+/** อีเมล owner ตั้งต้น (bootstrap) — ว่าง = ไม่มีใครได้ owner อัตโนมัติ */
+const BOOTSTRAP_OWNER_EMAIL = (process.env.BOOTSTRAP_OWNER_EMAIL ?? '').toLowerCase();
+/** ว่างแปลว่า "ไม่มีใครใช่" ไม่ใช่ "ทุกคนใช่" — กันกรณี email undefined ตรงกับ '' */
+function isBootstrapOwner(email) {
+    return !!BOOTSTRAP_OWNER_EMAIL && (email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL;
+}
+/**
+ * ใช้เมื่ออ่าน publicSettings/brand ไม่ได้ (ยังไม่ได้ seed / offline)
+ * ตั้ง APP_NAME + BRAND_COLOR ใน functions/.env เพื่อให้อีเมลถูกแบรนด์
+ * ตั้งแต่ก่อน seed doc
+ */
+const FALLBACK_BRAND = {
+    appName: process.env.APP_NAME || 'ระบบจัดการงาน',
+    primaryColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(process.env.BRAND_COLOR ?? '')
+        ? process.env.BRAND_COLOR
+        : '#f73727',
+    appUrl: APP_URL,
+};
+let brandCache = null;
+/** cache ต่อ instance — แบรนด์แทบไม่เปลี่ยน, instance รีไซเคิลเองอยู่แล้ว */
+async function getBrandInfo() {
+    if (brandCache)
+        return brandCache;
+    try {
+        const snap = await admin.firestore().doc('publicSettings/brand').get();
+        const d = snap.data() ?? {};
+        brandCache = {
+            appName: d.appName || FALLBACK_BRAND.appName,
+            primaryColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(d.primaryColor ?? '')
+                ? d.primaryColor
+                : FALLBACK_BRAND.primaryColor,
+            appUrl: APP_URL,
+        };
+    }
+    catch (e) {
+        console.error('[getBrandInfo] อ่านแบรนด์ไม่ได้ ใช้ค่า fallback:', e);
+        brandCache = FALLBACK_BRAND;
+    }
+    return brandCache;
+}
+/** LIFF ID เป็นรูปแบบ {channelId}-{suffix} — ดึง channel ID ออกมาเป็นค่า default */
+function channelIdFromLiffId(liffId) {
+    const m = /^(\d{8,12})-[A-Za-z0-9]{4,20}$/.exec(liffId.trim());
+    return m ? m[1] : '';
+}
+let lineConfigCache = null;
+/**
+ * LINE config ของ tenant — แหล่งเดียวกับฝั่งเว็บ (publicSettings/line)
+ * ตั้งได้ที่ /admin/settings/line โดยไม่ต้อง redeploy
+ *
+ * loginChannelId ที่ไม่ได้ตั้งไว้ จะ derive จาก LIFF ID ให้ (prefix ของ LIFF ID
+ * คือ channel ID ของ LINE Login channel นั้น)
+ */
+async function getLineConfig() {
+    if (lineConfigCache)
+        return lineConfigCache;
+    let liffId = LIFF_ID_FALLBACK;
+    let loginChannelId = process.env.LINE_LOGIN_CHANNEL_ID ?? '';
+    try {
+        const d = (await admin.firestore().doc('publicSettings/line').get()).data() ?? {};
+        liffId = (d.liffId ?? '').trim() || liffId;
+        loginChannelId = (d.loginChannelId ?? '').trim() || loginChannelId;
+    }
+    catch (e) {
+        console.error('[getLineConfig] อ่าน LINE config ไม่ได้ ใช้ค่า env:', e);
+    }
+    lineConfigCache = {
+        liffId,
+        loginChannelId: loginChannelId || channelIdFromLiffId(liffId),
+    };
+    return lineConfigCache;
+}
+/** รวม secret ที่โมดูล mail ต้องใช้ — เรียกได้เฉพาะใน handler ที่ประกาศ secrets ไว้ */
+function mailCreds(opts = {}) {
+    return {
+        resendApiKey: RESEND_API_KEY.value(),
+        smtpPassword: SMTP_PASSWORD.value(),
+        fallbackFrom: MAIL_FROM.value(),
+        fallbackAdminTo: opts.withAdminTo ? MAIL_TO.value() : '',
+    };
+}
+async function getLiffId() {
+    return (await getLineConfig()).liffId;
+}
 // ── Secrets (set via: firebase functions:secrets:set SECRET_NAME) ──────────
 const RESEND_API_KEY = (0, params_1.defineSecret)('RESEND_API_KEY'); // API Key จาก resend.com
 const MAIL_FROM = (0, params_1.defineSecret)('MAIL_FROM'); // เช่น notify@yourcompany.com
 const MAIL_TO = (0, params_1.defineSecret)('MAIL_TO'); // admin ที่รับแจ้งเตือน
+const SMTP_PASSWORD = (0, params_1.defineSecret)('SMTP_PASSWORD'); // รหัสผ่าน SMTP (ใช้เมื่อ provider = smtp)
 const LINE_CHANNEL_ACCESS_TOKEN = (0, params_1.defineSecret)('LINE_CHANNEL_ACCESS_TOKEN'); // LINE Messaging API long-lived token
 // ── ชื่อย่อธนาคาร ────────────────────────────────────────────────────────────
 const BANK_ABBR = {
@@ -104,13 +207,8 @@ function sendLineMessage(to, token, messages) {
 // ── Email notification on new payment request ─────────────────────────────
 // เรียกจาก frontend หลัง createPayment สำเร็จ (หลีกเลี่ยง Eventarc ที่ไม่รองรับ asia-southeast3)
 exports.sendPaymentNotification = (0, https_1.onCall)({
-    cors: [
-        'https://livetubex-admin.web.app',
-        'https://livetubex-admin.firebaseapp.com',
-        'https://console.livetubex.com',
-        /localhost/,
-    ],
-    secrets: [RESEND_API_KEY, MAIL_FROM, MAIL_TO],
+    cors: CORS_ORIGINS,
+    secrets: [RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM, MAIL_TO],
 }, async (request) => {
     // ตรวจสอบว่า caller เป็น freelancer จริง
     if (!request.auth) {
@@ -120,9 +218,6 @@ exports.sendPaymentNotification = (0, https_1.onCall)({
     if (!payment.amount) {
         throw new https_1.HttpsError('invalid-argument', 'Missing payment data');
     }
-    const mailFrom = MAIL_FROM.value();
-    const mailTo = MAIL_TO.value();
-    const resend = new resend_1.Resend(RESEND_API_KEY.value());
     // mask เลขบัญชี: แสดง 4 ตัวหลัง ซ่อนส่วนที่เหลือด้วย xxx
     const maskAccount = (acc) => {
         const clean = acc.replace(/\D/g, ''); // เอาเฉพาะตัวเลข
@@ -184,7 +279,7 @@ exports.sendPaymentNotification = (0, https_1.onCall)({
                 jobTitle = t;
         }
     }
-    console.log(`[sendPaymentNotification] from=${mailFrom} to=${mailTo} freelancer=${freelancerName} amount=${payment.amount} freelancerEmail=${freelancerEmail ?? 'none'} (freelancerId=${freelancerId ?? '-'} lineUserId=${lineUserId ?? '-'})`);
+    console.log(`[sendPaymentNotification] freelancer=${freelancerName} amount=${payment.amount} freelancerEmail=${freelancerEmail ?? 'none'} (freelancerId=${freelancerId ?? '-'} lineUserId=${lineUserId ?? '-'})`);
     const thaiDate = new Date(payment.requestedAt).toLocaleString('th-TH', {
         timeZone: 'Asia/Bangkok',
         year: 'numeric', month: 'long', day: 'numeric',
@@ -197,145 +292,144 @@ exports.sendPaymentNotification = (0, https_1.onCall)({
         ? payment.workDates.join(', ')
         : '-';
     const formatCurrency = (n) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n);
-    const html = `
-<!DOCTYPE html>
-<html lang="th">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Helvetica Neue',Arial,sans-serif">
-  <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-    <!-- Header -->
-    <div style="background:#f73727;padding:24px 28px">
-      <p style="margin:0;color:#fff;font-size:18px;font-weight:700">LiveTubeX</p>
-      <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px">มีคำขอเบิกจ่ายเงินใหม่</p>
-    </div>
-    <!-- Body -->
-    <div style="padding:28px">
-      <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        <strong>${freelancerName}</strong> ส่งคำขอเบิกจ่ายเงินเข้ามาแล้ว กรุณาตรวจสอบและอนุมัติ
-      </p>
-      <!-- Info table -->
+    const brand = await getBrandInfo();
+    const mail = await (0, mail_1.getMailSettings)();
+    const creds = mailCreds({ withAdminTo: true });
+    // ตัวแปรที่ใช้ได้ในข้อความที่แอดมินแก้เองได้ (/admin/settings/mail)
+    const vars = {
+        appName: brand.appName,
+        date: thaiDate,
+        freelancerName,
+        jobTitle,
+        workDates: workDatesText,
+        amount: formatCurrency(amount),
+        tax: formatCurrency(tax),
+        net: formatCurrency(net),
+        bankName: freelancerBankName,
+        bankAccount: maskAccount(freelancerBankAccount),
+        notes: payment.notes ?? '',
+    };
+    const row = (label, value, opts = {}) => `
+        <tr${opts.last ? '' : ' style="border-bottom:1px solid #f3f4f6"'}>
+          <td style="padding:10px 0;color:${opts.bold ? '#374151;font-weight:600' : '#6b7280'};width:40%">${label}</td>
+          <td style="padding:10px 0;color:${opts.muted ? '#6b7280' : opts.bold ? brand.primaryColor : '#111827'}${opts.bold || opts.big ? ';font-weight:700' : ''}${opts.big ? ';font-size:16px' : ''}">${value}</td>
+        </tr>`;
+    const from = (0, mail_1.buildFrom)(mail, creds, brand.appName);
+    // ── เมลหา Admin ───────────────────────────────────────────────────────
+    const adminTpl = mail.templates.paymentRequestAdmin;
+    const adminTo = (0, mail_1.adminRecipients)(mail, creds);
+    let adminEmailId;
+    if (adminTpl.enabled && adminTo.length) {
+        const html = (0, mail_1.renderEmailShell)({
+            appName: brand.appName,
+            primaryColor: brand.primaryColor,
+            heading: (0, mail_1.renderVars)(adminTpl.heading, vars),
+            intro: (0, mail_1.renderVars)(adminTpl.intro, vars),
+            footer: (0, mail_1.renderVars)(adminTpl.footer, vars),
+            cta: { label: 'ไปอนุมัติที่ Admin Panel →', url: `${brand.appUrl}/admin/payments` },
+            bodyHtml: `
       <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280;width:40%">Freelancer</td>
-          <td style="padding:10px 0;color:#111827;font-weight:600">${freelancerName}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">รายละเอียดงาน</td>
-          <td style="padding:10px 0;color:#111827">${jobTitle}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">วันที่ทำงาน</td>
-          <td style="padding:10px 0;color:#111827">${workDatesText}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">บัญชีธนาคาร</td>
-          <td style="padding:10px 0;color:#111827">${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span></td>
-        </tr>
-        ${payment.notes ? `
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">หมายเหตุ</td>
-          <td style="padding:10px 0;color:#111827">${payment.notes}</td>
-        </tr>` : ''}
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">จำนวนขอเบิก</td>
-          <td style="padding:10px 0;color:#111827;font-weight:600;font-size:16px">${formatCurrency(amount)}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">ภาษีหัก ณ ที่จ่าย 3%</td>
-          <td style="padding:10px 0;color:#6b7280">−${formatCurrency(tax)}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 0;color:#374151;font-weight:600">ยอดโอนสุทธิ</td>
-          <td style="padding:10px 0;color:#f73727;font-weight:700;font-size:16px">${formatCurrency(net)}</td>
-        </tr>
-      </table>
-      <!-- CTA -->
-      <div style="margin-top:28px;text-align:center">
-        <a href="https://livetubex-admin.web.app/admin/payments"
-           style="display:inline-block;background:#f73727;color:#fff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:600;font-size:14px">
-          ไปอนุมัติที่ Admin Panel →
-        </a>
-      </div>
-      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">
-        ส่งเมื่อ ${thaiDate}
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
-    // ── ส่งเมลหา Admin ────────────────────────────────────────────────────
-    const { data, error } = await resend.emails.send({
-        from: `LiveTubeX Notify <${mailFrom}>`,
-        to: mailTo,
-        subject: `[LiveTubeX] คำขอเบิกจ่าย — ${freelancerName} — ${formatCurrency(amount)}`,
-        html,
-    });
-    if (error) {
-        console.error(`[sendPaymentNotification] ❌ Resend error (admin):`, error);
-        throw new https_1.HttpsError('internal', `Email failed: ${error.message}`);
+        ${row('Freelancer', `<strong>${freelancerName}</strong>`)}
+        ${row('รายละเอียดงาน', jobTitle)}
+        ${row('วันที่ทำงาน', workDatesText)}
+        ${row('บัญชีธนาคาร', `${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span>`)}
+        ${payment.notes ? row('หมายเหตุ', payment.notes) : ''}
+        ${row('จำนวนขอเบิก', formatCurrency(amount), { big: true })}
+        ${row('ภาษีหัก ณ ที่จ่าย 3%', `−${formatCurrency(tax)}`, { muted: true })}
+        ${row('ยอดโอนสุทธิ', formatCurrency(net), { bold: true, big: true, last: true })}
+      </table>`,
+        });
+        const res = await (0, mail_1.sendMail)(mail, creds, {
+            from,
+            to: adminTo,
+            subject: (0, mail_1.renderVars)(adminTpl.subject, vars),
+            html,
+        });
+        if (res.error) {
+            console.error('[sendPaymentNotification] ❌ ส่งเมลหา admin ไม่สำเร็จ:', res.error);
+            throw new https_1.HttpsError('internal', `Email failed: ${res.error}`);
+        }
+        adminEmailId = res.id;
+        console.log(`[sendPaymentNotification] ✅ admin email sent id=${adminEmailId}`);
     }
-    console.log(`[sendPaymentNotification] ✅ Admin email sent id=${data?.id}`);
-    // ── ส่งเมลยืนยันหา Freelancer (ถ้ามี email) ───────────────────────────
-    if (freelancerEmail) {
-        const freelancerHtml = `
-<!DOCTYPE html>
-<html lang="th">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Helvetica Neue',Arial,sans-serif">
-  <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-    <div style="background:#f73727;padding:24px 28px">
-      <p style="margin:0;color:#fff;font-size:18px;font-weight:700">LiveTubeX</p>
-      <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px">ส่งคำขอเบิกจ่ายสำเร็จ</p>
-    </div>
-    <div style="padding:28px">
-      <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        สวัสดีคุณ <strong>${freelancerName}</strong><br>
-        ระบบได้รับคำขอเบิกจ่ายของคุณแล้ว กรุณารอการอนุมัติจาก Admin
-      </p>
+    else {
+        console.log('[sendPaymentNotification] ข้ามเมล admin (ปิดไว้ หรือไม่มีผู้รับ)');
+    }
+    // ── เมลยืนยันหา Freelancer ────────────────────────────────────────────
+    const flTpl = mail.templates.paymentRequestFreelancer;
+    if (freelancerEmail && flTpl.enabled) {
+        const freelancerHtml = (0, mail_1.renderEmailShell)({
+            appName: brand.appName,
+            primaryColor: brand.primaryColor,
+            heading: (0, mail_1.renderVars)(flTpl.heading, vars),
+            intro: (0, mail_1.renderVars)(flTpl.intro, vars),
+            footer: (0, mail_1.renderVars)(flTpl.footer, vars),
+            bodyHtml: `
       <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280;width:40%">รายละเอียดงาน</td>
-          <td style="padding:10px 0;color:#111827">${jobTitle}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">วันที่ทำงาน</td>
-          <td style="padding:10px 0;color:#111827">${workDatesText}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">จำนวนขอเบิก</td>
-          <td style="padding:10px 0;color:#111827;font-weight:600">${formatCurrency(amount)}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f3f4f6">
-          <td style="padding:10px 0;color:#6b7280">ภาษีหัก ณ ที่จ่าย 3%</td>
-          <td style="padding:10px 0;color:#6b7280">−${formatCurrency(tax)}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 0;color:#374151;font-weight:600">ยอดที่จะได้รับ</td>
-          <td style="padding:10px 0;color:#f73727;font-weight:700;font-size:16px">${formatCurrency(net)}</td>
-        </tr>
-      </table>
-      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">
-        ส่งเมื่อ ${thaiDate}
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
-        const { error: freelancerError } = await resend.emails.send({
-            from: `LiveTubeX Notify <${mailFrom}>`,
+        ${row('รายละเอียดงาน', jobTitle)}
+        ${row('วันที่ทำงาน', workDatesText)}
+        ${row('จำนวนขอเบิก', formatCurrency(amount))}
+        ${row('ภาษีหัก ณ ที่จ่าย 3%', `−${formatCurrency(tax)}`, { muted: true })}
+        ${row('ยอดที่จะได้รับ', formatCurrency(net), { bold: true, big: true, last: true })}
+      </table>`,
+        });
+        const res = await (0, mail_1.sendMail)(mail, creds, {
+            from,
             to: freelancerEmail,
-            subject: `[LiveTubeX] ส่งคำขอเบิกจ่ายสำเร็จ — ${formatCurrency(amount)}`,
+            subject: (0, mail_1.renderVars)(flTpl.subject, vars),
             html: freelancerHtml,
         });
-        if (freelancerError) {
-            console.warn(`[sendPaymentNotification] ⚠️ Freelancer email failed:`, freelancerError);
+        if (res.error) {
+            console.warn('[sendPaymentNotification] ⚠️ ส่งเมลหา freelancer ไม่สำเร็จ:', res.error);
         }
         else {
-            console.log(`[sendPaymentNotification] ✅ Freelancer email sent to ${freelancerEmail}`);
+            console.log(`[sendPaymentNotification] ✅ freelancer email sent to ${freelancerEmail}`);
         }
     }
-    return { success: true, emailId: data?.id };
+    return { success: true, emailId: adminEmailId };
 });
+/**
+ * ตรวจว่า access token ออกโดย LINE Login channel ตัวไหน
+ *
+ * ⚠️ จำเป็นด้านความปลอดภัย: `/v2/profile` รับ token จาก **channel ไหนก็ได้**
+ * ถ้าไม่เช็ก client_id ใครก็เอา token จาก LIFF app อื่นมาแลก Firebase token
+ * ของระบบนี้ได้ (impersonate ตัวเองเข้ามาเป็น freelancer)
+ * ref: https://developers.line.biz/en/reference/line-login/#verify-access-token
+ */
+function verifyLineAccessToken(accessToken) {
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.line.me',
+            path: `/oauth2/v2.1/verify?access_token=${encodeURIComponent(accessToken)}`,
+            method: 'GET',
+        }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (res.statusCode === 200) {
+                        resolve(parsed);
+                    }
+                    else {
+                        reject(new https_1.HttpsError('unauthenticated', `LINE token verification failed (${res.statusCode}): ${parsed.error_description ?? data}`));
+                    }
+                }
+                catch {
+                    reject(new https_1.HttpsError('internal', `Failed to parse LINE verify response: ${data}`));
+                }
+            });
+        });
+        req.on('error', (err) => {
+            reject(new https_1.HttpsError('internal', `Network error calling LINE verify API: ${err.message}`));
+        });
+        req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new https_1.HttpsError('deadline-exceeded', 'LINE verify API request timed out'));
+        });
+        req.end();
+    });
+}
 function fetchLineProfile(accessToken) {
     return new Promise((resolve, reject) => {
         const options = {
@@ -375,22 +469,43 @@ function fetchLineProfile(accessToken) {
 }
 exports.lineAuth = (0, https_1.onCall)({
     // CORS: อนุญาต Firebase Hosting domain
-    cors: [
-        'https://livetubex-admin.web.app',
-        'https://livetubex-admin.firebaseapp.com',
-        'https://console.livetubex.com',
-        /localhost/,
-    ],
+    cors: CORS_ORIGINS,
 }, async (request) => {
     // ── 1. Validate input ──────────────────────────────────────────────────
     const { accessToken } = (request.data ?? {});
     if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
         throw new https_1.HttpsError('invalid-argument', 'accessToken is required and must be a non-empty string');
     }
-    // ── 2. ยืนยัน LINE Access Token ────────────────────────────────────────
+    const token = accessToken.trim();
+    // ── 2. ตรวจว่า token ออกโดย LINE Login channel ของ tenant นี้ ──────────
+    // ต้องทำก่อนเรียก /v2/profile เสมอ — profile API รับ token จาก channel ไหนก็ได้
+    // ถ้าข้ามขั้นนี้ ใครก็เอา token จาก LIFF app อื่นมาแลก Firebase token ของระบบนี้ได้
+    const { loginChannelId } = await getLineConfig();
+    if (!loginChannelId) {
+        // fail closed — ยอมให้ login ไม่ได้ ดีกว่าปล่อย token จาก channel อื่นเข้ามา
+        console.error('[lineAuth] ไม่มี loginChannelId — ตั้งที่ /admin/settings/line');
+        throw new https_1.HttpsError('failed-precondition', 'ระบบยังตั้งค่า LINE Login channel ไม่เสร็จ กรุณาติดต่อ Admin');
+    }
+    let tokenInfo;
+    try {
+        tokenInfo = await verifyLineAccessToken(token);
+    }
+    catch (err) {
+        if (err instanceof https_1.HttpsError)
+            throw err;
+        throw new https_1.HttpsError('unauthenticated', 'Failed to verify LINE access token');
+    }
+    if (tokenInfo.client_id !== loginChannelId) {
+        console.warn(`[lineAuth] ปฏิเสธ token จาก channel อื่น: ได้ ${tokenInfo.client_id} คาดหวัง ${loginChannelId}`);
+        throw new https_1.HttpsError('unauthenticated', 'LINE access token ไม่ได้ออกโดย channel ของระบบนี้');
+    }
+    if (tokenInfo.expires_in <= 0) {
+        throw new https_1.HttpsError('unauthenticated', 'LINE access token หมดอายุแล้ว');
+    }
+    // ── 3. ดึง profile ────────────────────────────────────────────────────
     let lineProfile;
     try {
-        lineProfile = await fetchLineProfile(accessToken.trim());
+        lineProfile = await fetchLineProfile(token);
     }
     catch (err) {
         // re-throw HttpsError ที่สร้างใน fetchLineProfile
@@ -401,7 +516,7 @@ exports.lineAuth = (0, https_1.onCall)({
     if (!lineProfile.userId) {
         throw new https_1.HttpsError('unauthenticated', 'LINE profile did not return userId');
     }
-    // ── 3. ออก Firebase Custom Token ──────────────────────────────────────
+    // ── 4. ออก Firebase Custom Token ──────────────────────────────────────
     // NOTE: Service Account ต้องมี role "Service Account Token Creator"
     // ไปเพิ่มที่ https://console.cloud.google.com/iam-admin/iam
     let firebaseToken;
@@ -429,13 +544,8 @@ exports.lineAuth = (0, https_1.onCall)({
 });
 // ── แจ้งโอนเงินสำเร็จให้ Freelancer (Admin เรียกจากหน้าเตรียมจ่ายเงิน) ─────
 exports.sendPayoutNotification = (0, https_1.onCall)({
-    cors: [
-        'https://livetubex-admin.web.app',
-        'https://livetubex-admin.firebaseapp.com',
-        'https://console.livetubex.com',
-        /localhost/,
-    ],
-    secrets: [RESEND_API_KEY, MAIL_FROM, LINE_CHANNEL_ACCESS_TOKEN],
+    cors: CORS_ORIGINS,
+    secrets: [RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM, LINE_CHANNEL_ACCESS_TOKEN],
 }, async (request) => {
     if (!request.auth)
         throw new https_1.HttpsError('unauthenticated', 'Authentication required');
@@ -515,21 +625,29 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
         year: 'numeric', month: 'long', day: 'numeric',
         timeZone: 'Asia/Bangkok',
     });
-    const html = `
-<!DOCTYPE html>
-<html lang="th">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Helvetica Neue',Arial,sans-serif">
-  <div style="max-width:580px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-    <div style="background:#059669;padding:24px 28px">
-      <p style="margin:0;color:#fff;font-size:18px;font-weight:700">LiveTubeX</p>
-      <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px">แจ้งโอนเงินสำเร็จ</p>
-    </div>
-    <div style="padding:28px">
-      <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        สวัสดีคุณ <strong>${freelancerName}</strong><br>
-        ระบบได้ทำการโอนเงินให้คุณเรียบร้อยแล้ว
-      </p>
+    const brand = await getBrandInfo();
+    const mail = await (0, mail_1.getMailSettings)();
+    const creds = mailCreds();
+    const tpl = mail.templates.payoutSuccess;
+    const vars = {
+        appName: brand.appName,
+        date: thaiNow,
+        freelancerName,
+        totalNet: formatCurr(totalNet),
+        bankName,
+        bankAccount: maskAccount(bankAccount),
+        jobCount: String(rows.length),
+    };
+    // แถบหัวเมลนี้ใช้สีเขียว "สำเร็จ" ไม่ใช่สีแบรนด์ — สื่อสถานะ ไม่ใช่ตัวตน
+    const SUCCESS_GREEN = '#059669';
+    const html = (0, mail_1.renderEmailShell)({
+        appName: brand.appName,
+        primaryColor: SUCCESS_GREEN,
+        maxWidth: 580,
+        heading: (0, mail_1.renderVars)(tpl.heading, vars),
+        intro: (0, mail_1.renderVars)(tpl.intro, vars),
+        footer: (0, mail_1.renderVars)(tpl.footer, vars),
+        bodyHtml: `
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:#f9fafb">
@@ -543,31 +661,26 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
         <tfoot>
           <tr style="background:#f0fdf4">
             <td colspan="3" style="padding:12px;font-weight:700;color:#111827;border-top:2px solid #e5e7eb">รวมโอนทั้งหมด</td>
-            <td style="padding:12px;text-align:right;font-weight:700;color:#059669;font-size:16px;border-top:2px solid #e5e7eb">${formatCurr(totalNet)}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;color:${SUCCESS_GREEN};font-size:16px;border-top:2px solid #e5e7eb">${formatCurr(totalNet)}</td>
           </tr>
         </tfoot>
       </table>
       <div style="margin-top:20px;padding:14px;background:#f9fafb;border-radius:10px;font-size:13px;color:#374151">
         <strong>โอนเข้าบัญชี:</strong> ${bankName} — ${maskAccount(bankAccount)}
       </div>
-      ${slipSection}
-      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">โอนเมื่อ ${thaiNow} · LiveTubeX</p>
-    </div>
-  </div>
-</body>
-</html>`;
+      ${slipSection}`,
+    });
     // ── ส่งอีเมล (ถ้ามี) ─────────────────────────────────────────────────
     let emailSent = false;
-    if (freelancerEmail) {
-        const resend = new resend_1.Resend(RESEND_API_KEY.value());
-        const { error } = await resend.emails.send({
-            from: `LiveTubeX Notify <${MAIL_FROM.value()}>`,
+    if (freelancerEmail && tpl.enabled) {
+        const res = await (0, mail_1.sendMail)(mail, creds, {
+            from: (0, mail_1.buildFrom)(mail, creds, brand.appName),
             to: freelancerEmail,
-            subject: `[LiveTubeX] โอนเงินสำเร็จ ${formatCurr(totalNet)} — ${freelancerName}`,
+            subject: (0, mail_1.renderVars)(tpl.subject, vars),
             html,
         });
-        if (error) {
-            console.error('[sendPayoutNotification] email ❌', error);
+        if (res.error) {
+            console.error('[sendPayoutNotification] email ❌', res.error);
         }
         else {
             emailSent = true;
@@ -578,13 +691,14 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
     let lineSent = false;
     if (lineUserId) {
         try {
-            const liffUrl = 'https://liff.line.me/2009681467-TEcRBohh/payments';
+            const liffId = await getLiffId();
+            const liffUrl = liffId ? `https://liff.line.me/${liffId}/payments` : APP_URL;
             const maskedAcc = `xxxxxx${bankAccount.replace(/\D/g, '').slice(-4)}`;
             const bankAbbr = abbrevBank(bankName);
             const flexMessage = {
                 type: 'flex',
-                altText: `LiveTubeX: ชำระเงินสำเร็จ ${formatCurr(totalNet)}`,
-                sender: { name: 'LiveTubeX' },
+                altText: `${brand.appName}: ชำระเงินสำเร็จ ${formatCurr(totalNet)}`,
+                sender: { name: brand.appName },
                 contents: {
                     type: 'bubble',
                     header: {
@@ -593,7 +707,7 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
                         backgroundColor: '#059669',
                         paddingAll: '16px',
                         contents: [
-                            { type: 'text', text: 'LiveTubeX', color: '#ffffffBF', size: 'xs', weight: 'bold' },
+                            { type: 'text', text: brand.appName, color: '#ffffffBF', size: 'xs', weight: 'bold' },
                             { type: 'text', text: 'ชำระเงินสำเร็จ ✅', color: '#ffffff', size: 'xl', weight: 'bold', margin: 'xs' },
                         ],
                     },
@@ -687,13 +801,8 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
     return { success: true, emailSent, lineSent };
 });
 exports.sendPaymentReport = (0, https_1.onCall)({
-    cors: [
-        'https://livetubex-admin.web.app',
-        'https://livetubex-admin.firebaseapp.com',
-        'https://console.livetubex.com',
-        /localhost/,
-    ],
-    secrets: [RESEND_API_KEY, MAIL_FROM],
+    cors: CORS_ORIGINS,
+    secrets: [RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM],
 }, async (request) => {
     if (!request.auth)
         throw new https_1.HttpsError('unauthenticated', 'Authentication required');
@@ -706,8 +815,13 @@ exports.sendPaymentReport = (0, https_1.onCall)({
     if (!reports || !Array.isArray(reports) || reports.length === 0) {
         throw new https_1.HttpsError('invalid-argument', 'Missing reports data');
     }
-    const mailFrom = MAIL_FROM.value();
-    const resend = new resend_1.Resend(RESEND_API_KEY.value());
+    const mail = await (0, mail_1.getMailSettings)();
+    const creds = mailCreds();
+    const tpl = mail.templates.earningsReport;
+    if (!tpl.enabled) {
+        console.log('[sendPaymentReport] ปิดเมลสรุปรายได้ไว้ — ไม่ส่ง');
+        return { results: [] };
+    }
     const formatCurr = (n) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n);
     const formatDates = (dates) => {
         if (!dates || dates.length === 0)
@@ -734,21 +848,25 @@ exports.sendPaymentReport = (0, https_1.onCall)({
           <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;text-align:right;white-space:nowrap">−${formatCurr(Math.round(p.amount * 0.03))}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#059669;font-weight:600;text-align:right;white-space:nowrap">${formatCurr(p.amount - Math.round(p.amount * 0.03))}</td>
         </tr>`).join('');
-        const html = `
-<!DOCTYPE html>
-<html lang="th">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Helvetica Neue',Arial,sans-serif">
-  <div style="max-width:640px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-    <div style="background:#f73727;padding:24px 28px">
-      <p style="margin:0;color:#fff;font-size:18px;font-weight:700">LiveTubeX</p>
-      <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px">สรุปรายได้ประจำ${period}</p>
-    </div>
-    <div style="padding:28px">
-      <p style="margin:0 0 20px;font-size:15px;color:#374151">
-        สวัสดีคุณ <strong>${freelancerName}</strong><br>
-        นี่คือสรุปรายได้ของคุณประจำ<strong>${period}</strong>
-      </p>
+        const brand = await getBrandInfo();
+        const vars = {
+            appName: brand.appName,
+            date: new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }),
+            freelancerName,
+            period,
+            totalGross: formatCurr(totalGross),
+            totalTax: formatCurr(totalTax),
+            totalNet: formatCurr(totalNet),
+            jobCount: String(payments.length),
+        };
+        const html = (0, mail_1.renderEmailShell)({
+            appName: brand.appName,
+            primaryColor: brand.primaryColor,
+            maxWidth: 640,
+            heading: (0, mail_1.renderVars)(tpl.heading, vars),
+            intro: (0, mail_1.renderVars)(tpl.intro, vars),
+            footer: (0, mail_1.renderVars)(tpl.footer, vars),
+            bodyHtml: `
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px">
           <thead>
@@ -767,32 +885,24 @@ exports.sendPaymentReport = (0, https_1.onCall)({
               <td colspan="3" style="padding:12px;font-weight:700;color:#111827;border-top:2px solid #e5e7eb">รวมทั้งหมด</td>
               <td style="padding:12px;text-align:right;font-weight:700;color:#111827;border-top:2px solid #e5e7eb">${formatCurr(totalGross)}</td>
               <td style="padding:12px;text-align:right;color:#6b7280;border-top:2px solid #e5e7eb">−${formatCurr(totalTax)}</td>
-              <td style="padding:12px;text-align:right;font-weight:700;color:#f73727;font-size:15px;border-top:2px solid #e5e7eb">${formatCurr(totalNet)}</td>
+              <td style="padding:12px;text-align:right;font-weight:700;color:${brand.primaryColor};font-size:15px;border-top:2px solid #e5e7eb">${formatCurr(totalNet)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-      <div style="margin-top:24px;background:#f0fdf4;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px">
-        <div>
-          <p style="margin:0;font-size:13px;color:#374151">ยอดโอนสุทธิที่จะได้รับ (หักภาษี ณ ที่จ่าย 3%)</p>
-          <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#059669">${formatCurr(totalNet)}</p>
-        </div>
-      </div>
-      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center">
-        ออกโดย LiveTubeX · ${new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
-        const { error } = await resend.emails.send({
-            from: `LiveTubeX Notify <${mailFrom}>`,
+      <div style="margin-top:24px;background:#f0fdf4;border-radius:12px;padding:16px">
+        <p style="margin:0;font-size:13px;color:#374151">ยอดโอนสุทธิที่จะได้รับ (หักภาษี ณ ที่จ่าย 3%)</p>
+        <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#059669">${formatCurr(totalNet)}</p>
+      </div>`,
+        });
+        const res = await (0, mail_1.sendMail)(mail, creds, {
+            from: (0, mail_1.buildFrom)(mail, creds, brand.appName),
             to: freelancerEmail.trim(),
-            subject: `[LiveTubeX] สรุปรายได้ประจำ${period} — ${freelancerName}`,
+            subject: (0, mail_1.renderVars)(tpl.subject, vars),
             html,
         });
-        if (error) {
-            console.error(`[sendPaymentReport] ❌ ${freelancerEmail}:`, error);
+        if (res.error) {
+            console.error(`[sendPaymentReport] ❌ ${freelancerEmail}:`, res.error);
             results.push({ email: freelancerEmail, ok: false });
         }
         else {
@@ -807,12 +917,7 @@ exports.sendPaymentReport = (0, https_1.onCall)({
 // — server-side fetch จาก LINE CDN (ไม่มี CORS) แล้วอัพโหลดผ่าน admin SDK (bypass rules)
 // flow ปกติ (sync ตอน LIFF login) ยังทำงานเหมือนเดิม — ฟังก์ชันนี้ใช้ตอน admin อยากเร่ง backfill
 exports.migrateProfilePictures = (0, https_1.onCall)({
-    cors: [
-        'https://livetubex-admin.web.app',
-        'https://livetubex-admin.firebaseapp.com',
-        'https://console.livetubex.com',
-        /localhost/,
-    ],
+    cors: CORS_ORIGINS,
     timeoutSeconds: 540, // 9 นาที — เผื่อ freelancer เยอะ
 }, async (request) => {
     if (!request.auth)
@@ -867,17 +972,69 @@ exports.migrateProfilePictures = (0, https_1.onCall)({
     }
     return result;
 });
-// ═══════════════════════════════════════════════════════════════════════════
-// Admin Users & Roles — จัดการผู้ใช้แอดมิน + role (owner เท่านั้น)
-// ═══════════════════════════════════════════════════════════════════════════
-const BOOTSTRAP_OWNER_EMAIL = 't@livetubex.com';
+// ── ส่งเมลทดสอบ (admin เท่านั้น) ────────────────────────────────────────────
+// ใช้ตรวจว่า provider / ผู้ส่ง / รหัสผ่าน ตั้งถูกก่อนใช้งานจริง
+// ส่งด้วย config ที่บันทึกไว้แล้วเท่านั้น — ไม่รับ from/provider จาก client
+exports.sendTestEmail = (0, https_1.onCall)({
+    cors: CORS_ORIGINS,
+    secrets: [RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM, MAIL_TO],
+}, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Authentication required');
+    const token = request.auth.token;
+    if (token.firebase?.sign_in_provider !== 'password') {
+        throw new https_1.HttpsError('permission-denied', 'Admin only');
+    }
+    const { to, templateKey } = (request.data ?? {});
+    const recipient = (to ?? '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipient)) {
+        throw new https_1.HttpsError('invalid-argument', 'กรุณาระบุอีเมลผู้รับที่ถูกต้อง');
+    }
+    const brand = await getBrandInfo();
+    const mail = await (0, mail_1.getMailSettings)();
+    const creds = mailCreds({ withAdminTo: true });
+    const key = (templateKey && templateKey in mail_1.DEFAULT_TEMPLATES)
+        ? templateKey
+        : 'paymentRequestAdmin';
+    const tpl = mail.templates[key];
+    // ค่าตัวอย่างสำหรับ preview — ไม่แตะข้อมูลจริง
+    const vars = {
+        appName: brand.appName,
+        date: new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'long', timeStyle: 'short' }),
+        freelancerName: 'สมชาย ทดสอบ',
+        jobTitle: 'งานตัวอย่าง (เมลทดสอบ)',
+        workDates: '1 ม.ค., 2 ม.ค.',
+        amount: '฿10,000', tax: '฿300', net: '฿9,700',
+        totalGross: '฿10,000', totalTax: '฿300', totalNet: '฿9,700',
+        bankName: 'ธนาคารตัวอย่าง', bankAccount: 'xxxxxx1234',
+        period: 'เดือนตัวอย่าง', jobCount: '1', notes: '(เมลทดสอบ)',
+    };
+    const html = (0, mail_1.renderEmailShell)({
+        appName: brand.appName,
+        primaryColor: brand.primaryColor,
+        heading: (0, mail_1.renderVars)(tpl.heading, vars),
+        intro: (0, mail_1.renderVars)(tpl.intro, vars),
+        footer: (0, mail_1.renderVars)(tpl.footer, vars),
+        bodyHtml: `
+      <div style="padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#92400e">
+        นี่คือ<strong>เมลทดสอบ</strong>จากหน้าตั้งค่าอีเมล — ข้อมูลด้านบนเป็นค่าตัวอย่าง ไม่ใช่รายการจริง
+      </div>`,
+    });
+    const res = await (0, mail_1.sendMail)(mail, creds, {
+        from: (0, mail_1.buildFrom)(mail, creds, brand.appName),
+        to: recipient,
+        subject: `[ทดสอบ] ${(0, mail_1.renderVars)(tpl.subject, vars)}`,
+        html,
+    });
+    if (res.error) {
+        console.error('[sendTestEmail] ❌', res.error);
+        throw new https_1.HttpsError('internal', res.error);
+    }
+    console.log(`[sendTestEmail] ✅ sent to ${recipient} via ${mail.provider}`);
+    return { success: true, id: res.id, provider: mail.provider };
+});
 const VALID_ROLES = ['owner', 'admin', 'accountant'];
-const ADMIN_CORS = [
-    'https://livetubex-admin.web.app',
-    'https://livetubex-admin.firebaseapp.com',
-    'https://console.livetubex.com',
-    /localhost/,
-];
+const ADMIN_CORS = CORS_ORIGINS;
 /** ตรวจว่า caller เป็น owner (bootstrap email หรือ role=owner) — ไม่ใช่ → throw */
 async function requireOwner(request) {
     if (!request.auth)
@@ -887,7 +1044,7 @@ async function requireOwner(request) {
         throw new https_1.HttpsError('permission-denied', 'Admin only');
     }
     const email = token.email?.toLowerCase();
-    if (email === BOOTSTRAP_OWNER_EMAIL)
+    if (isBootstrapOwner(email))
         return;
     if (token.role === 'owner')
         return;
@@ -916,7 +1073,7 @@ exports.adminListUsers = (0, https_1.onCall)({ cors: ADMIN_CORS }, async (reques
         .map((u) => {
         const doc = roleDocs.get(u.uid);
         const email = (u.email ?? '').toLowerCase();
-        const role = doc?.role ?? (email === BOOTSTRAP_OWNER_EMAIL ? 'owner' : 'admin');
+        const role = doc?.role ?? (isBootstrapOwner(email) ? 'owner' : 'admin');
         return {
             uid: u.uid,
             email: u.email ?? '',
@@ -965,7 +1122,7 @@ exports.adminUpdateUserRole = (0, https_1.onCall)({ cors: ADMIN_CORS }, async (r
     const target = await admin.auth().getUser(uid).catch(() => null);
     if (!target)
         throw new https_1.HttpsError('not-found', 'ไม่พบผู้ใช้');
-    if ((target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL && validRole !== 'owner') {
+    if (isBootstrapOwner(target.email) && validRole !== 'owner') {
         throw new https_1.HttpsError('failed-precondition', 'เปลี่ยน role ของ owner ตั้งต้นไม่ได้');
     }
     await admin.auth().setCustomUserClaims(uid, { role: validRole });
@@ -985,7 +1142,7 @@ exports.adminSetUserDisabled = (0, https_1.onCall)({ cors: ADMIN_CORS }, async (
     if (uid === request.auth?.uid)
         throw new https_1.HttpsError('failed-precondition', 'ปิดใช้งานบัญชีตัวเองไม่ได้');
     const target = await admin.auth().getUser(uid).catch(() => null);
-    if (target && (target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL) {
+    if (target && isBootstrapOwner(target.email)) {
         throw new https_1.HttpsError('failed-precondition', 'ปิดใช้งาน owner ตั้งต้นไม่ได้');
     }
     await admin.auth().updateUser(uid, { disabled });
@@ -1000,7 +1157,7 @@ exports.adminDeleteUser = (0, https_1.onCall)({ cors: ADMIN_CORS }, async (reque
     if (uid === request.auth?.uid)
         throw new https_1.HttpsError('failed-precondition', 'ลบบัญชีตัวเองไม่ได้');
     const target = await admin.auth().getUser(uid).catch(() => null);
-    if (target && (target.email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL) {
+    if (target && isBootstrapOwner(target.email)) {
         throw new https_1.HttpsError('failed-precondition', 'ลบ owner ตั้งต้นไม่ได้');
     }
     await admin.auth().deleteUser(uid);
