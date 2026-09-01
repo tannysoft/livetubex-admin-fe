@@ -9,7 +9,7 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 }
 
 const sizeClasses = {
@@ -17,6 +17,7 @@ const sizeClasses = {
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-2xl',
+  '2xl': 'max-w-3xl',
 }
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
@@ -46,8 +47,8 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className={`w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-xl overflow-hidden`}>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <Dialog.Panel className={`w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]`}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
                   <Dialog.Title className="text-lg font-semibold text-gray-900">{title}</Dialog.Title>
                   <button
                     onClick={onClose}
@@ -56,7 +57,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
                     <XMarkIcon className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="px-6 py-4">{children}</div>
+                <div className="px-6 py-4 overflow-y-auto">{children}</div>
               </Dialog.Panel>
             </Transition.Child>
           </div>
