@@ -494,7 +494,7 @@ export default function PaymentsPage() {
         </div>
         <button
           onClick={() => { resetCreateForm(); setCreateOpen(true) }}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors shrink-0"
         >
           <PlusIcon className="w-4 h-4" />
           สร้างการเบิกจ่าย
@@ -528,7 +528,7 @@ export default function PaymentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ Freelancer หรืองาน..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] bg-white"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white"
           />
         </div>
         <div className="flex gap-2 flex-wrap items-center">
@@ -538,7 +538,7 @@ export default function PaymentsPage() {
               onClick={() => setFilterStatus(opt.value)}
               className={`px-3 py-2 text-xs font-medium rounded-xl transition-colors ${
                 filterStatus === opt.value
-                  ? 'bg-[#f73727] text-white'
+                  ? 'bg-brand text-white'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
             >
@@ -550,14 +550,14 @@ export default function PaymentsPage() {
             <button
               onClick={() => setViewMode('list')}
               title="แสดงเป็นรายการ"
-              className={`p-2 transition-colors ${viewMode === 'list' ? 'bg-[#f73727] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              className={`p-2 transition-colors ${viewMode === 'list' ? 'bg-brand text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             >
               <ListBulletIcon className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('grouped')}
               title="แสดงตามงาน"
-              className={`p-2 transition-colors ${viewMode === 'grouped' ? 'bg-[#f73727] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              className={`p-2 transition-colors ${viewMode === 'grouped' ? 'bg-brand text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             >
               <RectangleGroupIcon className="w-4 h-4" />
             </button>
@@ -631,7 +631,7 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-5 py-4">
                       {payment.position
-                        ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
+                        ? <span className="px-2 py-0.5 bg-brand-soft text-brand text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
                         : <span className="text-gray-300 text-xs">-</span>
                       }
                     </td>
@@ -650,7 +650,7 @@ export default function PaymentsPage() {
                       {payment.expenseAmount && (
                         <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                       )}
-                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
+                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap w-[140px]">
                       <div className="flex items-center justify-center">
@@ -755,7 +755,7 @@ export default function PaymentsPage() {
                       {/* col 2: position */}
                       <div>
                         {payment.position
-                          ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
+                          ? <span className="px-2 py-0.5 bg-brand-soft text-brand text-xs font-medium rounded-lg whitespace-nowrap">{payment.position}</span>
                           : <span className="text-gray-300 text-xs">-</span>
                         }
                       </div>
@@ -774,7 +774,7 @@ export default function PaymentsPage() {
                         {payment.expenseAmount && (
                           <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                         )}
-                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-[#f73727] font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
+                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
                       </div>
                       {/* col 6: actions */}
                       <div className="flex items-center justify-center">
@@ -868,13 +868,13 @@ export default function PaymentsPage() {
                         onChange={(e) => setEditAmount(e.target.value)}
                         min="1"
                         inputMode="numeric"
-                        className="w-28 text-right text-base font-bold text-gray-900 bg-transparent border-b border-gray-300 focus:border-[#f73727] focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-28 text-right text-base font-bold text-gray-900 bg-transparent border-b border-gray-300 focus:border-brand focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                   </div>
                   <div className="flex justify-between mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
                     <span>ภาษี 3% −{formatCurrency(tax)}</span>
-                    <span className={`font-semibold ${isEdited ? 'text-orange-600' : 'text-[#f73727]'}`}>
+                    <span className={`font-semibold ${isEdited ? 'text-orange-600' : 'text-brand'}`}>
                       โอนรวม {formatCurrency(net + (selectedPayment.expenseAmount ?? 0))}
                     </span>
                   </div>
@@ -906,7 +906,7 @@ export default function PaymentsPage() {
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
                 placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
               />
             </div>}
@@ -921,7 +921,7 @@ export default function PaymentsPage() {
                 onClick={handleAction}
                 disabled={saving}
                 className={`px-5 py-2 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-60 flex items-center gap-2 ${
-                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : actionType === 'unapprove' || actionType === 'unpay' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-[#f73727] hover:bg-red-600'
+                  actionType === 'reject' ? 'bg-red-500 hover:bg-red-600' : actionType === 'unapprove' || actionType === 'unpay' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-brand hover:bg-brand-dark'
                 }`}
               >
                 {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
@@ -980,7 +980,7 @@ export default function PaymentsPage() {
                       )}
                       className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                         active
-                          ? 'bg-[#f73727] text-white shadow-sm'
+                          ? 'bg-brand text-white shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
@@ -1019,12 +1019,12 @@ export default function PaymentsPage() {
               min="1"
               inputMode="numeric"
               placeholder="0"
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             {newAmount && parseFloat(newAmount) > 0 && (() => {
               const { tax, net } = calcTax(parseFloat(newAmount))
               return (
-                <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-[#f73727] font-medium">{formatCurrency(net)}</span></p>
+                <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-brand font-medium">{formatCurrency(net)}</span></p>
               )
             })()}
           </div>
@@ -1093,7 +1093,7 @@ export default function PaymentsPage() {
               onChange={(e) => setNewNotes(e.target.value)}
               rows={2}
               placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-              className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] resize-none"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
             />
           </div>
 
@@ -1112,7 +1112,7 @@ export default function PaymentsPage() {
                   onClick={() => setNewStatus(opt.value)}
                   className={`flex-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
                     newStatus === opt.value
-                      ? 'bg-[#f73727] text-white border-[#f73727]'
+                      ? 'bg-brand text-white border-brand'
                       : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                   }`}
                 >
@@ -1134,7 +1134,7 @@ export default function PaymentsPage() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="px-5 py-2 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2"
+              className="px-5 py-2 text-sm font-medium text-white bg-brand rounded-xl hover:bg-brand-dark disabled:opacity-60 flex items-center gap-2"
             >
               {creating && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
               สร้างการเบิกจ่าย
@@ -1154,7 +1154,7 @@ export default function PaymentsPage() {
           <div className="space-y-4">
             {/* Freelancer — readonly */}
             <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
-              <div className="w-8 h-8 rounded-full bg-[#f73727]/10 flex items-center justify-center text-[#f73727] font-bold text-sm shrink-0">
+              <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center text-brand font-bold text-sm shrink-0">
                 {getFreelancerName(editPayment).slice(0, 1)}
               </div>
               <div>
@@ -1191,7 +1191,7 @@ export default function PaymentsPage() {
                           active ? prev.filter((d) => d !== date) : [...prev, date]
                         )}
                         className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                          active ? 'bg-[#f73727] text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          active ? 'bg-brand text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
                         {formatDatePill(date)}
@@ -1228,12 +1228,12 @@ export default function PaymentsPage() {
                 min="1"
                 inputMode="numeric"
                 placeholder="0"
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               {editAmountVal && parseFloat(editAmountVal) > 0 && (() => {
                 const { tax, net } = calcTax(parseFloat(editAmountVal))
                 return (
-                  <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-[#f73727] font-medium">{formatCurrency(net)}</span></p>
+                  <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-brand font-medium">{formatCurrency(net)}</span></p>
                 )
               })()}
             </div>
@@ -1285,7 +1285,7 @@ export default function PaymentsPage() {
                       <div className="flex items-center gap-3 bg-white rounded-xl border border-orange-200 px-3 py-2.5">
                         <ReceiptRefundIcon className="w-4 h-4 text-orange-400 shrink-0" />
                         <span className="text-xs text-gray-600 flex-1">มีสลิปเดิมอยู่แล้ว</span>
-                        <label className="text-xs text-[#f73727] font-medium cursor-pointer hover:underline">
+                        <label className="text-xs text-brand font-medium cursor-pointer hover:underline">
                           เปลี่ยนรูป
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                             const file = e.target.files?.[0]
@@ -1320,7 +1320,7 @@ export default function PaymentsPage() {
                 onChange={(e) => setEditNotes(e.target.value)}
                 rows={2}
                 placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] resize-none"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
               />
             </div>
 

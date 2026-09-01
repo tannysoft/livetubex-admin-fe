@@ -100,7 +100,7 @@ export default function VendorsPage() {
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มผู้ขาย
@@ -115,7 +115,7 @@ export default function VendorsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาด้วยชื่อ, รหัส, เลขผู้เสียภาษี, เบอร์โทร"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
       </div>
@@ -140,7 +140,7 @@ export default function VendorsPage() {
               {search ? 'ไม่พบผู้ขายที่ตรงกับคำค้น' : 'ยังไม่มีผู้ขาย'}
             </p>
             {!search && (
-              <button onClick={openCreate} className="text-[#f73727] hover:underline text-sm mt-2">
+              <button onClick={openCreate} className="text-brand hover:underline text-sm mt-2">
                 เพิ่มผู้ขายรายแรก
               </button>
             )}
@@ -152,7 +152,7 @@ export default function VendorsPage() {
               return (
                 <li key={v.id} className="flex items-center gap-3 px-5 py-4">
                   <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#f73727]" />
+                    <Icon className="w-5 h-5 text-brand" />
                   </div>
 
                   <div className="flex-1 min-w-0">

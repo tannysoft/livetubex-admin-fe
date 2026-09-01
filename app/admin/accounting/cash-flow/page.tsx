@@ -239,7 +239,7 @@ export default function CashFlowPage() {
                     <td className="px-5 py-2 text-right tabular-nums text-red-600">{r.whtAmount ? `- ${formatCurrency(r.whtAmount)}` : '-'}</td>
                     <td className="px-5 py-2 text-right font-semibold tabular-nums text-green-700">{formatCurrency(r.amount - (r.whtAmount ?? 0))}</td>
                     <td className="px-5 py-2 text-right">
-                      <Link href={`/admin/accounting/receipts/view?id=${r.id}`} className="text-[#f73727] hover:underline text-xs">ดู</Link>
+                      <Link href={`/admin/accounting/receipts/view?id=${r.id}`} className="text-brand hover:underline text-xs">ดู</Link>
                     </td>
                   </tr>
                 ))}
@@ -299,7 +299,7 @@ export default function CashFlowPage() {
                     <td className="px-5 py-2 text-right tabular-nums text-red-600">{e.whtAmount ? `- ${formatCurrency(e.whtAmount)}` : '-'}</td>
                     <td className="px-5 py-2 text-right font-semibold tabular-nums text-red-700">- {formatCurrency(e.paidAmount)}</td>
                     <td className="px-5 py-2 text-right">
-                      <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-[#f73727] hover:underline text-xs">ดู</Link>
+                      <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-brand hover:underline text-xs">ดู</Link>
                     </td>
                   </tr>
                 ))}

@@ -246,7 +246,7 @@ export default function FreelancerPaymentsPage() {
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#f73727]">
+      <div className="bg-brand">
         <div className="max-w-lg mx-auto px-4 pt-4 pb-6">
           <div className="flex items-center gap-3">
             <Skeleton className="w-9 h-9 rounded-xl bg-white/30" />
@@ -277,19 +277,19 @@ export default function FreelancerPaymentsPage() {
   if (bootError) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
       <p className="text-red-600 text-sm text-center">{bootError}</p>
-      <Link href="/freelancer" className="mt-6 text-[#f73727] text-sm font-medium">กลับหน้าหลัก</Link>
+      <Link href="/freelancer" className="mt-6 text-brand text-sm font-medium">กลับหน้าหลัก</Link>
     </div>
   )
 
   const pendingAmount = payments.filter(p => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
   const paidAmount = payments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#f73727] text-white">
+      <header className="bg-brand text-white">
         <div className="max-w-lg mx-auto px-4 pt-4 pb-6">
           <div className="flex items-center gap-3">
             <Link href="/freelancer" className="p-2 hover:bg-white/10 rounded-xl transition-colors">
@@ -326,8 +326,8 @@ export default function FreelancerPaymentsPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
             <p className="text-xs font-medium text-gray-400 mb-2">บัญชีที่ผูกไว้</p>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#f73727]/10 rounded-xl flex items-center justify-center">
-                <BanknotesIcon className="w-5 h-5 text-[#f73727]" />
+              <div className="w-10 h-10 bg-brand/10 rounded-xl flex items-center justify-center">
+                <BanknotesIcon className="w-5 h-5 text-brand" />
               </div>
               <div>
                 <p className="font-semibold text-gray-900">{freelancer.bankName}</p>
@@ -538,7 +538,7 @@ export default function FreelancerPaymentsPage() {
                       onClick={() => toggleDate(date)}
                       className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                         active
-                          ? 'bg-[#f73727] text-white shadow-sm'
+                          ? 'bg-brand text-white shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
@@ -666,7 +666,7 @@ export default function FreelancerPaymentsPage() {
             <button
               onClick={handleRequest}
               disabled={submitting}
-              className="px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2"
+              className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark disabled:opacity-60 flex items-center gap-2"
             >
               {submitting && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
               ส่งคำขอ

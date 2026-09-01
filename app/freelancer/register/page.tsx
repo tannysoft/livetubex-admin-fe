@@ -220,7 +220,7 @@ export default function FreelancerRegisterPage() {
   }
 
   const inputBaseCls =
-    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all bg-white'
+    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all bg-white'
   const inputCls = `w-full ${inputBaseCls}`
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
@@ -229,7 +229,7 @@ export default function FreelancerRegisterPage() {
   if (pageState === 'loading') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <div className="w-10 h-10 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin" />
         <p className="mt-4 text-gray-400 text-sm">กำลังโหลด...</p>
       </div>
     )
@@ -261,7 +261,7 @@ export default function FreelancerRegisterPage() {
         <p className="mt-2 text-sm text-gray-500">{errorMsg}</p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-6 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl"
+          className="mt-6 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl"
         >
           ลองใหม่
         </button>
@@ -286,7 +286,7 @@ export default function FreelancerRegisterPage() {
         </p>
         <button
           onClick={() => router.replace('/freelancer')}
-          className="mt-8 w-full max-w-xs py-3.5 bg-[#f73727] text-white font-semibold rounded-2xl hover:bg-red-600 transition-colors"
+          className="mt-8 w-full max-w-xs py-3.5 bg-brand text-white font-semibold rounded-2xl hover:bg-brand-dark transition-colors"
         >
           ไปหน้าหลัก
         </button>
@@ -298,7 +298,7 @@ export default function FreelancerRegisterPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-[#f73727] text-white">
+      <header className="bg-brand text-white">
         <div className="max-w-lg mx-auto px-4 py-5">
           <Logo white width={120} height={18} href="/freelancer" />
           <h1 className="mt-4 text-xl font-bold">
@@ -498,9 +498,9 @@ export default function FreelancerRegisterPage() {
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#f73727]/40 hover:bg-red-50/30 transition-colors group"
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-brand/40 hover:bg-brand-soft/30 transition-colors group"
               >
-                <CameraIcon className="w-5 h-5 text-gray-400 group-hover:text-[#f73727]/60 transition-colors" />
+                <CameraIcon className="w-5 h-5 text-gray-400 group-hover:text-brand/60 transition-colors" />
                 <span className="text-sm font-medium text-gray-600 group-hover:text-gray-800">
                   {idCardPreview ? 'ถ่ายใหม่' : 'ถ่ายรูป'}
                 </span>
@@ -510,9 +510,9 @@ export default function FreelancerRegisterPage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#f73727]/40 hover:bg-red-50/30 transition-colors group"
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-brand/40 hover:bg-brand-soft/30 transition-colors group"
               >
-                <PhotoIcon className="w-5 h-5 text-gray-400 group-hover:text-[#f73727]/60 transition-colors" />
+                <PhotoIcon className="w-5 h-5 text-gray-400 group-hover:text-brand/60 transition-colors" />
                 <span className="text-sm font-medium text-gray-600 group-hover:text-gray-800">
                   {idCardPreview ? 'เลือกใหม่' : 'เลือกจากคลัง'}
                 </span>
@@ -550,7 +550,7 @@ export default function FreelancerRegisterPage() {
           <button
             type="submit"
             disabled={pageState === 'saving'}
-            className="w-full py-4 bg-[#f73727] text-white font-semibold rounded-2xl hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-md shadow-red-200 text-base"
+            className="w-full py-4 bg-brand text-white font-semibold rounded-2xl hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-md shadow-brand-tint text-base"
           >
             {pageState === 'saving' ? (
               <>

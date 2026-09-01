@@ -289,7 +289,7 @@ export default function ProfitLossPage() {
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-700">{c.categoryName}</div>
                         <div className="h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden">
-                          <div className="h-full bg-[#f73727]" style={{ width: `${Math.min(100, c.pct)}%` }} />
+                          <div className="h-full bg-brand" style={{ width: `${Math.min(100, c.pct)}%` }} />
                         </div>
                       </div>
                       <div className="text-right tabular-nums w-28 text-sm font-medium text-red-700">
@@ -356,7 +356,7 @@ export default function ProfitLossPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
           <div className="p-2 bg-red-50 rounded-xl">
-            <ChartBarIcon className="w-5 h-5 text-[#f73727]" />
+            <ChartBarIcon className="w-5 h-5 text-brand" />
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">แนวโน้ม 6 เดือนล่าสุด</h2>
@@ -377,7 +377,7 @@ export default function ProfitLossPage() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
-              <ChartBarIcon className="w-5 h-5 text-[#f73727]" />
+              <ChartBarIcon className="w-5 h-5 text-brand" />
             </div>
             <h2 className="font-semibold text-gray-900">เปรียบเทียบ {prevLabel} ↔ {periodLabel}</h2>
           </div>
@@ -416,10 +416,10 @@ interface KpiCardProps {
 function KpiCard({ icon: Icon, label, sublabel, value, changePct, loading, color, changeInverse }: KpiCardProps) {
   const valueColor = color === 'green' ? 'text-green-700'
     : color === 'red' ? 'text-red-700'
-    : 'text-[#f73727]'
+    : 'text-brand'
   const bgClass = color === 'green' ? 'bg-green-50 border-green-100'
     : color === 'red' ? 'bg-red-50 border-red-100'
-    : 'bg-red-50 border-[#f73727]/20'
+    : 'bg-brand-soft border-brand/20'
 
   const isPositive = changeInverse ? changePct <= 0 : changePct >= 0
   const changeColor = isPositive ? 'text-green-600' : 'text-red-600'

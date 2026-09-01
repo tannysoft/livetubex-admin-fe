@@ -149,12 +149,12 @@ export default function ProjectCostsPage() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
-              <RectangleStackIcon className="w-5 h-5 text-[#f73727]" />
+              <RectangleStackIcon className="w-5 h-5 text-brand" />
             </div>
             <h2 className="font-semibold text-gray-900">ต้นทุนรายโปรเจกต์ ({visible.length})</h2>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="accent-[#f73727]" />
+            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="accent-brand" />
             แสดงงานที่ยังไม่มีต้นทุน/งบ
           </label>
         </div>
@@ -185,7 +185,7 @@ export default function ProjectCostsPage() {
                   return (
                     <tr key={job.id} className="hover:bg-gray-50 align-top">
                       <td className="px-5 py-3">
-                        <Link href={`/admin/jobs`} className="font-medium text-gray-900 hover:text-[#f73727]">
+                        <Link href={`/admin/jobs`} className="font-medium text-gray-900 hover:text-brand">
                           {job.title}
                         </Link>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -197,7 +197,7 @@ export default function ProjectCostsPage() {
                         {/* labor vs other mini bar */}
                         {total > 0 && (
                           <div className="mt-2 flex h-1.5 w-40 rounded-full overflow-hidden bg-gray-100">
-                            <div className="h-full bg-[#f73727]" style={{ width: `${laborPct}%` }} title="ค่าจ้าง" />
+                            <div className="h-full bg-brand" style={{ width: `${laborPct}%` }} title="ค่าจ้าง" />
                             <div className="h-full bg-amber-400" style={{ width: `${100 - laborPct}%` }} title="อื่นๆ" />
                           </div>
                         )}
@@ -234,7 +234,7 @@ export default function ProjectCostsPage() {
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.budget)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.labor)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.other)}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-[#f73727]">{formatCurrency(totals.total)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-brand">{formatCurrency(totals.total)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.budget - totals.total)}</td>
                 </tr>
               </tfoot>
@@ -260,7 +260,7 @@ function StatCard({
   loading?: boolean
   color?: 'default' | 'brand'
 }) {
-  const valueColor = color === 'brand' ? 'text-[#f73727]' : 'text-gray-900'
+  const valueColor = color === 'brand' ? 'text-brand' : 'text-gray-900'
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">

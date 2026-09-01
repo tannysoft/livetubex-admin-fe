@@ -35,7 +35,7 @@ export default function FormListbox({
         <ListboxButton
           className={[
             'relative flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition-all',
-            'focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]',
+            'focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand',
             'data-disabled:cursor-not-allowed data-disabled:opacity-50',
             'data-invalid:border-red-400 data-invalid:focus:ring-red-200',
             isPlaceholder ? 'text-gray-500' : 'text-gray-900',
@@ -54,7 +54,7 @@ export default function FormListbox({
             <ListboxOption
               key={opt.value === '' ? '__empty' : opt.value}
               value={opt.value}
-              className="flex cursor-pointer select-none items-center px-3 py-2 text-gray-900 data-focus:bg-red-50 data-focus:outline-none data-selected:font-semibold data-selected:text-[#f73727]"
+              className="flex cursor-pointer select-none items-center px-3 py-2 text-gray-900 data-focus:bg-brand-soft data-focus:outline-none data-selected:font-semibold data-selected:text-brand"
             >
               <span className="block truncate">{opt.label}</span>
             </ListboxOption>

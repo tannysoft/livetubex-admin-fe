@@ -68,7 +68,7 @@ export default function ConfirmDialog({
                 <button
                   onClick={() => { onConfirm(); onClose() }}
                   className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
-                    danger ? 'bg-red-600 hover:bg-red-700' : 'bg-[#f73727] hover:bg-red-600'
+                    danger ? 'bg-red-600 hover:bg-red-700' : 'bg-brand hover:bg-brand-dark'
                   }`}
                 >
                   {confirmLabel}

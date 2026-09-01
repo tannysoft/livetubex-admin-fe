@@ -130,7 +130,7 @@ export default function SettingsPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
           <div className="p-2 bg-red-50 rounded-xl">
-            <CalendarDaysIcon className="w-5 h-5 text-[#f73727]" />
+            <CalendarDaysIcon className="w-5 h-5 text-brand" />
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">รอบการจ่ายเงิน</h2>
@@ -151,7 +151,7 @@ export default function SettingsPage() {
               {savedPeriod && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-gray-500">รอบปัจจุบัน:</span>
-                  <span className="px-3 py-1 bg-red-50 text-[#f73727] font-semibold rounded-xl text-sm">
+                  <span className="px-3 py-1 bg-brand-soft text-brand font-semibold rounded-xl text-sm">
                     {savedPeriod}
                   </span>
                 </div>
@@ -190,12 +190,12 @@ export default function SettingsPage() {
                       onClick={() => setBillingCycle(opt.value)}
                       className={`flex-1 flex flex-col items-center px-4 py-3 rounded-xl border-2 font-medium transition-colors ${
                         billingCycle === opt.value
-                          ? 'border-[#f73727] bg-red-50 text-[#f73727]'
+                          ? 'border-brand bg-brand-soft text-brand'
                           : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                       }`}
                     >
                       <span className="text-sm font-semibold">{opt.label}</span>
-                      <span className={`text-xl font-bold mt-1 ${billingCycle === opt.value ? 'text-[#f73727]' : 'text-gray-400'}`}>
+                      <span className={`text-xl font-bold mt-1 ${billingCycle === opt.value ? 'text-brand' : 'text-gray-400'}`}>
                         {opt.day}
                       </span>
                       <span className="text-xs mt-0.5 opacity-60">{MONTH_LABELS[month - 1]}</span>
@@ -207,7 +207,7 @@ export default function SettingsPage() {
               {/* Preview */}
               <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
                 <span className="font-medium text-gray-700">ตัวอย่างหัวเรื่องอีเมล: </span>
-                สรุปรายได้ของคุณประจำ<span className="font-semibold text-[#f73727]">{previewPeriod}</span>
+                สรุปรายได้ของคุณประจำ<span className="font-semibold text-brand">{previewPeriod}</span>
               </div>
 
               {/* Save button */}
@@ -215,7 +215,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving || !isDirty}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-50"
                 >
                   {saving && (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

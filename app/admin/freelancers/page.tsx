@@ -222,7 +222,7 @@ export default function FreelancersPage() {
           )}
           <button
             onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors shadow-md shadow-brand-tint"
           >
             <PlusIcon className="w-4 h-4" />
             เพิ่ม Freelancer
@@ -236,7 +236,7 @@ export default function FreelancersPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="ค้นหาชื่อ เบอร์โทร หรืออีเมล..."
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] bg-white"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white"
         />
       </div>
 
@@ -318,7 +318,7 @@ export default function FreelancersPage() {
 
                 <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                   <span className="text-xs text-gray-400">รายได้รวม</span>
-                  <span className="font-semibold text-[#f73727]">{formatCurrency(f.totalEarned)}</span>
+                  <span className="font-semibold text-brand">{formatCurrency(f.totalEarned)}</span>
                 </div>
               </div>
             ))

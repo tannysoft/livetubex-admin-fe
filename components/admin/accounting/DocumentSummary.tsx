@@ -24,7 +24,7 @@ export default function DocumentSummary({
   onWhtRateChange,
   readonly,
 }: Props) {
-  const inputCls = 'w-24 px-2 py-1 rounded-lg border border-gray-200 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+  const inputCls = 'w-24 px-2 py-1 rounded-lg border border-gray-200 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
@@ -71,7 +71,7 @@ export default function DocumentSummary({
                   step="any"
                   value={vatRate}
                   onChange={(e) => onVatRateChange(Number(e.target.value) || 0)}
-                  className="w-14 px-1.5 py-0.5 rounded border border-gray-200 text-xs text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+                  className="w-14 px-1.5 py-0.5 rounded border border-gray-200 text-xs text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
                 />
                 <span className="text-xs">%</span>
               </span>
@@ -82,7 +82,7 @@ export default function DocumentSummary({
 
         <div className="flex items-center justify-between border-t border-gray-300 pt-2 text-base">
           <dt className="font-semibold text-gray-800">รวมทั้งสิ้น</dt>
-          <dd className="font-bold text-[#f73727] tabular-nums">{formatCurrency(totals.grandTotal)}</dd>
+          <dd className="font-bold text-brand tabular-nums">{formatCurrency(totals.grandTotal)}</dd>
         </div>
 
         {/* WHT (optional) */}
@@ -106,7 +106,7 @@ export default function DocumentSummary({
                         onWhtRateChange(v && v > 0 ? v : undefined)
                       }}
                       placeholder="0"
-                      className="w-14 px-1.5 py-0.5 rounded border border-gray-200 text-xs text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+                      className="w-14 px-1.5 py-0.5 rounded border border-gray-200 text-xs text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     />
                     <span className="text-xs">%</span>
                   </span>

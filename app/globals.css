@@ -3,12 +3,24 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* ── Brand color (whitelabel) ─────────────────────────────────────────────
+   * ค่า default ใช้ตอนยังโหลดแบรนด์จาก Firestore ไม่เสร็จ
+   * runtime: BrandProvider เขียนทับ --brand บน :root (ดู lib/brand.ts)
+   * เฉดอื่นๆ derive ด้วย color-mix จึงเปลี่ยนตามอัตโนมัติ ไม่ต้องตั้งทีละค่า */
+  --brand: #f73727;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-noto-sans-thai), 'Noto Sans Thai', sans-serif;
+
+  /* brand palette — derive จาก --brand ตัวเดียว */
+  --color-brand: var(--brand);
+  --color-brand-dark: color-mix(in srgb, var(--brand) 86%, #000);   /* hover/active */
+  --color-brand-soft: color-mix(in srgb, var(--brand) 7%, #fff);    /* พื้นหลังอ่อน */
+  --color-brand-tint: color-mix(in srgb, var(--brand) 18%, #fff);   /* border/shadow อ่อน */
 }
 
 body {
@@ -49,10 +61,10 @@ body {
   }
 }
 
-/* react-day-picker — โทนสีแอดมิน */
-.livetube-day-picker {
-  --rdp-accent-color: #f73727;
-  --rdp-accent-background-color: #ffe8e6;
+/* react-day-picker — โทนสีแอดมิน (ตามแบรนด์) */
+.brand-day-picker {
+  --rdp-accent-color: var(--brand);
+  --rdp-accent-background-color: color-mix(in srgb, var(--brand) 12%, #fff);
 }
 
 /* Celebration overlay animations */

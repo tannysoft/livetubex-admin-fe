@@ -203,7 +203,7 @@ function ExpenseEditor() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-red-50 rounded-xl">
-                  <PaperClipIcon className="w-5 h-5 text-[#f73727]" />
+                  <PaperClipIcon className="w-5 h-5 text-brand" />
                 </div>
                 <div>
                   <h2 className="font-semibold text-gray-900">สลิป / ใบเสร็จจากผู้ขาย</h2>
@@ -248,7 +248,7 @@ function ExpenseEditor() {
                 <button
                   onClick={() => receiptInputRef.current?.click()}
                   disabled={uploadingReceipt}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60"
+                  className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60"
                 >
                   {uploadingReceipt
                     ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

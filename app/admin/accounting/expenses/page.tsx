@@ -143,7 +143,7 @@ function ExpensesPageInner() {
             {items.length} รายการ — ยอดรวม (ไม่หัก ณ ที่จ่าย){' '}
             <span className="font-semibold text-gray-900">{formatCurrency(totals.beforeWht)}</span>
             {' · '}จ่ายจริง (หัก ณ ที่จ่ายแล้ว){' '}
-            <span className="font-semibold text-[#f73727]">{formatCurrency(totals.paid)}</span>
+            <span className="font-semibold text-brand">{formatCurrency(totals.paid)}</span>
           </p>
         </div>
         {paymentIdFilter && (
@@ -168,7 +168,7 @@ function ExpensesPageInner() {
           </button>
           <Link
             href="/admin/accounting/expenses/new"
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
             บันทึกค่าใช้จ่าย
@@ -202,7 +202,7 @@ function ExpensesPageInner() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาด้วยเลขที่, รายละเอียด, ผู้ขาย"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
         <div className="w-48">
@@ -232,7 +232,7 @@ function ExpensesPageInner() {
               {search || statusFilter || categoryFilter || projectFilter ? 'ไม่พบรายการที่ตรงเงื่อนไข' : 'ยังไม่มีรายจ่าย'}
             </p>
             {!search && !statusFilter && !categoryFilter && !projectFilter && (
-              <Link href="/admin/accounting/expenses/new" className="inline-block text-[#f73727] hover:underline text-sm mt-2">
+              <Link href="/admin/accounting/expenses/new" className="inline-block text-brand hover:underline text-sm mt-2">
                 บันทึกค่าใช้จ่ายรายการแรก
               </Link>
             )}

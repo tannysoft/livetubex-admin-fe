@@ -104,12 +104,12 @@ export default function PositionsPage() {
             onChange={(e) => { setNewName(e.target.value); setError('') }}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             placeholder="เช่น ช่างภาพ, พิธีกร, ผู้ช่วยผู้กำกับ"
-            className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
           <button
             onClick={handleAdd}
             disabled={adding}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60"
           >
             <PlusIcon className="w-4 h-4" />
             {adding ? 'กำลังเพิ่ม...' : 'เพิ่ม'}
@@ -141,7 +141,7 @@ export default function PositionsPage() {
             {positions.map((p) => (
               <li key={p.id} className="flex items-center gap-3 px-5 py-3.5">
                 <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <BriefcaseIcon className="w-4 h-4 text-[#f73727]" />
+                  <BriefcaseIcon className="w-4 h-4 text-brand" />
                 </div>
 
                 {editId === p.id ? (
@@ -153,7 +153,7 @@ export default function PositionsPage() {
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') cancelEdit() }}
-                      className="flex-1 px-3 py-1.5 rounded-xl border border-[#f73727] text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30"
+                      className="flex-1 px-3 py-1.5 rounded-xl border border-brand text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                     />
                     <button
                       onClick={handleSaveEdit}

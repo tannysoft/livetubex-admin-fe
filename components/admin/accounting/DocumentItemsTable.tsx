@@ -32,7 +32,7 @@ export default function DocumentItemsTable({ items, onChange, readonly }: Props)
     onChange(items.filter((_, i) => i !== idx))
   }
 
-  const inputCls = 'w-full px-2 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all bg-white'
+  const inputCls = 'w-full px-2 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all bg-white'
   const numCls = `${inputCls} text-right tabular-nums`
 
   return (
@@ -139,7 +139,7 @@ export default function DocumentItemsTable({ items, onChange, readonly }: Props)
         <button
           type="button"
           onClick={addRow}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[#f73727] hover:bg-red-50 rounded-xl transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-brand hover:bg-brand-soft rounded-xl transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มรายการ

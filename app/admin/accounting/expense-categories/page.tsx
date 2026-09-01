@@ -132,7 +132,7 @@ export default function ExpenseCategoriesPage() {
     }
   }
 
-  const inputCls = 'px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+  const inputCls = 'px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
   return (
     <div className="space-y-6">
@@ -205,7 +205,7 @@ export default function ExpenseCategoriesPage() {
           <button
             onClick={handleAdd}
             disabled={adding}
-            className="flex items-center gap-2 px-5 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60"
           >
             <PlusIcon className="w-4 h-4" />
             {adding ? 'กำลังเพิ่ม...' : 'เพิ่ม'}
@@ -236,7 +236,7 @@ export default function ExpenseCategoriesPage() {
             {items.map((c) => (
               <li key={c.id} className="flex items-center gap-3 px-5 py-3.5">
                 <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <TagIcon className="w-4 h-4 text-[#f73727]" />
+                  <TagIcon className="w-4 h-4 text-brand" />
                 </div>
 
                 {editId === c.id ? (

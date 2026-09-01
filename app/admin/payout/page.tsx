@@ -137,7 +137,7 @@ export default function PayoutPage() {
       </div>
 
       {!loading && groups.length > 0 && (
-        <div className="bg-[#f73727]/5 border border-[#f73727]/20 rounded-2xl px-5 py-4 flex flex-wrap gap-6 items-center">
+        <div className="bg-brand/5 border border-brand/20 rounded-2xl px-5 py-4 flex flex-wrap gap-6 items-center">
           <div>
             <p className="text-xs text-gray-500">รายการรอโอน</p>
             <p className="text-xl font-bold text-gray-900 mt-0.5">
@@ -146,7 +146,7 @@ export default function PayoutPage() {
           </div>
           <div>
             <p className="text-xs text-gray-500">ยอดโอนรวม</p>
-            <p className="text-xl font-bold text-[#f73727] mt-0.5">{formatCurrency(grandTotal)}</p>
+            <p className="text-xl font-bold text-brand mt-0.5">{formatCurrency(grandTotal)}</p>
           </div>
         </div>
       )}
@@ -167,8 +167,8 @@ export default function PayoutPage() {
             <div key={freelancer.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#f73727]/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[#f73727] font-bold text-sm">{freelancer.name.slice(0, 1)}</span>
+                  <div className="w-10 h-10 rounded-full bg-brand/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-brand font-bold text-sm">{freelancer.name.slice(0, 1)}</span>
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">{freelancer.name}</p>
@@ -178,7 +178,7 @@ export default function PayoutPage() {
                 <div className="flex items-center gap-4">
                   <div className="text-right">
                     <p className="text-xs text-gray-400">ยอดโอนรวม</p>
-                    <p className="text-lg font-bold text-[#f73727]">{formatCurrency(totalNet)}</p>
+                    <p className="text-lg font-bold text-brand">{formatCurrency(totalNet)}</p>
                   </div>
                   <button
                     onClick={() => openConfirm({ freelancer, payments: pmts, totalNet })}
@@ -201,7 +201,7 @@ export default function PayoutPage() {
                         <p className="text-sm font-medium text-gray-800">{job?.title ?? '-'}</p>
                         <div className="flex flex-wrap gap-x-3 mt-0.5">
                           {p.position && (
-                            <span className="text-xs text-[#f73727] bg-red-50 px-1.5 py-0.5 rounded-md font-medium">{p.position}</span>
+                            <span className="text-xs text-brand bg-brand-soft px-1.5 py-0.5 rounded-md font-medium">{p.position}</span>
                           )}
                           {p.workDates && p.workDates.length > 0 && (
                             <span className="text-xs text-gray-400">{p.workDates.map((d) => formatDate(d)).join(', ')}</span>
@@ -215,7 +215,7 @@ export default function PayoutPage() {
                         )}
                         <p className="text-xs text-gray-400">
                           ภาษี {formatCurrency(tax)} · โอน{' '}
-                          <span className="text-[#f73727] font-medium">{formatCurrency(transferTotal)}</span>
+                          <span className="text-brand font-medium">{formatCurrency(transferTotal)}</span>
                         </p>
                       </div>
                     </div>
@@ -260,7 +260,7 @@ export default function PayoutPage() {
               </div>
               <div className="flex justify-between pt-1 border-t border-gray-200 mt-1">
                 <span className="text-gray-500">ยอดโอนรวม</span>
-                <span className="font-bold text-[#f73727]">{formatCurrency(confirmGroup.totalNet)}</span>
+                <span className="font-bold text-brand">{formatCurrency(confirmGroup.totalNet)}</span>
               </div>
             </div>
 

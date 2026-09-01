@@ -70,7 +70,7 @@ export default function FormDatePicker({
         id={id}
         className={[
           'relative flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition-all',
-          'focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]',
+          'focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand',
           'data-disabled:cursor-not-allowed data-disabled:opacity-50',
           'data-invalid:border-red-400 data-invalid:focus:ring-red-200',
           selected ? 'text-gray-900' : 'text-gray-500',
@@ -103,7 +103,7 @@ export default function FormDatePicker({
               toYear={2035}
               defaultMonth={selected ?? new Date()}
               disabled={disabledMatchers.length ? disabledMatchers : undefined}
-              className="livetube-day-picker"
+              className="brand-day-picker"
             />
             {allowClear && selected && (
               <button

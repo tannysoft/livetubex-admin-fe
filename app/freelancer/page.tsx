@@ -268,7 +268,7 @@ export default function FreelancerPage() {
 
   const lastMonthLabel = lastMonthEnd.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
 
   // ── States ─────────────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ export default function FreelancerPage() {
   if (pageState === 'loading') return (
     <div className="min-h-screen bg-gray-50">
       {/* Header skeleton */}
-      <div className="bg-[#f73727]">
+      <div className="bg-brand">
         <div className="max-w-lg mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Skeleton className="h-5 w-28 rounded-md bg-white/30" />
@@ -312,7 +312,7 @@ export default function FreelancerPage() {
       <p className="mt-2 text-sm text-gray-500 max-w-xs">{errorMsg}</p>
       <button
         onClick={() => window.location.reload()}
-        className="mt-6 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl"
+        className="mt-6 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl"
       >
         ลองใหม่
       </button>
@@ -342,7 +342,7 @@ export default function FreelancerPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-[#f73727] text-white">
+      <header className="bg-brand text-white">
         <div className="max-w-lg mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Logo white width={120} height={18} href="/freelancer" />
@@ -374,7 +374,7 @@ export default function FreelancerPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
-            <p className="text-base font-bold text-[#f73727] leading-tight">{formatCurrency(totalPaid)}</p>
+            <p className="text-base font-bold text-brand leading-tight">{formatCurrency(totalPaid)}</p>
             <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(totalPaidNet)}</p>
             <p className="text-xs text-gray-500 mt-0.5">รายได้รวม</p>
           </div>
@@ -393,7 +393,7 @@ export default function FreelancerPage() {
         {/* ปุ่มขอเบิกจ่าย */}
         <button
           onClick={openModal}
-          className="w-full flex items-center justify-center gap-2 py-4 bg-[#f73727] text-white font-semibold rounded-2xl hover:bg-red-600 transition-colors shadow-md shadow-red-200 text-base"
+          className="w-full flex items-center justify-center gap-2 py-4 bg-brand text-white font-semibold rounded-2xl hover:bg-brand-dark transition-colors shadow-md shadow-brand-tint text-base"
         >
           <PlusIcon className="w-5 h-5" />
           ขอเบิกจ่ายเงิน
@@ -406,7 +406,7 @@ export default function FreelancerPage() {
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
-              <ChartBarSquareIcon className="w-5 h-5 text-[#f73727]" />
+              <ChartBarSquareIcon className="w-5 h-5 text-brand" />
             </div>
             <span className="font-medium text-gray-900 text-sm">รายได้รายเดือน</span>
           </div>
@@ -420,7 +420,7 @@ export default function FreelancerPage() {
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
-              <BanknotesIcon className="w-5 h-5 text-[#f73727]" />
+              <BanknotesIcon className="w-5 h-5 text-brand" />
             </div>
             <span className="font-medium text-gray-900 text-sm">ประวัติการเบิกจ่าย</span>
           </div>
@@ -440,7 +440,7 @@ export default function FreelancerPage() {
             <p className="text-sm text-gray-500">Admin จะตรวจสอบและอนุมัติโดยเร็ว</p>
             <button
               onClick={() => setRequestOpen(false)}
-              className="mt-2 w-full py-3 bg-[#f73727] text-white font-semibold rounded-2xl hover:bg-red-600 transition-colors"
+              className="mt-2 w-full py-3 bg-brand text-white font-semibold rounded-2xl hover:bg-brand-dark transition-colors"
             >
               ปิด
             </button>
@@ -471,7 +471,7 @@ export default function FreelancerPage() {
                         type="button"
                         onClick={() => toggleDate(date)}
                         className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                          active ? 'bg-[#f73727] text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          active ? 'bg-brand text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
                         {formatDatePill(date)}
@@ -595,7 +595,7 @@ export default function FreelancerPage() {
               <button
                 onClick={handleRequest}
                 disabled={submitting}
-                className="px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 disabled:opacity-60 flex items-center gap-2"
+                className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark disabled:opacity-60 flex items-center gap-2"
               >
                 {submitting && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 ส่งคำขอ
