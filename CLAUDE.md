@@ -3,7 +3,8 @@
 # LiveTubeX Admin — โครงสร้างแอปพลิเคชัน
 
 ## ภาพรวม
-ระบบจัดการงานถ่ายทอดสดของ **บริษัท ไลฟ์ทูป เอ็กซ์ จำกัด** (เลขนิติฯ 0105566147487) แบ่งเป็น 3 ส่วนใหญ่:
+ระบบจัดการงานถ่ายทอดสด — **whitelabel** deploy ให้หลายบริษัทได้
+(1 บริษัท = 1 Firebase project — ดู [docs/WHITELABEL.md](docs/WHITELABEL.md)) แบ่งเป็น 3 ส่วนใหญ่:
 - **Admin Panel** (`/admin/*`) — จัดการงาน, freelancer, อนุมัติการเบิกจ่าย
 - **Admin Accounting** (`/admin/accounting/*`) — ระบบบัญชี SME เต็มรูปแบบ:
   - **ขาย**: ลูกค้า, ใบเสนอราคา, ใบแจ้งหนี้, ใบกำกับภาษี, ใบเสร็จ + PDF (Sarabun)
@@ -102,11 +103,49 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 > — ให้ join จาก `freelancers` และ `jobs` collections แทน
 > — `expenseSlipUrl` (field เก่า) deprecated — backward compat เท่านั้น
 
+### `publicSettings/brand` (whitelabel)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| appName / appNameEn | string | ชื่อระบบที่โชว์ทุกที่ |
+| tagline / description | string | ต่อท้ายชื่อใน `<title>` |
+| primaryColor | string | hex — เฉดอื่น derive ด้วย `color-mix()` |
+| logoSvg | string | โลโก้ inline SVG (สำหรับเว็บ) |
+| logoImagePath | string? | Storage path PNG/JPG (สำหรับ PDF) |
+| loginEmailPlaceholder | string | placeholder ช่องอีเมลหน้า login |
+| celebrationImage | string? | รูปตอนโอนสำเร็จ (`/xxx.png` = public, ที่เหลือ = Storage path) |
+
+> ⚠️ **read: if true** (ไม่ต้อง login) — หน้า `/login` และ LIFF ต้องโชว์โลโก้ก่อนมี auth
+> ห้ามเก็บข้อมูลลับใน collection นี้เด็ดขาด
+
+### `publicSettings/line` (whitelabel)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| liffId | string | LIFF ID เช่น `2009681467-TEcRBohh` |
+| loginChannelId | string | LINE Login channel ID — ใช้ตรวจที่มาของ access token (ว่าง = derive จาก prefix ของ liffId) |
+
+> อ่านได้โดยไม่ต้อง login (LIFF ต้อง init ก่อนรู้ว่า user เป็นใคร)
+> ใช้ทั้งฝั่งเว็บ (`resolveLiffId()`) และ Cloud Functions (`getLiffId()` ทำ deep link)
+> อ่านไม่ได้ → fallback เป็น `NEXT_PUBLIC_LINE_LIFF_ID` / `LINE_LIFF_ID`
+>
+> ⚠️ `LINE_CHANNEL_ACCESS_TOKEN` **ห้ามย้ายมาที่นี่** — เป็นความลับ อยู่ใน Secret Manager เท่านั้น
+
 ### `positions`
 | Field | Type |
 |---|---|
 | name | string |
 | createdAt | string |
+
+### `settings/mail` (whitelabel — admin-only)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| provider | 'resend' \| 'smtp' | ช่องทางส่ง |
+| fromName / fromEmail / replyTo | string | ผู้ส่ง (fromName ว่าง = ใช้ชื่อระบบจากแบรนด์) |
+| adminRecipients | string[] | อีเมล admin ที่รับแจ้งเตือน (แทน secret MAIL_TO) |
+| smtp | `{host, port, secure, user}` | ใช้เมื่อ provider='smtp' — **ไม่มีรหัสผ่าน** |
+| templates | `Record<EmailKey, EmailTemplate>` | subject / heading / intro / footer / enabled ต่อประเภทเมล |
+
+> ⚠️ **ห้ามเก็บ API key / รหัสผ่านที่นี่** — `RESEND_API_KEY`, `SMTP_PASSWORD` อยู่ใน Secret Manager
+> EmailKey: `paymentRequestAdmin` | `paymentRequestFreelancer` | `payoutSuccess` | `earningsReport`
 
 ### `settings/app`
 | Field | Type | หมายเหตุ |
@@ -141,7 +180,10 @@ app/
 │   ├── positions/page.tsx      # จัดการตำแหน่งงาน (CRUD)
 │   ├── report/page.tsx         # รายงานสรุปรายได้ + ส่งอีเมล
 │   ├── earnings/page.tsx       # รายได้ Freelancer รายเดือน (matrix 12 เดือน × คน + drill-down + CSV)
-│   └── settings/page.tsx       # ตั้งค่าระบบ (รอบการจ่ายเงิน)
+│   ├── settings/page.tsx       # ตั้งค่าระบบ (รอบการจ่ายเงิน)
+│   ├── settings/brand/page.tsx # whitelabel: ชื่อระบบ, สีหลัก, โลโก้ (เว็บ+PDF)
+│   ├── settings/line/page.tsx  # whitelabel: LIFF ID + ค่าที่ต้องไปตั้งใน LINE Console
+│   └── settings/mail/page.tsx  # whitelabel: provider/ผู้ส่ง/ข้อความในเมล + ปุ่มส่งเมลทดสอบ
 └── freelancer/
     ├── layout.tsx              # Freelancer layout
     ├── page.tsx                # หน้าหลัก LIFF: stats, ปุ่มขอเบิก, modal
@@ -153,11 +195,12 @@ app/
 ### `components/`
 ```
 components/
+├── BrandProvider.tsx           # โหลดแบรนด์ runtime + useBrand() + ทา --brand/favicon/title
 ├── ui/
 │   ├── Badge.tsx               # Status pill
 │   ├── Modal.tsx               # Generic modal (size: sm/md/lg/xl)
 │   ├── ConfirmDialog.tsx       # Confirm destructive action
-│   ├── Logo.tsx                # SVG logo (prop: white=true → all white)
+│   ├── Logo.tsx                # โลโก้จาก brand.logoSvg (prop: white=true → mono)
 │   ├── FormListbox.tsx         # HeadlessUI dropdown
 │   ├── FormDatePicker.tsx      # Date picker (react-day-picker)
 │   └── Skeleton.tsx            # Facebook-style shimmer loading
@@ -182,6 +225,11 @@ lib/
 ├── firebase-utils.ts           # Firestore CRUD + httpsCallable
 ├── firebase-storage.ts         # upload/storage helpers (ดูด้านล่าง)
 ├── line-liff.ts                # initLiff, liffLogin, liffLogout, signInFirebaseWithLiff
+├── line-config.ts              # LIFF ID runtime (publicSettings/line) + cache
+├── brand.ts                    # whitelabel: อ่าน/เขียน publicSettings/brand, sanitizeSvg, applyBrandColor
+├── mail-settings.ts            # whitelabel: settings/mail + EMAIL_TYPES + renderVars + sendTestEmail
+├── email-preview.ts            # renderEmailShell ฝาแฝดของ functions/src/mail.ts (ใช้ทำ modal preview)
+├── brand-default-logo.ts       # โลโก้ default (currentColor / var(--brand))
 ├── types.ts                    # TS interfaces: Job, Freelancer, Payment, etc.
 ├── utils.ts                    # formatDate, formatCurrency, calcTax, status labels/colors, Thai month/year
 ├── earnings.ts                 # สรุปรายได้ freelancer รายเดือน — ใช้ร่วม admin + LIFF
@@ -192,7 +240,8 @@ lib/
 ```typescript
 lineAuth(onCall)
 // รับ: { accessToken: string }
-// verify กับ LINE API → สร้าง Firebase Custom Token
+// 1. verify กับ /oauth2/v2.1/verify → เช็ก client_id ตรงกับ loginChannelId ของ tenant
+// 2. ดึง profile → สร้าง Firebase Custom Token
 // คืน: { firebaseToken, lineUserId, displayName, pictureUrl }
 
 sendPaymentNotification(onCall)
@@ -205,7 +254,11 @@ sendPaymentNotification(onCall)
 sendPaymentReport(onCall)
 // Admin only — ส่งสรุปรายได้ให้ freelancer แต่ละคน
 // รับ: { reports: FreelancerReportPayload[] }
-// Secrets: RESEND_API_KEY, MAIL_FROM
+// Secrets: RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM
+
+sendTestEmail(onCall)
+// Admin only — ส่งเมลทดสอบด้วย config ที่บันทึกไว้ (ไม่รับ from/provider จาก client)
+// รับ: { to: string, templateKey: EmailKey }
 ```
 
 ## lib/firebase-storage.ts — Functions ทั้งหมด
@@ -369,6 +422,7 @@ basisAmount(totals, basis): number                    // basis: 'gross' | 'net' 
 isAdmin()      = sign_in_provider == 'password'
 isFreelancer() = sign_in_provider == 'custom' && lineUser == true
 
+publicSettings: read: PUBLIC (ไม่ต้อง login) | write: admin — แบรนด์เท่านั้น ห้ามใส่ของลับ
 jobs:           read: authenticated, write: admin
 jobFinance:     admin เท่านั้น (budget/ราคาขายของงาน)
 freelancers:    admin: all | freelancer: read/create/update ของตัวเอง
@@ -406,10 +460,21 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID
 NEXT_PUBLIC_LINE_LIFF_ID
 
+# Whitelabel — อีเมล owner ตั้งต้น (ต้องตรงกับ BOOTSTRAP_OWNER_EMAIL ใน functions/.env)
+NEXT_PUBLIC_BOOTSTRAP_OWNER_EMAIL
+
+# functions/.env (ไม่ใช่ secret — ดู functions/.env.example)
+APP_ORIGINS         # โดเมนที่เรียก callable ได้ คั่นด้วย comma (ตัวแรก = ลิงก์ในอีเมล)
+LINE_LIFF_ID        # fallback ของ LIFF ID (ค่าจริงอยู่ใน publicSettings/line)
+BOOTSTRAP_OWNER_EMAIL
+APP_NAME            # ชื่อในอีเมลตอนอ่าน publicSettings/brand ไม่ได้
+BRAND_COLOR         # สีในอีเมลตอนอ่าน publicSettings/brand ไม่ได้
+
 # Firebase Secrets (Cloud Functions — ตั้งด้วย firebase functions:secrets:set)
-RESEND_API_KEY   # API key จาก resend.com
-MAIL_FROM        # อีเมลที่ใช้ส่ง (ต้อง verify domain ใน Resend)
-MAIL_TO          # อีเมล admin ที่รับแจ้งเตือน
+RESEND_API_KEY   # API key จาก resend.com (provider = resend)
+SMTP_PASSWORD    # รหัสผ่าน SMTP (provider = smtp) — ต้องมีก่อน deploy เสมอ ใส่ค่าว่างไว้ได้
+MAIL_FROM        # อีเมลผู้ส่ง fallback (ค่าจริงอยู่ใน settings/mail)
+MAIL_TO          # อีเมล admin fallback (ค่าจริงอยู่ใน settings/mail.adminRecipients)
 ```
 
 ## Deploy Commands
@@ -678,7 +743,7 @@ Phase 2: vendors, expenseCategories, expenses
 ### Storage Paths
 
 ```
-companyAssets/{fileName}                     # ลายเซ็น/โลโก้ (admin write, auth read) ≤5MB
+companyAssets/{fileName}                     # ลายเซ็น/โลโก้แบรนด์/รูปฉลอง (admin write, auth read) ≤5MB
 expenseReceipts/{expenseId}/{fileName}       # สลิป/ใบเสร็จจากผู้ขาย (admin only) ≤10MB
 ```
 
@@ -713,7 +778,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 
 6. **Payment flow**: Freelancer ไม่ต้องมี JobAssignment — เลือก Job จาก dropdown แล้วขอเบิกได้เลย ชื่องานดึงจาก `jobId` → `jobs` collection
 
-7. **Logo white mode**: ใน header สีแดง ต้องส่ง `white` prop → SVG ทุก path เป็น `fill="white"`
+7. **Logo white mode**: บนพื้นสีแบรนด์ ต้องส่ง `white` prop → ระบบแทน `fill` ทุกตัวด้วย `currentColor` ให้เอง ไม่ต้องทำโลโก้เวอร์ชันขาวแยก
 
 8. **Skeleton**: ใช้ class `.skeleton` จาก `globals.css` (shimmer animation) — อย่าใช้ `animate-pulse` ของ Tailwind. ใช้ `SkeletonImage` สำหรับรูปภาพที่โหลดจาก Storage
 
@@ -752,3 +817,87 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 25. **Accounting: P&L revenue base**: ใช้ taxInvoices (accrual basis) ไม่ใช่ receipts — ทำให้ตรงกับภพ.30 และมาตรฐานบัญชี
 
 26. **Accounting: CSV export**: prepend `﻿` (UTF-8 BOM) เพื่อให้ Excel เปิดภาษาไทยได้ไม่เพี้ยน
+
+---
+
+## Whitelabel — กฎที่ห้ามพลาด
+
+> รายละเอียดการ deploy ให้ลูกค้าใหม่: [docs/WHITELABEL.md](docs/WHITELABEL.md)
+
+27. **ห้าม hardcode ชื่อ/โลโก้/สีของบริษัทใดในโค้ด** — ทุกอย่างมาจาก `publicSettings/brand`
+    ผ่าน `useBrand()` (client) หรือ `getBrandInfo()` (Cloud Functions)
+    ถ้าต้องแก้โค้ดเพื่อ deploy เจ้าใหม่ = มีค่า hardcode หลุด ให้ย้ายไป config
+
+28. **สีแบรนด์ใช้ token `brand` เท่านั้น** — `bg-brand`, `text-brand`, `border-brand`,
+    `bg-brand-dark` (hover), `bg-brand-soft` (พื้นอ่อน), `bg-brand-tint` (เงา/เส้นอ่อน)
+    เฉดทั้งหมด derive จาก `--brand` ตัวเดียวด้วย `color-mix()` ใน `globals.css`
+    **ห้ามใช้ `red-*` ของ Tailwind หรือ hex ตรงๆ แทนสีแบรนด์** —
+    `red-*` สงวนไว้ให้ danger เท่านั้น (ลบ/ปฏิเสธ/error/ช่องกรอกผิด)
+    เพราะสีแบรนด์ของ tenant อาจไม่ใช่สีแดง
+
+29. **`publicSettings` อ่านได้โดยไม่ต้อง login** — จำเป็นเพราะหน้า `/login` และ LIFF
+    ต้องโชว์โลโก้ก่อนมี auth **ห้ามเก็บอะไรที่เป็นความลับใน collection นี้**
+
+30. **โลโก้เว็บ ≠ โลโก้ PDF** — เว็บใช้ inline SVG (`brand.logoSvg`),
+    PDF ใช้ไฟล์ภาพ (`brand.logoImagePath`) เพราะ react-pdf `<Image>` ไม่รองรับ SVG
+    ไม่อัพโหลด PNG → เอกสารจะขึ้นโลโก้ default ของระบบ
+
+31. **`<title>` ตั้ง runtime ไม่ใช่ build** — static export ฝัง metadata ตอน build
+    จึงเป็นค่ากลางๆ แล้วให้ `BrandProvider` เขียนทับ `document.title` ตาม pathname
+    (ดู `documentTitleFor()`) — เพิ่มหน้าใหม่ที่ต้องการ title เฉพาะ ให้แก้ที่ฟังก์ชันนั้น
+
+32. **กัน flash ตอนโหลด**: `BRAND_PREPAINT_SCRIPT` ถูก inline ใน `<head>` อ่านสีจาก
+    localStorage แล้วทา `--brand` ก่อน paint แรก — ห้ามลบออก ไม่งั้นจอกระพริบสี default
+    สคริปต์นี้ทำให้ `<html>` มี attribute `style` ที่ตอน prerender ไม่มี จึงต้องมี
+    `suppressHydrationWarning` บน `<html>` ใน `app/layout.tsx` **ห้ามเอาออก**
+    ไม่งั้นขึ้น hydration mismatch ทุกหน้า และห้ามให้สคริปต์นี้ไปแตะ `<head>`
+    (เช่นเขียน `document.title`) เพราะ Next จัดการ head เองอยู่
+
+33. **สี/โลโก้ใน PDF**: react-pdf `StyleSheet` เป็นค่าคงที่ตอน import จึงใช้ตัวแปร
+    runtime ตรงๆ ไม่ได้ — `generatePdfBlob()` เรียก `loadPdfBrand()` ก่อน render
+    แล้ว component override ด้วย `pdfBrand().color` (style array) แก้แบรนด์แล้วอย่าลืม
+    `resetPdfBrand()` เพื่อล้าง cache
+
+34. **Cloud Functions CORS**: `APP_ORIGINS` ใน `functions/.env` — ไม่ตั้งจะ fallback เป็น
+    `https://{projectId}.web.app` + `.firebaseapp.com` ลูกค้าที่ใช้ custom domain
+    **ต้องตั้ง** ไม่งั้น callable functions โดน CORS บล็อก
+
+35. **LIFF ID เป็น runtime config** — เก็บที่ `publicSettings/line` แก้ที่ `/admin/settings/line`
+    ฝั่งเว็บใช้ `resolveLiffId()` (cache localStorage แล้ว refresh เบื้องหลัง เพราะ LIFF init
+    อยู่บนเส้นทางวิกฤต) ฝั่ง functions ใช้ `getLiffId()` **ห้ามอ่าน
+    `process.env.NEXT_PUBLIC_LINE_LIFF_ID` ตรงๆ ในโค้ดใหม่** — env เป็นแค่ fallback
+
+36. **`lineAuth` ต้อง verify ที่มาของ token เสมอ** — `/v2/profile` ของ LINE
+    รับ access token จาก **channel ไหนก็ได้** ถ้าไม่เช็ก ใครก็เอา token จาก LIFF app อื่น
+    มาแลก Firebase custom token ของระบบนี้ได้ (สวมรอยเป็น freelancer)
+    จึงต้องเรียก `/oauth2/v2.1/verify` ก่อน แล้วเทียบ `client_id` กับ `loginChannelId`
+    **ห้ามลบขั้นตอนนี้ออก** และห้ามสลับลำดับไปเรียก profile ก่อน
+    ไม่มี `loginChannelId` → ปฏิเสธ (fail closed) ไม่ใช่ปล่อยผ่าน
+
+37. **ห้ามเอา secret ไปไว้ใน `publicSettings`** — collection นี้ `read: if true`
+    `LINE_CHANNEL_ACCESS_TOKEN`, `RESEND_API_KEY` ฯลฯ อยู่ใน Secret Manager เท่านั้น
+    (ตั้งด้วย `firebase functions:secrets:set`) ถ้าจะเพิ่ม config ใหม่ ถามก่อนว่า
+    "หลุดออกไปแล้วเสียหายไหม" — เสียหาย = Secret Manager, ไม่เสียหาย = publicSettings
+
+38. **อีเมล: ลูกค้าแก้ได้แค่ข้อความ ไม่ใช่ HTML** — โครงการ์ด/แถบสีแบรนด์/ตารางข้อมูล
+    อยู่ใน `renderEmailShell()` (`functions/src/mail.ts`) ตั้งใจไม่ให้ลูกค้าแตะ
+    เพราะ HTML เมลพังง่ายและทำให้เข้า spam — ที่แก้ได้คือ subject / heading / intro / footer
+    ผ่าน `{{var}}` ตัวแปรที่ไม่รู้จักถูกลบทิ้ง (ไม่ปล่อย `{{...}}` ให้ผู้รับเห็น)
+
+39. **โค้ดอีเมล 3 ไฟล์ต้อง sync กันเสมอ** (แชร์กันตรงๆ ไม่ได้ — functions คนละ package):
+    - `functions/src/mail.ts` — ของจริงที่ส่งเมล
+    - `lib/mail-settings.ts` — type + `DEFAULT_TEMPLATES` + `renderVars()` ฝั่งเว็บ
+    - `lib/email-preview.ts` — `renderEmailShell()` ฝาแฝดของ functions ใช้ทำ preview
+
+    แก้ `EmailKey` / `DEFAULT_TEMPLATES` / โครง shell ที่ไฟล์เดียวไม่พอ —
+    `renderEmailShell()` ต่างกันเมื่อไหร่ preview จะโกหกว่าเมลจริงหน้าตาแบบนั้น
+    และ `EMAIL_TYPES[].vars` ต้องตรงกับตัวแปรที่ call site ส่งเข้า `renderVars()` จริง
+    ไม่งั้นแอดมินเห็นตัวแปรที่ใช้ไม่ได้ (หรือใช้ได้แต่ไม่โชว์)
+
+40. **`SMTP_PASSWORD` ต้องมีใน Secret Manager ก่อน deploy functions** — ถูกประกาศใน
+    `secrets: [...]` ของทุก function ที่ส่งเมล ถ้า secret ไม่มี **deploy จะล้มทั้งชุด**
+    แม้ใช้ Resend อยู่ก็ตาม ตั้งค่าว่างไว้ก็ได้: `firebase functions:secrets:set SMTP_PASSWORD`
+
+41. **bootstrap owner**: `NEXT_PUBLIC_BOOTSTRAP_OWNER_EMAIL` (frontend) กับ
+    `BOOTSTRAP_OWNER_EMAIL` (functions) ต้องตรงกัน — เทียบผ่าน `isBootstrapOwnerEmail()` /
+    `isBootstrapOwner()` เสมอ **ห้ามเทียบ `===` ตรงๆ** เพราะค่าว่างจะ match อีเมลว่าง
