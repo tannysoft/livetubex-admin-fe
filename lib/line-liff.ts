@@ -3,6 +3,7 @@
 import { signInWithCustomToken, signOut } from 'firebase/auth'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { auth } from './firebase'
+import { resolveLiffId } from './line-config'
 
 let liffInitialized = false
 let liffModule: typeof import('@line/liff').default | null = null
@@ -44,9 +45,11 @@ export async function initLiff(): Promise<boolean> {
     return false
   }
   if (liffInitialized) return true
-  const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID
-  if (!liffId) throw new Error('NEXT_PUBLIC_LINE_LIFF_ID is not set')
-  const liff = await getLiff()
+  // โหลด LIFF ID (Firestore) ขนานกับ dynamic import ของ SDK — ทั้งคู่อยู่บนเส้นทางวิกฤต
+  const [liffId, liff] = await Promise.all([resolveLiffId(), getLiff()])
+  if (!liffId) {
+    throw new Error('ยังไม่ได้ตั้งค่า LIFF ID — ตั้งที่ /admin/settings/line')
+  }
   await liff.init({ liffId, withLoginOnExternalBrowser: true })
   liffInitialized = true
   return true
@@ -147,6 +150,9 @@ export async function signInFirebaseWithLiff(): Promise<LiffUserProfile> {
     }
     if (code === 'functions/permission-denied') {
       throw new Error('ระบบยังตั้งค่าไม่เสร็จ กรุณาติดต่อ Admin (IAM permission)')
+    }
+    if (code === 'functions/failed-precondition') {
+      throw new Error('ระบบยังตั้งค่า LINE ไม่เสร็จ กรุณาติดต่อ Admin')
     }
     if (code === 'functions/not-found' || code === 'functions/unavailable') {
       throw new Error('ไม่พบ Cloud Function กรุณาตรวจสอบว่า deploy แล้ว')
