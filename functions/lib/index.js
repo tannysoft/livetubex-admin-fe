@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
+exports.getSharedPlan = exports.setPlanShare = exports.equipmentAgent = exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
@@ -1173,5 +1173,37 @@ exports.adminResetUserPassword = (0, https_1.onCall)({ cors: ADMIN_CORS }, async
         throw new https_1.HttpsError('invalid-argument', 'รหัสผ่านอย่างน้อย 6 ตัว');
     await admin.auth().updateUser(uid, { password });
     return { ok: true };
+});
+// ── ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง (LangGraph.js + Claude) ──────────────────
+// คืน "ร่าง" ให้หน้าเว็บตรวจก่อน — ไม่เขียน Firestore เอง (ดู functions/src/equipment-agent/)
+// ⚠️ ANTHROPIC_API_KEY ต้องมีใน Secret Manager ก่อน deploy ไม่งั้น deploy functions ล้มทั้งชุด
+const ANTHROPIC_API_KEY = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
+exports.equipmentAgent = (0, https_1.onCall)({ cors: CORS_ORIGINS, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 900, memory: '1GiB' }, async (request, response) => {
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Authentication required');
+    const provider = request.auth.token.firebase?.sign_in_provider;
+    if (provider !== 'password')
+        throw new https_1.HttpsError('permission-denied', 'Admin only');
+    const { handleEquipmentAgent } = await Promise.resolve().then(() => __importStar(require('./equipment-agent')));
+    // client เรียกแบบ .stream() → ส่งความคิด/ขั้นตอนสดๆ, เรียกแบบปกติ → sendChunk เป็น noop
+    const onEvent = request.acceptsStreaming && response ? (e) => { void response.sendChunk(e).catch(() => { }); } : undefined;
+    return handleEquipmentAgent(request.data, ANTHROPIC_API_KEY.value(), onEvent);
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// แชร์แผนจัดอุปกรณ์ให้ทีมงาน (ลิงก์ + รหัสผ่าน) — ดู plan-share.ts
+// ═══════════════════════════════════════════════════════════════════════════
+exports.setPlanShare = (0, https_1.onCall)({ cors: CORS_ORIGINS }, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Authentication required');
+    const token = request.auth.token;
+    if (token.firebase?.sign_in_provider !== 'password')
+        throw new https_1.HttpsError('permission-denied', 'Admin only');
+    const { handleSetPlanShare } = await Promise.resolve().then(() => __importStar(require('./plan-share')));
+    return handleSetPlanShare(request.data, token.email);
+});
+/** สาธารณะ (ไม่ต้อง login) — ความปลอดภัยอยู่ที่ shareId เดาไม่ได้ + รหัสผ่าน + ล็อกเมื่อใส่ผิดหลายครั้ง */
+exports.getSharedPlan = (0, https_1.onCall)({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
+    const { handleGetSharedPlan } = await Promise.resolve().then(() => __importStar(require('./plan-share')));
+    return handleGetSharedPlan(request.data);
 });
 //# sourceMappingURL=index.js.map

@@ -6,10 +6,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <AuthProvider>
       <AuthGuard>
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50 print:bg-white">
           <AdminSidebar />
-          <main className="lg:ml-64 min-h-screen">
-            <div className="p-6 lg:p-8">{children}</div>
+          <main className="lg:ml-64 print:ml-0 min-h-screen">
+            <div className="p-6 lg:p-8 print:p-0">{children}</div>
           </main>
         </div>
       </AuthGuard>

@@ -116,6 +116,8 @@ export function applyBrandColor(color: string): void {
 /** ชื่อหน้าตาม path — static export ตั้ง metadata ตอน build ไม่ได้ */
 export function documentTitleFor(pathname: string, brand: BrandSettings): string {
   if (pathname.startsWith('/freelancer')) return `${brand.appName} Freelancer Portal`
+  // หน้าแชร์ตั้งชื่อแผนเองหลังปลดล็อก — ก่อนหน้านั้นไม่บอกว่าเป็นงานอะไร
+  if (pathname.startsWith('/share')) return `แผนงานทีม — ${brand.appName}`
   return `${brand.appName} — ${brand.tagline}`
 }
 

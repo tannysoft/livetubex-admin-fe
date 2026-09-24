@@ -12,6 +12,7 @@
   - **ภาษี**: รายงาน ภพ.30 (VAT) + ภงด.3/53 (WHT) + Export CSV
   - **งบการเงิน**: P&L รายเดือน เปรียบเทียบเดือนก่อนหน้า
   - **Auto-link**: Freelancer payment ที่ paid → สร้าง Expense (ค่าจ้างทำของ) อัตโนมัติ
+- **Equipment OB** (`/admin/equipment/*`) — คลังอุปกรณ์ + แผนจัดของต่องาน (จดว่าอะไรโยกไปไหน) + ผังโยงสัญญาณ + print
 - **Freelancer LIFF** (`/freelancer/*`) — Freelancer ดูข้อมูล ขอเบิกเงิน ผ่าน LINE LIFF
 
 ## Stack
@@ -147,6 +148,17 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 > ⚠️ **ห้ามเก็บ API key / รหัสผ่านที่นี่** — `RESEND_API_KEY`, `SMTP_PASSWORD` อยู่ใน Secret Manager
 > EmailKey: `paymentRequestAdmin` | `paymentRequestFreelancer` | `payoutSuccess` | `earningsReport`
 
+### `settings/equipmentAgent` (admin-only — ตั้งค่าผู้ช่วย AI จัดอุปกรณ์)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| systemPrompt | string | ว่าง = ใช้ `DEFAULT_SYSTEM_PROMPT` (ได้ค่าใหม่อัตโนมัติเมื่ออัปเดตระบบ) |
+| rules | string | กฎการต่อสายของทีม ต่อท้าย prompt เป็นบล็อกแยก — ไม่มี field = `DEFAULT_AGENT_RULES` |
+| defaultModel | string | model ID เช่น `claude-sonnet-5` (ต้องตรง `/^claude-[a-z0-9.-]+$/`) |
+| defaultEffort | 'low' \| 'medium' \| 'high' | ระดับความคิด (`output_config.effort`) ไม่มี field = medium · Haiku 4.5 ไม่รองรับ server ข้ามให้ |
+| phaseModels | `{items, wiring}` | รุ่นต่อขั้นในโหมดแบ่ง 2 ขั้น ('' = ตามรุ่นใน dropdown) · ไม่มี field = `DEFAULT_PHASE_MODELS` (จัดของ Sonnet 5 → โยงผัง Opus 5.5) |
+
+> แก้ที่ `/admin/equipment/agent-settings` · client ส่ง prompt/กฎ/model ไปกับทุกคำสั่ง — server ไม่อ่าน doc นี้เอง
+
 ### `settings/app`
 | Field | Type | หมายเหตุ |
 |---|---|---|
@@ -259,6 +271,17 @@ sendPaymentReport(onCall)
 sendTestEmail(onCall)
 // Admin only — ส่งเมลทดสอบด้วย config ที่บันทึกไว้ (ไม่รับ from/provider จาก client)
 // รับ: { to: string, templateKey: EmailKey }
+
+setPlanShare(onCall)   // Admin — { planId, enabled?, password?, regenerate? } → { shareId, enabled } (hash รหัสด้วย scrypt)
+getSharedPlan(onCall)  // สาธารณะ — { shareId, password } → แผนที่ตัดข้อมูลการเงิน (ดู planShares)
+
+equipmentAgent(onCall)  — ดู functions/src/equipment-agent/
+// Admin only — ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง (LangGraph.js + Claude) timeout 900s, 1GiB
+// รับ: { plan: {id,title,date,endDate,location,notes,items,diagrams}, instruction, history[], model, systemPrompt, rules, phase, effort }
+// phase: 'all' (default) | 'items' (ขั้น 1 จัดของ — ปิด tool ผังโยง) | 'wiring' (ขั้น 2 วาดผังจากรายการที่จัดแล้ว)
+// คืน: ร่าง { items, diagrams, newDiagramIds, newNodeIds, summary, questions, issues, steps, usage } — ไม่เขียน Firestore
+// stream (sendChunk): AgentEvent — step / thinking / text / tool / tool_result / review → หน้าเว็บโชว์ความคิดสด
+// Secret: ANTHROPIC_API_KEY
 ```
 
 ## lib/firebase-storage.ts — Functions ทั้งหมด
@@ -475,6 +498,7 @@ RESEND_API_KEY   # API key จาก resend.com (provider = resend)
 SMTP_PASSWORD    # รหัสผ่าน SMTP (provider = smtp) — ต้องมีก่อน deploy เสมอ ใส่ค่าว่างไว้ได้
 MAIL_FROM        # อีเมลผู้ส่ง fallback (ค่าจริงอยู่ใน settings/mail)
 MAIL_TO          # อีเมล admin fallback (ค่าจริงอยู่ใน settings/mail.adminRecipients)
+ANTHROPIC_API_KEY # ผู้ช่วย AI จัดอุปกรณ์ (equipmentAgent) — ต้องมีก่อน deploy functions เสมอ
 ```
 
 ## Deploy Commands
@@ -737,6 +761,7 @@ components/admin/accounting/
 Phase 1: companySettings, customers, documentCounters, quotations,
          invoices, taxInvoices, receipts
 Phase 2: vendors, expenseCategories, expenses
+Equipment: equipment, equipmentPlans (+ subcollection revisions), equipmentPlanAssets
 ทั้งหมด: admin-only (isAdmin)
 ```
 
@@ -756,11 +781,235 @@ TX6805-0001    # ใบกำกับภาษี
 RC6805-0001    # ใบเสร็จรับเงิน
 EX6805-0001    # รายจ่าย (Phase 2)
 CUS-0001       # ลูกค้า (running ไม่ reset)
+EQ-0001        # อุปกรณ์ OB (running ไม่ reset)
 VEN-0001       # ผู้ขาย (running ไม่ reset)
 ```
 
 > YY = พ.ศ. 2 หลัก, MM = เดือน 2 หลัก, NNNN = running 4 หลัก
 > ใช้ `runTransaction` กัน race — `lib/accounting/doc-numbering.ts`
+
+---
+
+## Equipment — อุปกรณ์ OB / แผนจัดของ / ผังโยง
+
+### Collections (admin-only)
+
+#### `equipment`
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| code | string | auto: EQ-0001 (running ไม่ reset — `nextDocNumber('equipment')`) |
+| name / category | string / `EquipmentCategory` | หมวดเป็นค่าคงที่ใน `lib/equipment/constants.ts` |
+| brand / model / serialNumber | string? | |
+| quantity | number | ของชิ้นเดียว = 1, ของนับจำนวน (สาย, ขาตั้ง) > 1 |
+| storageLocation | string? | ที่เก็บประจำ → เป็นค่าตั้งต้นของ "หยิบจาก" ในแผน |
+| status | 'available' \| 'repair' \| 'retired' | retired ไม่โชว์ในตัวเลือกของแผน |
+| inputs / outputs | string[]? | ชื่อ port — **แม่แบบ**ตอนวางลงผังโยง (แก้ในผังไม่กระทบคลัง) |
+| ownership | 'owned' \| 'rental' \| 'partner' | ไม่มี field = owned · rental = **แค็ตตาล็อกของที่เช่าได้** · partner = ของพาร์ทเนอร์ที่เอามาร่วมงาน (เช่น Windblue) — `partnerName`, ค่าใช้จ่ายปกติ 0 |
+| rentalVendor / rentalRate | string? / number? | ผู้ให้เช่า + ราคา/ชิ้น/วัน — เลือกเข้าแผนแล้ว snapshot ลง `PlanItem` เป็นต้นทุนให้เอง |
+
+#### `equipmentPlans` (1 doc = 1 แผน เก็บรายการ + ผังทั้งหมดใน doc เดียว)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| title / date / endDate / location / notes | string | endDate ว่าง = งานวันเดียว — ใช้เช็กของชนกัน |
+| jobId / jobTitle | string? | ผูกกับ `jobs/{id}` (optional) — jobTitle เป็น snapshot |
+| status | 'draft' \| 'ready' \| 'on_site' \| 'returned' | |
+| items | `PlanItem[]` | snapshot `code/name/category` + `quantity`, `fromLocation` → `toLocation`, `note`, `packed`, `returned` |
+| diagrams | `PlanDiagram[]` | หลายผังต่อแผน (Video/Audio/Intercom…) แต่ละผังมี `nodes[]` + `edges[]` |
+| videoFormat | `VideoFormat?` | ระบบภาพ `{resolution, frameRate, range, note}` → หัวกระดาษทุกหน้า "1080i50 · SDR · Rec.709 · HD-SDI" (`lib/equipment/video-format.ts`) — ระดับ SDI คำนวณเอง ไม่เก็บ · interlaced ใช้ field rate |
+| recordings | `RecordingSpec[]?` | format ไฟล์บันทึก หลายรายการ `{target, codec, container, resolution?, media, note}` — `resolution` ว่าง = ตามระบบภาพ (ISO BRAW 4K + PGM HD ได้) เช่น PGM ProRes 422 HQ .mov / ISO H.264 .mp4 — หัวกระดาษบรรทัด "บันทึก:" (`lib/equipment/recording-format.ts`) |
+| fohFeeds | `FohFeed[]?` | สัญญาณส่งทีม Visual ที่ FOH `{source, destination, destInput?, connection, format?, cableLength, note}` — format ว่าง = ตามระบบหลัก · พิมพ์หน้าแยก (ช่องติ๊กรับ + เซ็นส่ง/รับ) + บรรทัดสรุปบนหัวกระดาษ (`lib/equipment/foh-feeds.ts`) |
+| layouts | `PlanLayout[]?` | ผังวาง 3D — `venue` (ขนาดสถานที่/เวที/อัฒจันทร์) + `objects[]` (กล้อง, jib, รถ OB, จอ ฯลฯ) |
+
+#### `equipmentPlans/{planId}/revisions` (admin-only — rule แยกของ subcollection)
+snapshot ของแผน: `number` (Rev 1,2,3… ต่อแผน), `label`, `note`, `source` ('manual' | 'agent' ก่อนใช้ร่าง AI | 'restore' ก่อนกู้คืน),
+`items`, `diagrams`, `layouts`, `hash`, `stats`, `createdBy` — **ไม่เก็บ extraCosts** · plan doc มี `revision` (meta ของ Rev ที่ตรงกับแผน)
+ลบแผนต้องลบ subcollection เอง (`deleteEquipmentPlan` ทำให้แล้ว)
+
+#### `planShares/{planId}` (อ่าน: admin · เขียน: function `setPlanShare` เท่านั้น)
+ลิงก์แชร์แผนให้ทีมงานดูบนมือถือ `/share/plan?s={shareId}` + รหัสผ่าน (ไม่ต้อง login)
+`shareId` (สุ่ม 22 ตัว เปลี่ยนได้ = ลิงก์เก่าใช้ไม่ได้), `enabled`, `salt`/`hash` (scrypt ฝั่ง server), `failCount`/`lockedUntil`
+(ผิด 8 ครั้ง → ล็อก 10 นาที) · หน้าแชร์เรียก `getSharedPlan` (สาธารณะ) ได้แผน **ปัจจุบัน** ที่ผ่าน `sanitizePlan()` —
+allowlist field ของ item (ไม่มีต้นทุน/ผู้ให้เช่า/expenseId), ไม่มี extraCosts/jobId, ผังวางไม่มีรูป floor plan
+⚠️ เพิ่ม field ที่ทีมหน้างานต้องเห็น → เพิ่มใน allowlist ของ `functions/src/plan-share.ts` + type `SharedPlan` (`lib/equipment/plan-share.ts`)
+
+#### `equipmentPlanAssets` (admin-only)
+รูป floor plan ที่ปูพื้นในผัง 3D เก็บเป็น **data URL ใน Firestore** (ย่อ ≤900KB ฝั่ง client) —
+ตั้งใจไม่ใช้ Storage เพราะ WebGL texture บังคับ CORS ซึ่ง bucket ของ tenant ใหม่ไม่ได้ตั้งไว้
+ไม่ลบ doc ตอนเอารูปออก/ลบแผน เพราะแผนที่ถูกสำเนาอาจอ้างรูปเดียวกัน
+
+> `PlanItem.equipmentId` ว่าง = ของนอกคลัง (เช่า/ยืม) — แก้ชื่อ/หมวดในตารางได้เอง
+> `PlanItem.useFrom/useTo` = ใช้ไม่เต็มงาน (ช่วงย่อยในวันงาน, ว่าง = ทั้งงาน) — **เช็กคิวทุกจุดนับทีละวันตามช่วงของแถว**
+> (`planBookings`/`planConflicts`/`usageByEquipment(plans, range)`/`usageInRange` ใน `availability.ts` + ฝาแฝด `loadOtherUsage`/`Workspace.available`/`validate` ฝั่ง functions)
+> อ่านผ่าน `clipItemRange()`/`itemUseLabel()` เสมอ · ตารางจัดของตั้งวันได้เฉพาะงานหลายวัน, ของเช่า → `rentalDays` = จำนวนวันที่ใช้, ของติดกล้องที่วันตรงกับกล้องเปลี่ยนตาม
+> `PlanItem.attachedTo` = id ของแถวแม่ในแผน (เลนส์ → กล้อง) — ตาราง/print วาดใต้กล้อง (หมวดกล้อง), แถวแม่หาย = กลับเป็นแถวปกติ
+> เลนส์รุ่นเดียวกันจับคู่หลายกล้องได้ = **หลายแถว equipmentId ซ้ำ** → เช็กของว่างต้องรวมจำนวนต่อ equipmentId (`planConflicts` ทำแล้ว,
+> picker โหมดเลนส์รับ `inPlanQty`) · ลบกล้อง = ถอดคู่ ไม่ลบเลนส์ · เปลี่ยนปลายทางกล้อง → เลนส์ที่ปลายทางเดิมตรงกันย้ายตาม
+> ผู้ช่วย AI: `add_items`/`update_items` มี `attachTo` (ฝาแฝดใน `workspace.ts`)
+> `DiagramEdge.from/to` = `{ nodeId, side: 'in'|'out'|'io', index }` — **อ้าง port ด้วย index**
+> `DiagramNode.note` = หมายเหตุของกล่อง วาดเป็นแถบเหลืองใต้ port (`wrapNote` ตัดคำไทยด้วย `Intl.Segmenter`, ≤ `NOTE_MAX_LINES` บรรทัด
+> เกินแล้วต่อ … ฉบับเต็มพิมพ์ใต้ผัง) — `nodeHeight()` รวมความสูงหมายเหตุแล้ว port/เส้นไม่ขยับเพราะหมายเหตุอยู่ล่างสุด
+> `io` = port เข้า-ออกในตัวเดียว (12G-SDI bidirectional, LAN, Intercom) วาดเป็น ◇ ฝั่งขวาต่อจาก outputs โยงได้ทุกทิศ
+> อ่านชื่อ/แถวของ port ผ่าน `portsOf()` / `portRow()` เสมอ อย่า index `inputs/outputs` ตรงๆ
+> ลบ port กลางรายการต้องเลื่อน index ของเส้นที่เหลือ (ดู `removePort()` ใน `DiagramEditor`)
+
+### ไฟล์
+
+```
+lib/equipment/
+├── constants.ts     # หมวด, สถานะ, DEFAULT_PORTS ต่อหมวด, SIGNAL_TYPES (สี + dash), CATEGORY_COLORS
+├── equipment.ts     # CRUD คลัง
+├── plans.ts         # CRUD แผน + stripUndefined (deep) + newId
+├── diagram.ts       # เรขาคณิตผัง: nodeHeight, portPosition, edgePath, diagramBounds, isEdgeValid
+├── venues.ts        # VENUE_PRESETS (ขนาดโดยประมาณ!), OBJECT_KINDS, KIND_DEFAULTS
+├── layout-scene.ts  # three.js: buildVenue, buildObject, cameraPose, snapshotLayout (print)
+├── plan-assets.ts   # รูป floor plan (data URL ใน Firestore)
+├── agent.ts         # เรียก equipmentAgent + จัดตำแหน่งกล่องของร่าง (autoLayoutDiagram ใน diagram.ts)
+├── agent-settings.ts # settings/equipmentAgent + AGENT_MODELS + DEFAULT_SYSTEM_PROMPT + DEFAULT_AGENT_RULES
+├── foh-feeds.ts     # ส่งภาพทีม Visual (FOH): FOH_SYSTEMS (E2/Aquilon/Novastar…), feedFormatLabel, fohSummary, fohAgentText
+├── layout-zones.ts  # ผังวาง 3D ตามโซน: applyZonePlacements, ensureFoh (ทุกผังมีโต๊ะ FOH), newLayout, applyAgentLayout
+├── foh-diagram.ts   # buildFohDiagram: feed → ผัง "ส่งภาพ FOH — ทีม Visual" (สวิตเชอร์ → converter/fiber/encoder → เครื่อง FOH)
+├── recording-format.ts # format ไฟล์บันทึก: codec → นามสกุลไฟล์ตั้งต้น, presets, recordingsLabel
+├── video-format.ts  # ระบบภาพ: presets, formatFullLabel, sdiLevel (ส่งเป็นข้อความให้ผู้ช่วย AI ด้วย)
+├── revisions.ts     # revision: create/list/get/delete, planContentHash, restoreContent
+└── plan-diff.ts     # diffItems / changedDiagrams / removedDiagrams — ใช้ทั้งร่าง AI และหน้า revision
+
+functions/src/equipment-agent/   # ผู้ช่วย AI (LangGraph.js + @langchain/anthropic)
+├── types.ts         # ฝาแฝดของ type ฝั่งเว็บ (Equipment, PlanItem, PlanDiagram, DEFAULT_PORTS) ⚠️ ต้อง sync
+├── workspace.ts     # ร่างในหน่วยความจำ + ตรวจ (ของชนวัน, port มีจริง, port ละเส้น) — ทุก tool ทำงานผ่านนี่
+├── tools.ts         # tool ที่ให้ LLM เรียก (search_inventory, add_items, add_nodes, connect, validate, finish …)
+├── prompt.ts        # system prompt ตั้งต้น — fallback เท่านั้น ⚠️ ฝาแฝดของ DEFAULT_SYSTEM_PROMPT ฝั่งเว็บ
+├── graph.ts         # StateGraph: agent ⇄ tools → review (มี ✗ ส่งกลับแก้ ≤2 รอบ) → END
+└── index.ts         # ตรวจ payload + โหลด equipment/แผนอื่นด้วย admin SDK แล้วรัน graph
+
+components/admin/equipment/
+├── EquipmentForm.tsx      # ฟอร์มอุปกรณ์ (port = textarea บรรทัดละ 1)
+├── EquipmentPicker.tsx    # modal เลือกของจากคลังเข้าแผน (multi-select + จำนวน)
+├── PlanItemsTable.tsx     # ตารางจัดของ แก้ inline + ตั้งปลายทางรวดเดียว
+├── DiagramGraph.tsx       # เนื้อ SVG (เส้น+กล่อง) — ใช้ร่วม editor และ print
+├── DiagramEditor.tsx      # ตัวแก้ผัง: ลากกล่อง, โยงสาย, pan/zoom, side panel
+├── LayoutEditor.tsx       # ตัวแก้ผังวาง 3D (three.js) — โหลดผ่าน next/dynamic ssr:false เท่านั้น
+├── AgentPanel.tsx         # modal ผู้ช่วย AI: สั่ง → ร่าง (สรุป/คำถาม/ปัญหา/diff/preview ผัง) → ใช้ร่าง
+├── RevisionPanel.tsx      # modal revision: บันทึก Rev ใหม่, เทียบกับตอนนี้, พิมพ์ฉบับ revision, กู้คืน, ลบ
+├── FohFeedsEditor.tsx     # แก้ feed ที่ส่ง FOH (ใช้ VideoFormatPicker แบบ compact เมื่อ format ต่างจากระบบหลัก)
+├── RecordingFormatsEditor.tsx # แก้ format ไฟล์บันทึก (หลายแถว)
+├── VideoFormatPicker.tsx  # เลือกระบบภาพ (ใช้ตอนสร้างแผน + หน้าแก้แผน)
+├── DiagramPreview.tsx     # ผังย่อ read-only (ใช้ใน AgentPanel + RevisionPanel)
+└── PlanPrintDocument.tsx  # เอกสารที่พิมพ์: รายการ → ผัง → ตารางสาย
+
+app/admin/equipment/
+├── inventory/page.tsx     # คลังอุปกรณ์ (CRUD + ค้นหา + ทำสำเนา)
+├── availability/page.tsx  # ของเหลือตามช่วงวันที่ — หักของที่แผน (ยังไม่เก็บกลับ) จองไว้ · usageInRange() ใช้ยอดวันพีค ไม่รวมแผนคนละวัน
+├── plans/page.tsx         # รายการแผน + สร้าง/สำเนา/ลบ
+├── plans/edit/page.tsx    # ?id=xxx — แท็บ รายการอุปกรณ์ / ผังโยง (autosave)
+├── plans/print/page.tsx   # ?id=xxx — เลือกส่วนที่จะพิมพ์ แล้ว window.print()
+└── agent-settings/page.tsx # ตั้งค่าผู้ช่วย AI: รุ่นเริ่มต้น, กฎของทีม, system prompt (คืนค่าเริ่มต้นได้)
+
+app/share/plan/page.tsx     # ?s=shareId — หน้าแชร์ทีมงาน (มือถือ, ไม่ต้อง login): ใส่รหัส → แท็บ อุปกรณ์ / ผังโยง / ผังวาง
+                            # ผังซูมด้วย components/ui/ZoomPan (บีบ 2 นิ้ว/ลาก/แตะ 2 ครั้ง) · รหัสจำใน sessionStorage · robots noindex
+                            # แท็บผังวางวาด 3D สดด้วย LayoutViewer (ไม่ใช่รูป — ซูมแล้วไม่แตก) · ปุ่มแนวเลนส์ใช้ค่า useLensLines() ร่วมกับหน้าแก้ผัง/หน้าพิมพ์
+components/admin/equipment/SharePlanModal.tsx  # ปุ่ม "แชร์ทีมงาน" หน้าแก้แผน: ตั้งรหัส, เปิด/ปิด, คัดลอกลิงก์, สร้างลิงก์ใหม่
+lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายทาง + เลนส์ใต้กล้อง) ใช้ร่วมหน้าพิมพ์ + หน้าแชร์
+```
+
+### กฎสำคัญ
+
+- **ผังโยงเขียนเองด้วย SVG ไม่ใช้ library** — `DiagramGraph` เป็นตัว render เดียวทั้งจอและ print
+  แก้หน้าตากล่อง/เส้นที่เดียว ผังที่พิมพ์จะตรงกับที่วาดเสมอ ขนาดกล่อง/ตำแหน่ง port อยู่ใน `lib/equipment/diagram.ts`
+- **สีเส้นต้องคู่กับ dash เสมอ** (`SIGNAL_TYPES`) — ผังมักถูกพิมพ์ขาวดำ สีอย่างเดียวแยกประเภทสายไม่ออก
+  สีหมวด/สีสัญญาณเป็น hex คงที่ได้ (เป็นความหมายของข้อมูล ไม่ใช่สีแบรนด์ — ไม่ขัดกฎข้อ 28)
+- **autosave ของหน้าแก้แผน**: `change()` เขียน `latest` ref + bump `version` แล้ว debounce 1.2s
+  ห้ามอ่าน `plan` state ใน `save()` — ต้องอ่านจาก ref ไม่งั้น save ที่ค้างอยู่ได้ค่าเก่า
+  ปุ่มพิมพ์ต้อง `await save()` ก่อน navigate เพราะหน้า print อ่านจาก Firestore
+- **Print ใช้ CSS ไม่ใช่ react-pdf**: `@page` ใน `globals.css` — รายการ A4 ตั้ง, section ที่ติด class
+  `.print-landscape` เป็น A4 นอน (named page) sidebar/toolbar ซ่อนด้วย `print:hidden`
+  `app/admin/layout.tsx` มี `print:ml-0 print:p-0` — ห้ามเอาออก ไม่งั้นเอกสารเยื้องขวาเท่าความกว้าง sidebar
+- **React ผูก `wheel` แบบ passive** → zoom/pan ของ canvas ผูก native listener เอง (`{ passive: false }`)
+- **ผังวาง 3D**: หน่วยเมตร, x = ซ้าย-ขวา, z = ลึก (เวทีอยู่ฝั่ง -z), `rotation` 0° = หันหาเวที หมุนตามเข็ม
+  `layout-scene.ts` ดึง three.js ทั้งก้อน → **ห้าม import แบบ static จากหน้า/‌component ที่ prerender**
+  (ใช้ `next/dynamic` หรือ `await import`) mesh ที่ `userData.ground = true` คือผิวที่วางของได้ —
+  ลากวัตถุแล้ว `y` ตั้งตามผิวที่ ray ชนเอง (พื้น/เวที/ขั้นอัฒจันทร์)
+- **ทางเดินอัฒจันทร์** (เฉพาะแบบเหลี่ยม): `tiers.aisleWidth/sectionWidth` แบ่งที่นั่งเป็นบล็อก (ตำแหน่งคิดจากขอบพื้นราบ ใช้ทุกขั้น = แนวตรง),
+  `tiers.crossAisle` = ขั้นที่เป็นทางเดินขวาง — ทางเดินยังเป็นผิววางของได้ · ค่าอยู่ใน venue ของแต่ละผัง แก้ preset แล้วผังเก่าไม่เปลี่ยนตาม
+- **อัฒจันทร์ 2 แบบ**: เหลี่ยม (เลือกด้าน `sides/back/front`) หรือ `tiers.curved` = ชามวงรีล้อมรอบ
+  (`ellipseSlab` — วงแหวน ExtrudeGeometry ต่อขั้น, `width/depth` กลายเป็นแกนของพื้นวงรี) เช่น อินดอร์ฯ หัวหมาก, ราชมังคลา
+  `venue.pitch` = สนามกีฬากลาง (พื้นเขียว) · ตาราง 5 ม. เป็น **texture บนพื้น** ไม่ใช่ GridHelper (สี่เหลี่ยมล้นออกนอกวงรี)
+- **Riser ก็เป็นผิววางของ** (`userData.ground` บนตัวแท่น) — ลากกล้องมาทับแล้วขึ้นไปอยู่บนแท่น, ย้าย/ปรับความสูง riser
+  แล้วของบนแท่นตามไปด้วย (`ridersOf`) · หลัง rebuild วัตถุต้อง `updateMatrixWorld(true)` เอง เพราะ three อัปเดตตอน render
+  แต่ pointermove ถัดไปอาจ raycast ก่อน frame นั้น (อาการ: วางทับ riser ไม่ติด)
+- **`VENUE_PRESETS` เป็นขนาดโดยประมาณ** ไม่ได้มาจากแบบก่อสร้าง — UI และหน้า print มีคำเตือนกำกับ ห้ามเอาออก
+  ความแม่นได้จากให้ผู้ใช้ปูรูป floor plan จริง + กรอกความกว้างจริง
+- OrbitControls กับการลากวัตถุใช้ pointer ตัวเดียวกัน → listener ของเราผูกแบบ `capture` ให้ทำงานก่อน
+  แล้วปิด `controls.enabled` เมื่อโดนวัตถุ
+- **ต้นทุนของแผน → ต้นทุนจริงของงาน** (`lib/equipment/rental-cost.ts`) มี 2 แหล่งที่รวมเป็น `CostLine` เดียวกัน:
+  `plan.extraCosts` (รถตู้/ที่พัก/อาหาร — เลือกหมวดบัญชีเอง, ไม่โผล่ในใบจัดของ) และค่าเช่า: `isRentalItem()` =
+  `itemOrigin(it) !== 'owned'` — `PlanItem.origin` ('rental'|'partner', ยังมี `equipmentId` จึงได้ port ในผังโยง) หรือของพิมพ์เอง
+  (`equipmentId` ว่าง) · `isRental` เป็น field เก่า อ่านผ่าน `itemOrigin()` เท่านั้น · พาร์ทเนอร์มีแถวต้นทุนแต่ปกติ 0 (ลงบัญชีเฉพาะที่ > 0)
+  มี `rentalVendor / unitCost / rentalDays` — ยอด = `unitCost × quantity × rentalDays` (ก่อน VAT)
+  ยอดเดียวกันต้องถูกนับ **ที่เดียวเสมอ**: ยังไม่มี `expenseId` → หน้าต้นทุนต่อโปรเจกต์นับจากแผน
+  (`uncountedPlanCost`), กด "ลงบัญชีเป็นรายจ่าย" แล้ว → เป็น Expense (1 ใบต่อหมวด+ผู้รับเงิน,
+  `sourceType='manual'`, ไม่ใส่ VAT/WHT ให้บัญชีเติมเอง) และแผนเลิกนับ ถ้า Expense ถูกยกเลิก ยอดกลับมานับจากแผน
+  แผนต้องผูก `jobId` ไม่งั้นค่าเช่าไม่เข้างานใด · สำเนาแผนต้องถอด `expenseId`
+- **แค็ตตาล็อกผลิตภัณฑ์** (`lib/equipment/catalog/`) เป็น static data ในโค้ด (Blackmagic, Sony, Panasonic Lumix, DJI (Ronin, Osmo/Action, โดรน), Hollyland, Vaxis, SWIT, Accsoon, Peplink, AVMATRIX, NAYA, มิกเซอร์ Yamaha/Allen & Heath/Zoom, ADAM Audio, Focusrite) —
+  port ต่อรุ่นมาจากความรู้ทั่วไป ไม่ใช่ spec sheet ฟอร์มเติมเป็นค่าตั้งต้นให้แก้ต่อ
+  เพิ่มยี่ห้อ = เพิ่มไฟล์แล้วรวมใน `PRODUCT_CATALOG` + ชื่อใน `CATALOG_BRANDS` · `searchCatalog` จับคู่ทั้งแบบมี/ไม่มีช่องว่าง ("m/e" ↔ "me")
+  **ราคา** แยกไว้ที่ `prices.ts` (key = `name`, บาทรวม VAT ต่อชิ้น **โดยประมาณ** — ที่รู้ราคาไทยจริงใช้ตามร้าน ที่เหลือ USD×~40)
+  รวมเข้า `price/priceNote` ตอน build `PRODUCT_CATALOG` · รุ่นเก่า/เลิกผลิตตั้งใจไม่ใส่ราคา · ลำโพง ADAM เป็นราคาต่อข้าง · กล้อง Sony เป็นราคา body
+  ฟอร์มเติม `Equipment.price` เฉพาะตอนช่องยังว่าง (มูลค่าต่อชิ้น ไว้ประกัน/ประเมิน — **ไม่เข้าต้นทุนงาน** นั่นคือ `rentalRate`)
+  ของที่ขายเป็นชุด (อินเตอร์คอม Hollyland `-4S/-8B`, ส่งภาพไร้สาย Vaxis TX+RX) ให้เป็น **1 รายการต่อชุด** port = ตัวแม่/base station
+  (ชุดส่งภาพ: ขาเข้า = port ตัวส่ง, ขาออก = port ตัวรับ ต่อท้ายชื่อด้วย `(TX)`/`(RX)`)
+  ส่งภาพไร้สายทุกยี่ห้ออยู่หมวด `wireless` (แยกจาก `converter`) — เพิ่มหมวดใหม่ต้องแก้ทั้ง `EquipmentCategory`,
+  `EQUIPMENT_CATEGORIES/CATEGORY_COLORS/DEFAULT_PORTS`, คอลัมน์ใน `autoLayoutDiagram` และฝาแฝดใน `functions/src/equipment-agent/types.ts`
+  ตัวเดี่ยวเก็บเป็นรายการ "(เพิ่ม/อะไหล่)" ต่างหาก
+- **autocomplete ช่องข้อความ** (ที่เก็บ / ผู้ให้เช่า / พาร์ทเนอร์ / ปลายทาง / ผู้รับเงิน) ใช้ `components/ui/SuggestInput`
+  ไม่ใช้ `<datalist>` (Safari/มือถือโชว์ไม่ติด กรองไม่ได้) ตัวเลือก = ค่าที่เคยกรอกในคลัง/แผน **+ ชื่อผู้ขายจาก `vendors` (บัญชี)**
+  เพื่อให้ผู้รับเงินสะกดตรงกับตอน `recordPlanExpenses` สร้าง Expense · โหลด vendors แบบ `.catch(() => [])` ห้ามให้คลังพังเพราะบัญชี
+- **ของชนกันระหว่างแผน** (`lib/equipment/availability.ts`): แผนอื่นที่ `date..endDate` ทับกันและยังไม่ `returned`
+  → นับจำนวนที่ใช้ต่อ `equipmentId` (`usageByEquipment`) picker กันเลือกเกิน `quantity - used` และหน้าแผนมีแถบแดง
+  (`planConflicts`) ถ้าเปลี่ยนวัน/จำนวนทีหลัง · แผนไม่มี `date` = เช็กไม่ได้ (เตือนใน picker) · ของพิมพ์เอง (ไม่มี `equipmentId`) ไม่ถูกนับ
+- **ผังวาง 3D จากผู้ช่วย AI** (`layout-zones.ts`): tool `place_3d` ให้ LLM เลือก **โซน** (stage_front_left/right/center, on_stage,
+  floor_left/right, foh_center, back_left/right, ob_area) ไม่ใช่พิกัด — server คืน `placements` แล้วเว็บแปลงเป็น x/z/rotation ตามขนาด venue
+  (ซ้าย/ขวา = มองจาก FOH ไปเวที = x ลบ/บวก) · ของเดิมจับด้วย `planItemId` ก่อนชื่อ (ย้ายแล้วคงชนิดเดิม) · `swapWith` = สลับตำแหน่ง 2 วัตถุ
+  (tool `swap_positions` สลับปลายทาง+ของในชุด, sub ในผังโยง, ตำแหน่ง 3D ในครั้งเดียว) · `layoutAgentText` บอกโซนปัจจุบันของแต่ละชิ้นให้ผู้ช่วย
+  · `update_items`: เปลี่ยน toLocation กล้อง → ของในชุดที่อยู่ที่เดิมตาม, attachTo ไปกล้องใหม่ → ปลายทางตามกล้อง (ฝาแฝดของตารางหน้าเว็บ) วางในผังแรก (ไม่มี = สร้างใหม่ เดา venue จาก `plan.location`) · ชื่อ+item เดิม = ย้าย ไม่สร้างซ้ำ
+  · หาช่องว่างในโซนเอง (ไม่ทับของเดิม) · **ทุกผังวางใหม่มีโต๊ะ FOH** (`ensureFoh`) ทั้งปุ่มเพิ่มผังและร่าง AI
+  กติกาเลนส์ → โซน (16x/left/right = หน้าเวทีซ้ายขวา, tele/half tele = foh_center) อยู่ใน `DEFAULT_SYSTEM_PROMPT` แก้ได้จากหน้าตั้งค่า
+  รายการโซนต้องตรงกันระหว่าง `LayoutZone` (เว็บ) และ `LAYOUT_ZONES` (functions/types.ts)
+  ชนิดวัตถุ (`LayoutObjectKind`) ต้องตรงกับ `LAYOUT_KINDS` เช่นกัน · ชนิดที่เป็นกล้อง (กรวยภาพ/มุมมองกล้อง/คอลัมน์เลนส์) เช็กผ่าน `isCameraKind()` เท่านั้น
+  (camera, jib, gimbal = โรนิน/กิมบอลถือมือ, remote_head = หัวรีโมทบนเสา/truss) — มี `podium` (แท่นพูด หมุน 180° หาผู้ชมเป็นค่าตั้งต้น)
+- **ผังส่ง FOH** (`buildFohDiagram`): ปุ่ม "จัดผังส่ง FOH" ใน `FohFeedsEditor` สร้างผังชื่อ `FOH_DIAGRAM_NAME` (มีแล้ว = ยืนยันแล้วเขียนทับ id เดิม
+  + bump `agentApplied` ให้ DiagramEditor remount) · ต้นทาง = แถว switcher แรก (port จากคลัง, จับ port ตามชื่อสัญญาณ 2 รอบ: ชื่อตรงก่อนแล้วค่อยตัวสำรอง
+  ไม่งั้น "Clean feed" แย่ง AUX 1) · SDI↔HDMI ไม่ตรง = กล่อง converter, format ต่างจากระบบหลัก = cross converter, Fiber = TX/RX, NDI/SRT = encoder
+  (กล่องแทรกเป็นกล่องอิสระ ไม่ผูกคลัง) · ปลายทางชื่อเดียวกัน = กล่องเดียว · เตือนเมื่อส่ง 1080i ไปเครื่องที่ `FOH_SYSTEMS.progressive`
+- **Revision** (`lib/equipment/revisions.ts`): `planContentHash()` ไม่นับ `packed/returned/expenseId/expenseCode`
+  (ความคืบหน้าหน้างาน/บัญชีไม่ใช่การแก้แผน) และเรียง key เอง (Firestore ไม่รับประกันลำดับ key)
+  `plan.revision` เขียนตรงด้วย `setPlanRevision()` **ไม่ผ่าน `change()`** — ไม่ใช่การแก้เนื้อหา autosave จึงไม่ต้องทำงาน
+  (autosave ก็ไม่เขียน field นี้ ไม่ทับกัน) · **กู้คืน**: `restoreContent()` คงสถานะจัดแล้ว/เก็บกลับของปัจจุบัน, แถวที่ลงบัญชีแล้วใช้ของปัจจุบัน
+  (ไม่มีใน revision ก็ต่อท้ายไว้), ไม่พา expenseId เก่าจาก snapshot กลับมา, ไม่แตะ extraCosts
+  ก่อนกู้คืน/ก่อนใช้ร่าง AI บันทึกของปัจจุบันเป็น revision อัตโนมัติถ้ายังไม่เคยบันทึก · หน้า print รับ `?rev=` = พิมพ์ฉบับ revision
+  หัวกระดาษทุกหน้ามีป้าย Rev (หรือ "ร่าง (แก้หลัง Rev N)")
+- `stripUndefined()` เข้าไปล้างเฉพาะ **plain object** — sentinel ของ Firestore (`deleteField()`) ต้องผ่านไปทั้งตัว
+  ล้างค่า field ที่เป็น object (เช่น `videoFormat`) ใน autosave ต้องส่ง `deleteField()` ไม่ใช่ undefined (undefined ถูกกรองทิ้ง ค่าเก่าค้าง)
+- แผนเก็บ **snapshot** ชื่อ/รหัสอุปกรณ์ — ลบ/แก้ของในคลังแล้วแผนเก่าไม่เพี้ยน (หลักเดียวกับ CustomerSnapshot)
+- **ผู้ช่วย AI (`equipmentAgent`) คืนร่าง ไม่เขียน Firestore** — client ส่งแผนบนจอ (รวมที่ยังไม่ autosave) ไป
+  server อ่าน `equipment` + แผนอื่นเองเพื่อเช็กของชน · ผู้ใช้กด "ใช้ร่างนี้" แล้วค่อย `change({items, diagrams})` เข้า autosave
+  **LLM ไม่วางพิกัด** — server ใส่ x/y = 0 แล้ว `autoLayoutDiagram()` ฝั่งเว็บจัดเป็นคอลัมน์ตามทางสัญญาณ
+  (ผังใหม่ = จัดทั้งผัง, ผังเดิม = จัดเฉพาะ `newNodeIds` ต่อใต้กล่องเดิม) · LLM อ้าง port ด้วย**ชื่อ** workspace แปลงเป็น side/index เอง
+  กฎที่หน้าเว็บบังคับ (ของชนวัน, 1 port 1 เส้น, ต้นทาง OUT/IO ปลายทาง IN/IO, กล่องต่อแถวไม่เกินจำนวนชิ้น, แถว 🔒 ลงบัญชีแล้ว)
+  ต้องบังคับซ้ำใน `workspace.ts` ด้วย — แก้กฎฝั่งไหนต้องแก้อีกฝั่ง · โมเดลเลือกได้ (`AGENT_MODELS`) ไม่ส่ง/ผิดรูปแบบ = `claude-sonnet-5`
+  **system prompt / กฎของทีม / รุ่น แก้ได้จากหน้าเว็บ** (`settings/equipmentAgent`) — **กฎเฉพาะบริษัทใส่ใน "กฎของทีม" ห้าม hardcode
+  ลง prompt ในโค้ด** (whitelabel: แต่ละ tenant ต่อสายไม่เหมือนกัน) กฎอยู่บล็อก system แยกหลัง prompt พร้อม cache breakpoint
+  แก้ `DEFAULT_SYSTEM_PROMPT` ต้อง sync กับ `functions/src/equipment-agent/prompt.ts` · เพิ่ม/เปลี่ยนชื่อ tool ต้องแก้ `AGENT_TOOL_NAMES` ด้วย
+  **แสดงความคิด**: เปิด thinking (`adaptive` + `display: 'summarized'` — รุ่นใหม่ค่าเริ่มต้นเป็น omitted ข้อความว่าง; Haiku 4.5 ใช้ `budget_tokens`)
+  node `agent` ใช้ `model.stream()` แล้ว concat chunk เก็บลง state (thinking block + signature ต้องอยู่ครบ ไม่งั้นรอบที่มี tool_result โดน 400)
+  ส่งเหตุการณ์ผ่าน `response.sendChunk` → client เรียก `call.stream()` แล้ว `appendTrace()` · `AgentEvent` มีฝาแฝด 2 ที่ (graph.ts / lib/equipment/agent.ts) ต้อง sync
+  error ตอนเรียกโมเดลครั้งแรก (key/model ผิด) ถูก throw ออกไปให้ผู้ใช้เห็น ไม่กลืนเป็น "หยุดก่อนเสร็จ"
+  **ความเร็ว**: รายการคลังทั้งหมด (≤400 รายการ, `inventoryCatalog()`) อยู่ใน message แรกแล้ว — โมเดลไม่ต้องเสียรอบค้นคลัง
+  · `effort` ค่าเริ่มต้น medium (API default คือ high ซึ่งช้ามาก) · เปิด automatic caching (`cache_control` ต่อ request) ให้บทสนทนาที่ยาวขึ้นทุกรอบ
+  **แบ่งขั้น**: คำสั่งแรกของ AgentPanel (ติ๊ก "แบ่งเป็น 2 ขั้น" เป็นค่าเริ่มต้น) เรียก function 2 ครั้ง `phase: 'items'` → `'wiring'`
+  (ขั้น 2 ใช้ร่างขั้น 1 เป็นฐาน) แล้วรวมด้วย `mergeStagedDrafts()` แต่ละขั้นได้งบเวลาเต็ม · ขั้น 2 พัง = เก็บร่างขั้น 1 ไว้ · คำสั่งแก้ร่างต่อ = รอบเดียว (`all`)
+  โมเดลหยุดโดยไม่เรียก finish / ชน maxTokens → graph สะกิดให้ทำต่อ (`MAX_NUDGES`) ห้ามปล่อยให้จบเงียบ (ร่างว่าง)
+  client timeout ต้องยาวกว่า function (930s vs 900s — งบเวลาใน graph 780s) · `functions/tsconfig.json` ต้องมี `skipLibCheck` + `types: ["node"]`
+  (d.ts ของ langchain ไม่ตรงกับ @anthropic-ai/sdk บางเวอร์ชัน และกัน tsc ไปหยิบ @types ของเว็บ เช่น three)
 
 ---
 
@@ -894,7 +1143,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
     และ `EMAIL_TYPES[].vars` ต้องตรงกับตัวแปรที่ call site ส่งเข้า `renderVars()` จริง
     ไม่งั้นแอดมินเห็นตัวแปรที่ใช้ไม่ได้ (หรือใช้ได้แต่ไม่โชว์)
 
-40. **`SMTP_PASSWORD` ต้องมีใน Secret Manager ก่อน deploy functions** — ถูกประกาศใน
+40. **`SMTP_PASSWORD` และ `ANTHROPIC_API_KEY` ต้องมีใน Secret Manager ก่อน deploy functions** — ถูกประกาศใน
     `secrets: [...]` ของทุก function ที่ส่งเมล ถ้า secret ไม่มี **deploy จะล้มทั้งชุด**
     แม้ใช้ Resend อยู่ก็ตาม ตั้งค่าว่างไว้ก็ได้: `firebase functions:secrets:set SMTP_PASSWORD`
 

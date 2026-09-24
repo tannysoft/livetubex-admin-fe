@@ -173,6 +173,32 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── Equipment: คลังอุปกรณ์ OB + แผนจัดของ/ผังโยง (Admin only) ────────────
+    match /equipment/{equipmentId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /equipmentPlans/{planId} {
+      allow read, write: if isAdmin();
+
+      // revision (snapshot จัดของ + ผัง) — subcollection ต้องมี rule ของตัวเอง ไม่ได้สืบทอดจาก doc แม่
+      match /revisions/{revId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // รูป floor plan ของผัง 3D (data URL) — ดูเหตุผลใน lib/equipment/plan-assets.ts
+    // ลิงก์แชร์แผนให้ทีมงาน — มี hash รหัสผ่าน: admin อ่านสถานะได้ แต่เขียนผ่าน function setPlanShare เท่านั้น
+    // (hash ต้องทำฝั่ง server) · หน้า /share/plan อ่านผ่าน getSharedPlan ไม่ได้อ่านตรง
+    match /planShares/{planId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /equipmentPlanAssets/{assetId} {
+      allow read, write: if isAdmin();
+    }
+
     // ผู้ใช้แอดมิน + role — admin อ่านได้ (ใช้ resolve role ตัวเอง + แสดงรายการ)
     // เขียนผ่าน Cloud Functions (admin SDK) เท่านั้น — client เขียนไม่ได้
     match /adminUsers/{uid} {

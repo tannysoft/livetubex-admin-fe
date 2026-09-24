@@ -32,6 +32,10 @@ import {
   ScaleIcon,
   RectangleStackIcon,
   ShieldCheckIcon,
+  CubeIcon,
+  ClipboardDocumentListIcon,
+  SparklesIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useBrand } from '@/components/BrandProvider'
@@ -65,6 +69,15 @@ const navGroups: NavGroup[] = [
       { href: '/admin/report', label: 'รายงานการจ่ายเงิน', icon: ChartBarIcon },
       { href: '/admin/earnings', label: 'รายได้รายเดือน', icon: ChartBarSquareIcon },
       { href: '/admin/line-messages', label: 'LINE Message Report', icon: ChatBubbleLeftRightIcon },
+    ],
+  },
+  {
+    title: 'อุปกรณ์ OB',
+    items: [
+      { href: '/admin/equipment/inventory', label: 'คลังอุปกรณ์', icon: CubeIcon },
+      { href: '/admin/equipment/availability', label: 'ของเหลือตามวันที่', icon: CalendarDaysIcon },
+      { href: '/admin/equipment/plans', label: 'แผนจัดของ / ผังโยง', icon: ClipboardDocumentListIcon },
+      { href: '/admin/equipment/agent-settings', label: 'ตั้งค่าผู้ช่วย AI', icon: SparklesIcon },
     ],
   },
   {
@@ -162,7 +175,7 @@ export default function AdminSidebar() {
     <>
       {/* Mobile toggle */}
       <button
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-xl shadow-md border border-gray-100"
+        className="print:hidden lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-xl shadow-md border border-gray-100"
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <XMarkIcon className="w-5 h-5" /> : <Bars3Icon className="w-5 h-5" />}
@@ -178,7 +191,7 @@ export default function AdminSidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-100 z-40 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        className={`print:hidden fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-100 z-40 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

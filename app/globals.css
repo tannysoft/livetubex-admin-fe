@@ -61,6 +61,25 @@ body {
   }
 }
 
+/* ผู้ช่วย AI กำลังทำงาน — แสงวิ่งผ่านข้อความ (สีแบรนด์) แบบ Claude */
+@keyframes text-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@layer components {
+  .text-shimmer {
+    background: linear-gradient(90deg, #6b7280 0%, #6b7280 40%, var(--brand) 50%, #6b7280 60%, #6b7280 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shimmer 2.2s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .text-shimmer { animation: none; color: #6b7280; background: none; }
+  }
+}
+
 /* react-day-picker — โทนสีแอดมิน (ตามแบรนด์) */
 .brand-day-picker {
   --rdp-accent-color: var(--brand);
@@ -91,3 +110,16 @@ body {
 .ceo-enter      { animation: ceo-slide-up 0.9s cubic-bezier(0.34, 1.4, 0.64, 1) forwards; }
 .badge-pop      { animation: badge-pop 0.6s cubic-bezier(0.34, 1.6, 0.64, 1) 0.5s both; }
 .celebration-out { animation: celebration-fade-out 0.6s ease forwards; }
+
+/* ── Print (แผนจัดอุปกรณ์ / ผังโยง) ──────────────────────────────────────────
+ * รายการ = A4 ตั้ง, ผังโยง = A4 นอน ในงานพิมพ์เดียวกัน ด้วย named page
+ * section ที่ติด class จะขึ้นหน้าใหม่เองเพราะชนิดหน้าเปลี่ยน */
+@page { size: A4 portrait; margin: 12mm; }
+@page diagram { size: A4 landscape; margin: 10mm; }
+@media print {
+  body { background: #fff; }
+  .print-landscape { page: diagram; break-before: page; }
+  .print-portrait { break-before: page; }
+  /* สีหัวกล่อง/เส้นในผังต้องออกแม้ผู้ใช้ไม่ได้ติ๊ก "Background graphics" */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

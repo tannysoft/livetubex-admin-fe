@@ -9,13 +9,17 @@ import {
 import { Skeleton } from '@/components/ui/Skeleton'
 import { getJobsWithBudget, getPayments } from '@/lib/firebase-utils'
 import { getExpenses } from '@/lib/accounting/expenses'
+import { getEquipmentPlans } from '@/lib/equipment/plans'
+import { uncountedPlanCost } from '@/lib/equipment/rental-cost'
 import { formatCurrency, formatDate, jobStatusLabel, jobStatusColor } from '@/lib/utils'
-import type { Job, Payment, Expense } from '@/lib/types'
+import type { Job, Payment, Expense, EquipmentPlan } from '@/lib/types'
 
 interface ProjectCost {
   job: Job
   laborCost: number      // ค่าจ้างคน (gross + เบิกคืน) จาก payments ที่จ่ายแล้ว
   otherCost: number      // ค่าใช้จ่ายอื่น (ก่อน VAT) จาก expenses ที่ผูก jobId
+  rentalCost: number     // ค่าเช่าอุปกรณ์จากแผนจัดของ เฉพาะที่ยังไม่ลงบัญชี (ลงแล้วไปอยู่ใน otherCost)
+  rentalCount: number
   laborCount: number
   otherCount: number
   total: number
@@ -26,18 +30,20 @@ export default function ProjectCostsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [plans, setPlans] = useState<EquipmentPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     let alive = true
     setLoading(true)
-    Promise.all([getJobsWithBudget(), getPayments(), getExpenses()])
-      .then(([j, p, e]) => {
+    Promise.all([getJobsWithBudget(), getPayments(), getExpenses(), getEquipmentPlans()])
+      .then(([j, p, e, pl]) => {
         if (!alive) return
         setJobs(j)
         setPayments(p)
         setExpenses(e)
+        setPlans(pl)
         setLoading(false)
       })
       .catch(() => { if (alive) setLoading(false) })
@@ -77,23 +83,37 @@ export default function ProjectCostsPage() {
       otherByJob.set(e.jobId, cur)
     }
 
+    // ค่าเช่าจากแผนจัดอุปกรณ์: นับเฉพาะรายการที่ยังไม่มี Expense ที่มีผลอยู่ — กันนับซ้ำกับ otherCost
+    const liveExpenseIds = new Set(expenses.filter((e) => e.status !== 'cancelled').map((e) => e.id))
+    const rentalByJob = new Map<string, { sum: number; count: number }>()
+    for (const plan of plans) {
+      if (!plan.jobId) continue
+      const r = uncountedPlanCost(plan, liveExpenseIds)
+      if (r.count === 0) continue
+      const cur = rentalByJob.get(plan.jobId) ?? { sum: 0, count: 0 }
+      rentalByJob.set(plan.jobId, { sum: cur.sum + r.sum, count: cur.count + r.count })
+    }
+
     return jobs
       .map((job) => {
         const labor = laborByJob.get(job.id) ?? { sum: 0, count: 0 }
         const other = otherByJob.get(job.id) ?? { sum: 0, count: 0 }
-        const total = labor.sum + other.sum
+        const rental = rentalByJob.get(job.id) ?? { sum: 0, count: 0 }
+        const total = labor.sum + other.sum + rental.sum
         return {
           job,
           laborCost: labor.sum,
           otherCost: other.sum,
           laborCount: labor.count,
           otherCount: other.count,
+          rentalCost: rental.sum,
+          rentalCount: rental.count,
           total,
           remaining: (job.budget ?? 0) - total,
         }
       })
       .sort((a, b) => b.total - a.total)
-  }, [jobs, paidPayments, otherExpenses])
+  }, [jobs, paidPayments, otherExpenses, expenses, plans])
 
   // ค่าใช้จ่ายอื่นที่ยังไม่ผูกโปรเจกต์ (ส่วนกลาง) — เตือนไม่ให้เงินหาย
   const unassigned = useMemo(() => {
@@ -104,8 +124,9 @@ export default function ProjectCostsPage() {
   const totals = useMemo(() => {
     const labor = projects.reduce((s, p) => s + p.laborCost, 0)
     const other = projects.reduce((s, p) => s + p.otherCost, 0)
+    const rental = projects.reduce((s, p) => s + p.rentalCost, 0)
     const budget = projects.reduce((s, p) => s + (p.job.budget ?? 0), 0)
-    return { labor, other, budget, total: labor + other }
+    return { labor, other, rental, budget, total: labor + other + rental }
   }, [projects])
 
   const visible = useMemo(
@@ -118,7 +139,7 @@ export default function ProjectCostsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">สรุปต้นทุนต่อโปรเจกต์</h1>
         <p className="text-gray-500 mt-1">
-          ต้นทุนแต่ละงาน — ค่าจ้างทีมงาน (จ่ายแล้ว) + ค่าใช้จ่ายอื่นที่ผูกกับงาน เทียบกับงบประมาณ
+          ต้นทุนแต่ละงาน — ค่าจ้างทีมงาน (จ่ายแล้ว) + ค่าใช้จ่ายอื่นที่ผูกกับงาน + ค่าเช่าอุปกรณ์/ค่าใช้จ่ายจากแผนจัดของ เทียบกับงบประมาณ
         </p>
       </div>
 
@@ -174,12 +195,13 @@ export default function ProjectCostsPage() {
                   <th className="px-5 py-3 text-right font-semibold">งบประมาณ</th>
                   <th className="px-5 py-3 text-right font-semibold">ค่าจ้างทีมงาน</th>
                   <th className="px-5 py-3 text-right font-semibold">ค่าใช้จ่ายอื่น</th>
+                  <th className="px-5 py-3 text-right font-semibold">ต้นทุนจากแผนจัดของ<div className="font-normal normal-case text-[10px]">จากแผน · ยังไม่ลงบัญชี</div></th>
                   <th className="px-5 py-3 text-right font-semibold">ต้นทุนรวม</th>
                   <th className="px-5 py-3 text-right font-semibold">คงเหลือ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {visible.map(({ job, laborCost, otherCost, laborCount, otherCount, total, remaining }) => {
+                {visible.map(({ job, laborCost, otherCost, rentalCost, laborCount, otherCount, rentalCount, total, remaining }) => {
                   const laborPct = total > 0 ? (laborCost / total) * 100 : 0
                   const over = remaining < 0
                   return (
@@ -213,6 +235,12 @@ export default function ProjectCostsPage() {
                         {otherCost > 0 ? formatCurrency(otherCost) : '—'}
                         {otherCount > 0 && <div className="text-[11px] text-gray-400">{otherCount} รายการ</div>}
                       </td>
+                      <td className="px-5 py-3 text-right tabular-nums">
+                        {rentalCost > 0 ? (
+                          <Link href="/admin/equipment/plans" className="text-amber-700 hover:underline">{formatCurrency(rentalCost)}</Link>
+                        ) : '—'}
+                        {rentalCount > 0 && <div className="text-[11px] text-gray-400">{rentalCount} รายการ</div>}
+                      </td>
                       <td className="px-5 py-3 text-right font-bold tabular-nums text-gray-900">
                         {formatCurrency(total)}
                       </td>
@@ -234,6 +262,7 @@ export default function ProjectCostsPage() {
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.budget)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.labor)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.other)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.rental)}</td>
                   <td className="px-5 py-3 text-right tabular-nums text-brand">{formatCurrency(totals.total)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(totals.budget - totals.total)}</td>
                 </tr>
@@ -245,7 +274,8 @@ export default function ProjectCostsPage() {
 
       <p className="text-xs text-gray-400">
         * ค่าจ้างทีมงาน = ยอดที่ freelancer ขอเบิก (gross) + ค่าใช้จ่ายเบิกคืน เฉพาะรายการที่จ่ายแล้ว ·
-        ค่าใช้จ่ายอื่น = ยอดก่อน VAT ของรายจ่ายที่ผูกกับงาน (ไม่รวมที่ยกเลิก)
+        ค่าใช้จ่ายอื่น = ยอดก่อน VAT ของรายจ่ายที่ผูกกับงาน (ไม่รวมที่ยกเลิก) ·
+        ต้นทุนจากแผนจัดของ = ค่าเช่าอุปกรณ์ + ค่าใช้จ่ายอื่น (รถตู้ ฯลฯ) ในแผนจัดอุปกรณ์ที่ผูกกับงานและยังไม่ได้ลงบัญชี — ลงบัญชีแล้วจะย้ายไปอยู่ในค่าใช้จ่ายอื่น (ไม่นับซ้ำ)
       </p>
     </div>
   )

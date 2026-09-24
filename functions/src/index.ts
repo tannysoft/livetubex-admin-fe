@@ -1328,3 +1328,39 @@ export const adminResetUserPassword = onCall({ cors: ADMIN_CORS }, async (reques
   await admin.auth().updateUser(uid, { password })
   return { ok: true }
 })
+
+// ── ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง (LangGraph.js + Claude) ──────────────────
+// คืน "ร่าง" ให้หน้าเว็บตรวจก่อน — ไม่เขียน Firestore เอง (ดู functions/src/equipment-agent/)
+// ⚠️ ANTHROPIC_API_KEY ต้องมีใน Secret Manager ก่อน deploy ไม่งั้น deploy functions ล้มทั้งชุด
+const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY')
+
+export const equipmentAgent = onCall(
+  { cors: CORS_ORIGINS, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 900, memory: '1GiB' },
+  async (request, response) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+    const provider = (request.auth.token.firebase as { sign_in_provider?: string } | undefined)?.sign_in_provider
+    if (provider !== 'password') throw new HttpsError('permission-denied', 'Admin only')
+    const { handleEquipmentAgent } = await import('./equipment-agent')
+    // client เรียกแบบ .stream() → ส่งความคิด/ขั้นตอนสดๆ, เรียกแบบปกติ → sendChunk เป็น noop
+    const onEvent = request.acceptsStreaming && response ? (e: unknown) => { void response.sendChunk(e).catch(() => {}) } : undefined
+    return handleEquipmentAgent(request.data, ANTHROPIC_API_KEY.value(), onEvent)
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// แชร์แผนจัดอุปกรณ์ให้ทีมงาน (ลิงก์ + รหัสผ่าน) — ดู plan-share.ts
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const setPlanShare = onCall({ cors: CORS_ORIGINS }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+  const token = request.auth.token as { firebase?: { sign_in_provider?: string }; email?: string }
+  if (token.firebase?.sign_in_provider !== 'password') throw new HttpsError('permission-denied', 'Admin only')
+  const { handleSetPlanShare } = await import('./plan-share')
+  return handleSetPlanShare(request.data, token.email)
+})
+
+/** สาธารณะ (ไม่ต้อง login) — ความปลอดภัยอยู่ที่ shareId เดาไม่ได้ + รหัสผ่าน + ล็อกเมื่อใส่ผิดหลายครั้ง */
+export const getSharedPlan = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
+  const { handleGetSharedPlan } = await import('./plan-share')
+  return handleGetSharedPlan(request.data)
+})
