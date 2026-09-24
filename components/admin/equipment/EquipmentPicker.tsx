@@ -29,12 +29,19 @@ interface EquipmentPickerProps {
    * โดยนับรวมกับที่ใช้แล้วตอนเช็กว่าง
    */
   inPlanQty?: Map<string, number>
+  /** แท็บที่มา + คำค้นตอนเปิด (เช่น เปลี่ยนแถวของเช่าที่พิมพ์เอง → เปิดแท็บของเช่า ค้นชื่อเดิม) */
+  initialOwnership?: '' | 'owned' | 'rental' | 'partner'
+  initialSearch?: string
+  /** เลือกได้ชิ้นเดียว (แทนแถวเดิม) — กดแล้วยืนยันทันที */
+  single?: boolean
+  /** ปุ่ม "เช่าเพิ่มนอกสต็อก" — ส่งคำค้นเป็นชื่อตั้งต้น (ไม่ส่ง = ไม่มีปุ่ม) */
+  onExternal?: (name: string) => void
 }
 
-export default function EquipmentPicker({ isOpen, onClose, equipment, existingIds, usage, noDate, onConfirm, title, initialCategory = '', inPlanQty }: EquipmentPickerProps) {
-  const [search, setSearch] = useState('')
+export default function EquipmentPicker({ isOpen, onClose, equipment, existingIds, usage, noDate, onConfirm, title, initialCategory = '', inPlanQty, initialOwnership = '', initialSearch = '', single, onExternal }: EquipmentPickerProps) {
+  const [search, setSearch] = useState(initialSearch)
   const [category, setCategory] = useState(initialCategory)
-  const [ownership, setOwnership] = useState<'' | 'owned' | 'rental' | 'partner'>('')
+  const [ownership, setOwnership] = useState<'' | 'owned' | 'rental' | 'partner'>(initialOwnership)
   const [picked, setPicked] = useState<Record<string, number>>({})
 
   const keyword = search.trim().toLowerCase()
@@ -49,6 +56,11 @@ export default function EquipmentPicker({ isOpen, onClose, equipment, existingId
   const availableOf = (it: Equipment) => it.quantity - (usage?.get(it.id)?.used ?? 0) - (inPlanQty?.get(it.id) ?? 0)
 
   const toggle = (it: Equipment) => {
+    if (single) {
+      onConfirm([{ equipment: it, quantity: 1 }])
+      close()
+      return
+    }
     setPicked((prev) => {
       const next = { ...prev }
       if (next[it.id]) delete next[it.id]
@@ -167,8 +179,25 @@ export default function EquipmentPicker({ isOpen, onClose, equipment, existingId
           })}
         </ul>
 
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-sm text-gray-500">เลือกแล้ว {count} รายการ</p>
+        {single ? (
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-sm text-gray-500">กดรายการเพื่อแทนแถวเดิม — จำนวน ปลายทาง การจับคู่กล้อง และหมายเหตุคงเดิม</p>
+            <button onClick={close} className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">ยกเลิก</button>
+          </div>
+        ) : (
+        <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm text-gray-500">เลือกแล้ว {count} รายการ</p>
+            {onExternal && (
+              <button
+                type="button"
+                onClick={() => { onExternal(search.trim()); close() }}
+                className="px-3 py-1.5 rounded-lg border border-dashed border-amber-400 text-sm font-medium text-amber-700 hover:bg-amber-50"
+              >
+                + เช่าเพิ่มนอกสต็อก{search.trim() ? ` “${search.trim()}”` : ''}
+              </button>
+            )}
+          </div>
           <div className="flex gap-3">
             <button onClick={close} className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">ยกเลิก</button>
             <button onClick={confirm} disabled={count === 0} className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-50">
@@ -176,6 +205,7 @@ export default function EquipmentPicker({ isOpen, onClose, equipment, existingId
             </button>
           </div>
         </div>
+        )}
       </div>
     </Modal>
   )

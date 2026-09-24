@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   PlusIcon, TrashIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon,
-  ArrowsPointingOutIcon, Squares2X2Icon, XMarkIcon,
+  ArrowsPointingOutIcon, Squares2X2Icon, XMarkIcon, CursorArrowRaysIcon, ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import DiagramGraph, { type DiagramSelection } from './DiagramGraph'
+import AtemExportModal from './AtemExportModal'
 import type {
   DiagramEdge, DiagramNode, DiagramPortRef, Equipment, PlanDiagram, PlanItem, PortSide, SignalType,
 } from '@/lib/types'
@@ -31,9 +32,13 @@ interface DiagramEditorProps {
 
 type View = { tx: number; ty: number; k: number }
 type Pending = { from: DiagramPortRef; start: { x: number; y: number }; cursor: { x: number; y: number } }
+type Pt = { x: number; y: number }
 type Drag =
-  | { kind: 'node'; nodeId: string; grabX: number; grabY: number }
+  // ลากกล่อง: ids = ทุกกล่องที่เลือก (ลากพร้อมกัน) · origin = ตำแหน่งตอนเริ่ม · moved = ลากจริงไหม (ไม่ลาก = คลิก)
+  | { kind: 'nodes'; ids: string[]; start: Pt; origin: Map<string, Pt>; moved: boolean; clicked: string }
   | { kind: 'pan'; startX: number; startY: number; tx: number; ty: number }
+  // ลากกรอบเลือก — additive = กด Shift/⌘ ค้างไว้ (เพิ่มจากที่เลือกอยู่)
+  | { kind: 'marquee'; start: Pt; additive: boolean }
 
 // หมวดที่ปกติไม่ได้อยู่ในผังสัญญาณ — ข้ามตอนกด "วางทุกชิ้น"
 const NON_SIGNAL = new Set(['cable', 'support', 'lens', 'lighting'])
@@ -45,10 +50,23 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
   const dragRef = useRef<Drag | null>(null)
   const [view, setView] = useState<View>({ tx: 40, ty: 40, k: 1 })
   const [selection, setSelection] = useState<DiagramSelection>(null)
+  // เลือกหลายกล่อง (≥ 2) — 1 กล่องใช้ selection ตามเดิม (แผงแก้ไขด้านขวา)
+  const [multi, setMulti] = useState<string[]>([])
+  const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null)
+  // โหมดเลือก: ลากพื้นว่าง = ตีกรอบเลือก (แทนเลื่อนผัง) — สำหรับคนไม่ถนัดกด Shift / ใช้ทัชแพด
+  const [selectMode, setSelectMode] = useState(false)
+  const [atemFor, setAtemFor] = useState<DiagramNode | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [lastSignal, setLastSignal] = useState<SignalType>('sdi')
 
   const selectedNode = selection?.type === 'node' ? diagram.nodes.find((n) => n.id === selection.id) : undefined
+  const selectedIds = multi.length ? multi : selection?.type === 'node' ? [selection.id] : []
+  const selectNodes = (ids: string[]) => {
+    const uniq = [...new Set(ids)]
+    setMulti(uniq.length > 1 ? uniq : [])
+    setSelection(uniq.length === 1 ? { type: 'node', id: uniq[0] } : null)
+  }
+  const clearSelection = () => { setSelection(null); setMulti([]) }
   const selectedEdge = selection?.type === 'edge' ? diagram.edges.find((e) => e.id === selection.id) : undefined
 
   const toWorld = (clientX: number, clientY: number) => {
@@ -67,6 +85,12 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
     onChange({ ...diagram, edges: diagram.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) })
 
   const removeSelection = () => {
+    if (multi.length) {
+      const gone = new Set(multi)
+      setNodes(diagram.nodes.filter((n) => !gone.has(n.id)))
+      clearSelection()
+      return
+    }
     if (!selection) return
     if (selection.type === 'node') setNodes(diagram.nodes.filter((n) => n.id !== selection.id))
     else onChange({ ...diagram, edges: diagram.edges.filter((e) => e.id !== selection.id) })
@@ -177,9 +201,16 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
   const onNodePointerDown = (e: React.PointerEvent, node: DiagramNode) => {
     e.stopPropagation()
     setPending(null)
-    setSelection({ type: 'node', id: node.id })
-    const w = toWorld(e.clientX, e.clientY)
-    dragRef.current = { kind: 'node', nodeId: node.id, grabX: w.x - node.x, grabY: w.y - node.y }
+    // Shift / ⌘ / Ctrl + คลิก = เพิ่ม/เอาออกจากที่เลือก
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      selectNodes(selectedIds.includes(node.id) ? selectedIds.filter((id) => id !== node.id) : [...selectedIds, node.id])
+      return
+    }
+    // กดกล่องที่อยู่ในกลุ่มที่เลือก = ลากทั้งกลุ่ม · กล่องอื่น = เลือกกล่องนั้นกล่องเดียว
+    const ids = selectedIds.includes(node.id) ? selectedIds : [node.id]
+    if (!selectedIds.includes(node.id)) selectNodes([node.id])
+    const origin = new Map(diagram.nodes.filter((n) => ids.includes(n.id)).map((n) => [n.id, { x: n.x, y: n.y }]))
+    dragRef.current = { kind: 'nodes', ids, start: toWorld(e.clientX, e.clientY), origin, moved: false, clicked: node.id }
     svgRef.current?.setPointerCapture(e.pointerId)
   }
 
@@ -205,24 +236,42 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
   const onEdgePointerDown = (e: React.PointerEvent, edge: DiagramEdge) => {
     e.stopPropagation()
     setPending(null)
+    setMulti([])
     setSelection({ type: 'edge', id: edge.id })
   }
 
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
     setPending(null)
-    setSelection(null)
-    dragRef.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, tx: view.tx, ty: view.ty }
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey
+    if (selectMode || additive) {
+      // ตีกรอบเลือก
+      if (!additive) clearSelection()
+      const w = toWorld(e.clientX, e.clientY)
+      dragRef.current = { kind: 'marquee', start: w, additive }
+      setMarquee({ a: w, b: w })
+    } else {
+      clearSelection()
+      dragRef.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, tx: view.tx, ty: view.ty }
+    }
     svgRef.current?.setPointerCapture(e.pointerId)
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current
-    if (drag?.kind === 'node') {
+    if (drag?.kind === 'nodes') {
       const w = toWorld(e.clientX, e.clientY)
-      const x = snap(w.x - drag.grabX)
-      const y = snap(w.y - drag.grabY)
-      const node = diagram.nodes.find((n) => n.id === drag.nodeId)
-      if (node && (node.x !== x || node.y !== y)) patchNode(drag.nodeId, { x, y })
+      // ขยับทั้งกลุ่มด้วยระยะเดียวกัน (snap ที่ระยะ ไม่ใช่ทีละกล่อง → รูปทรงของกลุ่มไม่เพี้ยน)
+      const dx = snap(w.x - drag.start.x)
+      const dy = snap(w.y - drag.start.y)
+      if (!drag.moved && dx === 0 && dy === 0) return
+      drag.moved = true
+      const nodes = diagram.nodes.map((n) => {
+        const o = drag.origin.get(n.id)
+        return o && (n.x !== o.x + dx || n.y !== o.y + dy) ? { ...n, x: o.x + dx, y: o.y + dy } : n
+      })
+      if (nodes.some((n, i) => n !== diagram.nodes[i])) onChange({ ...diagram, nodes })
+    } else if (drag?.kind === 'marquee') {
+      setMarquee({ a: drag.start, b: toWorld(e.clientX, e.clientY) })
     } else if (drag?.kind === 'pan') {
       setView((v) => ({ ...v, tx: drag.tx + e.clientX - drag.startX, ty: drag.ty + e.clientY - drag.startY }))
     } else if (pending) {
@@ -231,8 +280,19 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
-    if (dragRef.current) {
+    const drag = dragRef.current
+    if (drag) {
       dragRef.current = null
+      // คลิกกล่องในกลุ่มโดยไม่ลาก = เหลือเลือกกล่องนั้นกล่องเดียว
+      if (drag.kind === 'nodes' && !drag.moved && drag.ids.length > 1) selectNodes([drag.clicked])
+      if (drag.kind === 'marquee' && marquee) {
+        const x0 = Math.min(marquee.a.x, marquee.b.x), x1 = Math.max(marquee.a.x, marquee.b.x)
+        const y0 = Math.min(marquee.a.y, marquee.b.y), y1 = Math.max(marquee.a.y, marquee.b.y)
+        // กล่องที่ทับกรอบ (ไม่ต้องอยู่ในกรอบทั้งกล่อง)
+        const hit = diagram.nodes.filter((n) => n.x < x1 && n.x + NODE_W > x0 && n.y < y1 && n.y + nodeHeight(n) > y0).map((n) => n.id)
+        if (x1 - x0 > 4 || y1 - y0 > 4) selectNodes(drag.additive ? [...selectedIds, ...hit] : hit)
+        setMarquee(null)
+      }
       if (svgRef.current?.hasPointerCapture(e.pointerId)) svgRef.current.releasePointerCapture(e.pointerId)
       return
     }
@@ -283,8 +343,9 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      if (e.key === 'Escape') { setPending(null); setSelection(null) }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selection) { e.preventDefault(); removeSelection() }
+      if (e.key === 'Escape') { setPending(null); clearSelection() }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selection || multi.length)) { e.preventDefault(); removeSelection() }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectNodes(diagram.nodes.map((n) => n.id)) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -315,7 +376,7 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
         <svg
           ref={svgRef}
           className="block w-full h-[68vh] min-h-[420px] touch-none select-none"
-          style={{ cursor: pending ? 'crosshair' : 'grab' }}
+          style={{ cursor: pending || selectMode ? 'crosshair' : 'grab' }}
           onPointerDown={onBackgroundPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -330,12 +391,20 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
             <DiagramGraph
               diagram={diagram}
               selection={selection}
+              selectedNodeIds={multi}
               linkingFrom={pending?.from}
               onNodePointerDown={onNodePointerDown}
               onPortPointerDown={onPortPointerDown}
               onPortPointerUp={onPortPointerUp}
               onEdgePointerDown={onEdgePointerDown}
             />
+            {marquee && (
+              <rect
+                x={Math.min(marquee.a.x, marquee.b.x)} y={Math.min(marquee.a.y, marquee.b.y)}
+                width={Math.abs(marquee.b.x - marquee.a.x)} height={Math.abs(marquee.b.y - marquee.a.y)}
+                fill="#3b82f6" fillOpacity={0.08} stroke="#3b82f6" strokeWidth={1 / view.k} strokeDasharray={`${4 / view.k} ${3 / view.k}`} pointerEvents="none"
+              />
+            )}
             {pendingPath && (
               <path d={pendingPath} fill="none" stroke={signalMeta(lastSignal).color} strokeWidth={2} strokeDasharray="6 4" pointerEvents="none" />
             )}
@@ -358,6 +427,13 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
           <span className="text-xs text-gray-500 w-10 text-center tabular-nums">{Math.round(view.k * 100)}%</span>
           <button onClick={() => zoomAt(1.2)} title="ซูมเข้า" className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg"><MagnifyingGlassPlusIcon className="w-4 h-4" /></button>
           <button onClick={fitView} title="พอดีจอ" className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg"><ArrowsPointingOutIcon className="w-4 h-4" /></button>
+          <button
+            onClick={() => setSelectMode((v) => !v)}
+            title="โหมดเลือกหลายชิ้น: ลากพื้นว่างเพื่อตีกรอบ (หรือกด Shift ค้างแล้วลาก)"
+            className={`p-1.5 rounded-lg ${selectMode ? 'bg-brand text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <CursorArrowRaysIcon className="w-4 h-4" />
+          </button>
         </div>
 
         {pending && (
@@ -369,7 +445,21 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
 
       {/* Side panel */}
       <div className="w-full lg:w-80 shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:h-[68vh] lg:min-h-[420px] overflow-y-auto">
-        {selectedNode ? (
+        {multi.length > 1 ? (
+          <div className="space-y-3">
+            <PanelHeader title={`เลือก ${multi.length} กล่อง`} onClose={clearSelection} />
+            <ul className="text-sm text-gray-700 space-y-1 max-h-72 overflow-y-auto">
+              {diagram.nodes.filter((n) => multi.includes(n.id)).map((n) => (
+                <li key={n.id} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CATEGORY_COLORS[n.category] }} />
+                  <span className="truncate">{n.label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-400">ลากกล่องใดกล่องหนึ่งเพื่อย้ายทั้งกลุ่ม · Shift/⌘ + คลิก เพิ่ม/เอาออก · Esc ยกเลิก</p>
+            <DeleteButton onClick={removeSelection} label={`ลบ ${multi.length} กล่องออกจากผัง`} />
+          </div>
+        ) : selectedNode ? (
           <div className="space-y-3">
             <PanelHeader title="อุปกรณ์ในผัง" onClose={() => setSelection(null)} />
             <Field label="ชื่อที่แสดง">
@@ -431,6 +521,14 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
                 </div>
               )
             })}
+            {selectedNode.category === 'switcher' && (
+              <button
+                onClick={() => setAtemFor(selectedNode)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <ArrowDownTrayIcon className="w-4 h-4" /> Export ตั้งค่า ATEM (.xml)
+              </button>
+            )}
             <DeleteButton onClick={removeSelection} label="ลบออกจากผัง" />
           </div>
         ) : selectedEdge ? (
@@ -538,10 +636,12 @@ export default function DiagramEditor({ diagram, onChange, planItems, equipmentB
               <p>• ลากจากจุด port ไปอีกจุด (หรือคลิกทีละจุด) เพื่อโยงสาย · ◇ = port เข้า-ออกในตัวเดียว</p>
               <p>• คลิกกล่อง/เส้นเพื่อแก้ไข · Delete เพื่อลบ</p>
               <p>• ลากพื้นว่างเพื่อเลื่อน · Ctrl/⌘ + scroll เพื่อซูม</p>
+              <p>• เลือกหลายกล่อง: Shift + ลากพื้นว่างตีกรอบ (หรือปุ่ม <CursorArrowRaysIcon className="inline w-3.5 h-3.5" /> มุมซ้ายล่าง) · Shift/⌘ + คลิกกล่อง · ⌘A ทั้งหมด แล้วลากย้ายพร้อมกัน</p>
             </div>
           </div>
         )}
       </div>
+      {atemFor && <AtemExportModal key={atemFor.id} isOpen onClose={() => setAtemFor(null)} diagram={diagram} switcher={atemFor} />}
     </div>
   )
 }

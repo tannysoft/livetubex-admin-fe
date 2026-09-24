@@ -13,6 +13,8 @@ interface LayoutViewerProps {
   layout: PlanLayout
   view: 'top' | 'perspective'
   lensLines: boolean
+  /** ตัวคูณขนาดป้าย (S/M/L) */
+  labelScale?: number
   className?: string
 }
 
@@ -21,7 +23,7 @@ interface LayoutViewerProps {
  * มุมบน: ลาก = เลื่อน · มุมเอียง: ลาก = หมุน, 2 นิ้ว/คลิกขวา = เลื่อน · บีบ/ล้อเมาส์ = ซูม
  * ⚠️ ดึง three.js ทั้งก้อน — โหลดผ่าน next/dynamic ssr:false เท่านั้น
  */
-export default function LayoutViewer({ layout, view, lensLines, className = '' }: LayoutViewerProps) {
+export default function LayoutViewer({ layout, view, lensLines, labelScale = 1, className = '' }: LayoutViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<() => void>(() => {})
   // เครื่องเก่า/ปิด hardware acceleration → ไม่มี WebGL (component นี้ ssr:false จึงมี document เสมอ)
@@ -42,7 +44,7 @@ export default function LayoutViewer({ layout, view, lensLines, className = '' }
     scene.background = new THREE.Color(0xffffff)
     addLights(scene)
     scene.add(buildVenue(layout.venue))
-    const size = labelSizeFor(layout.venue)
+    const size = labelSizeFor(layout.venue, labelScale)
     layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines)))
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.3, 5000)
@@ -105,7 +107,7 @@ export default function LayoutViewer({ layout, view, lensLines, className = '' }
       renderer.forceContextLoss()
       mount.removeChild(renderer.domElement)
     }
-  }, [layout, view, lensLines, webgl])
+  }, [layout, view, lensLines, labelScale, webgl])
 
   if (!webgl) {
     return <p className={`flex items-center justify-center text-center text-sm text-gray-400 ${className}`}>เครื่องนี้แสดงผังวางไม่ได้ (ต้องรองรับ WebGL)</p>

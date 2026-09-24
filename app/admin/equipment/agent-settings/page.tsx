@@ -183,7 +183,7 @@ export default function AgentSettingsPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="font-semibold text-gray-900">กฎการต่อสายของทีม</h2>
-            <p className="text-xs text-gray-500 mt-0.5">ต่อท้าย system prompt ทุกครั้ง และสั่งให้มาก่อนแนวทางทั่วไป — เขียนเป็นข้อๆ ขึ้นต้นด้วย “-” อ้างชื่ออุปกรณ์ให้ตรงกับชื่อในคลัง</p>
+            <p className="text-xs text-gray-500 mt-0.5">ต่อท้าย system prompt ทุกครั้ง และสั่งให้มาก่อนแนวทางทั่วไป — เขียนเป็นข้อๆ ขึ้นต้นด้วย “-” อ้างชื่ออุปกรณ์ให้ตรงกับชื่อในสต็อก</p>
           </div>
           {rules !== DEFAULT_AGENT_RULES && (
             <button onClick={() => setConfirmReset('rules')} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg">

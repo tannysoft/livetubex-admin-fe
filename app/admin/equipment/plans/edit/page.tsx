@@ -12,22 +12,25 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import PlanItemsTable from '@/components/admin/equipment/PlanItemsTable'
 import EquipmentPicker from '@/components/admin/equipment/EquipmentPicker'
 import DiagramEditor from '@/components/admin/equipment/DiagramEditor'
+import AtemExportModal from '@/components/admin/equipment/AtemExportModal'
 import AgentPanel from '@/components/admin/equipment/AgentPanel'
 import { deleteField } from 'firebase/firestore'
 import RevisionPanel from '@/components/admin/equipment/RevisionPanel'
 import SharePlanModal from '@/components/admin/equipment/SharePlanModal'
 import PlanInfoModal from '@/components/admin/equipment/PlanInfoModal'
 import { formatFullLabel } from '@/lib/equipment/video-format'
-import { recordingsLabel } from '@/lib/equipment/recording-format'
+import RecordingList from '@/components/admin/equipment/RecordingList'
+import { camLabels } from '@/lib/equipment/item-groups'
+import { teleTripodFor } from '@/lib/equipment/tele-tripod'
 import { fohSummary } from '@/lib/equipment/foh-feeds'
 import { createRevision, isModifiedSinceRevision } from '@/lib/equipment/revisions'
 import { getEquipmentPlan, getEquipmentPlans, updateEquipmentPlan, newId } from '@/lib/equipment/plans'
 import { overlappingPlans, planConflicts, planRange, usageByEquipment } from '@/lib/equipment/availability'
-import { FOH_DIAGRAM_NAME, buildFohDiagram } from '@/lib/equipment/foh-diagram'
+import { FOH_DIAGRAM_NAME, buildFohDiagram, mergeDiagrams } from '@/lib/equipment/foh-diagram'
 import { newLayout } from '@/lib/equipment/layout-zones'
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { getEquipmentList } from '@/lib/equipment/equipment'
-import { DIAGRAM_PRESETS, PLAN_STATUSES } from '@/lib/equipment/constants'
+import { PLAN_STATUSES } from '@/lib/equipment/constants'
 import { getJobs } from '@/lib/firebase-utils'
 import { getActiveVendors } from '@/lib/accounting/vendors'
 import { formatDate, formatDatePill } from '@/lib/utils'
@@ -70,10 +73,17 @@ function PlanEditor() {
   // เพิ่มทุกครั้งที่ใช้ร่างจากผู้ช่วย → remount DiagramEditor ให้ fit view กับกล่องชุดใหม่
   const [agentApplied, setAgentApplied] = useState(0)
   const [confirmFoh, setConfirmFoh] = useState(false)
+  const [confirmMerge, setConfirmMerge] = useState(false)
+  // Export ตั้งค่า ATEM — ปุ่มเด่นบนแถบแท็บผังโยง (หลายสวิตเชอร์ = เลือกก่อน)
+  const [atemMenu, setAtemMenu] = useState(false)
+  const [atemFor, setAtemFor] = useState<string | null>(null)
   const [activeLayoutId, setActiveLayoutId] = useState<string | null>(null)
   const [deleteLayout, setDeleteLayout] = useState<PlanLayout | null>(null)
   const [showPicker, setShowPicker] = useState(false)
-  const [lensFor, setLensFor] = useState<PlanItem | null>(null)
+  // แถวนอกสต็อกที่กำลังเลือกของเช่า/พาร์ทเนอร์ในสต็อกมาแทน
+  const [replaceRow, setReplaceRow] = useState<PlanItem | null>(null)
+  // กล้องที่กำลังเพิ่มของในชุด (ขาตั้ง/converter/จอ …) จากสต็อก หรือเช่าเพิ่มนอกสต็อก
+  const [kitFor, setKitFor] = useState<PlanItem | null>(null)
   const [deleteDiagram, setDeleteDiagram] = useState<PlanDiagram | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [confirmRecord, setConfirmRecord] = useState(false)
@@ -109,7 +119,7 @@ function PlanEditor() {
     return () => { alive = false }
   }, [planId])
 
-  // ตัวเลือก autocomplete: ผู้ให้เช่า/พาร์ทเนอร์จากคลัง + ผู้ขายในบัญชี · ที่เก็บจากคลัง
+  // ตัวเลือก autocomplete: ผู้ให้เช่า/พาร์ทเนอร์จากสต็อก + ผู้ขายในบัญชี · ที่เก็บจากสต็อก
   const knownVendors = [...new Set([...equipment.flatMap((e) => [e.rentalVendor, e.partnerName]).filter((v): v is string => !!v), ...vendorNames])]
   const knownLocations = [...new Set(equipment.map((e) => e.storageLocation).filter((v): v is string => !!v))]
 
@@ -209,34 +219,83 @@ function PlanEditor() {
         ...(attachTo ? { attachedTo: attachTo.id, ...(attachTo.toLocation ? { toLocation: attachTo.toLocation } : {}) } : {}),
       }
     })
-    change({ items: [...plan.items, ...added] })
+    // เลนส์ tele เช่า → ขาตั้งของร้านเดียวกันมาด้วย ติดกล้องตัวเดียวกัน
+    const tripods: PlanItem[] = []
+    if (attachTo) for (const lens of added) {
+      const t = teleTripodFor(lens, attachTo, [...plan.items, ...added, ...tripods])
+      if (t) tripods.push(t)
+    }
+    change({ items: [...plan.items, ...added, ...tripods] })
+  }
+
+  /**
+   * แถวนอกสต็อก (พิมพ์เอง) → แทนด้วยของในสต็อก คง id/จำนวน/ปลายทาง/การจับคู่/หมายเหตุ/วันที่/สถานะจัดของ
+   * กล่องในผังโยงที่มาจากแถวนี้ผูกกับอุปกรณ์ใหม่ (port ว่าง = เติมจากสต็อก)
+   */
+  const replaceWithStock = (row: PlanItem, e: Equipment) => {
+    const origin = e.ownership ?? 'owned'
+    const counterpart = origin === 'rental' ? e.rentalVendor : origin === 'partner' ? e.partnerName : undefined
+    const next: PlanItem = {
+      ...row, equipmentId: e.id, code: e.code, name: e.name, category: e.category, origin,
+      fromLocation: counterpart || e.storageLocation,
+      ...(origin !== 'owned' ? { rentalVendor: counterpart, unitCost: e.rentalRate ?? 0, rentalDays: row.rentalDays ?? 1 } : {}),
+    }
+    delete next.isRental
+    if (origin === 'owned') { delete next.rentalVendor; delete next.unitCost; delete next.rentalDays }
+    const diagrams = plan.diagrams.map((d) => ({
+      ...d,
+      nodes: d.nodes.map((n) => n.planItemId !== row.id ? n : {
+        ...n, equipmentId: e.id,
+        ...(!n.inputs.length && !n.outputs.length && !(n.ios ?? []).length ? { inputs: e.inputs ?? [], outputs: e.outputs ?? [], ios: e.ios ?? [] } : {}),
+      }),
+    }))
+    change({ items: plan.items.map((i) => (i.id === row.id ? next : i)), diagrams })
+  }
+
+  /** เช่าเพิ่มนอกสต็อกให้กล้อง — แถวใหม่ติดกล้อง ปลายทางเดียวกัน กรอกชื่อ/ร้าน/ราคาต่อในตาราง */
+  const addExternalFor = (camera: PlanItem, name: string) => {
+    const row: PlanItem = {
+      id: newId(), name, category: 'support', quantity: 1, packed: false, returned: false, origin: 'rental',
+      attachedTo: camera.id, ...(camera.toLocation ? { toLocation: camera.toLocation } : {}),
+    }
+    change({ items: [...plan.items, row] })
   }
 
   const addExternalItem = () => {
     change({ items: [...plan.items, { id: newId(), name: '', category: 'other', quantity: 1, packed: false, returned: false, origin: 'rental' }] })
   }
 
-  // ── ผังส่ง FOH จาก feed — มีผังเดิมที่มีของแล้วต้องยืนยันก่อนเขียนทับ (แก้มือไว้จะหาย) ──
-  const existingFoh = plan.diagrams.find((d) => d.name === FOH_DIAGRAM_NAME)
+  // ── สายส่ง FOH จาก feed → วาดลงผังหลัก (1 แผน = 1 ผังโยง) ─────────────────
+  // วาดซ้ำ = ลบกล่อง FOH ชุดเดิม (generated) แล้ววาดใหม่ · ผังแยกแบบเก่า (FOH_DIAGRAM_NAME) ถูกแทนด้วยชุดใหม่ในผังหลัก
+  const legacyFoh = plan.diagrams.find((d) => d.name === FOH_DIAGRAM_NAME)
+  const mainDiagram = plan.diagrams.find((d) => d.name !== FOH_DIAGRAM_NAME)
+  const hasFohDrawn = !!legacyFoh?.nodes.length || !!mainDiagram?.nodes.some((n) => n.generated === 'foh')
   const applyFohDiagram = () => {
-    const diagram = buildFohDiagram(plan, equipmentById, existingFoh?.id)
-    change({ diagrams: existingFoh ? plan.diagrams.map((d) => (d.id === existingFoh.id ? diagram : d)) : [...plan.diagrams, diagram] })
+    const diagram = buildFohDiagram(plan, equipmentById, mainDiagram)
+    const rest = plan.diagrams.filter((d) => d.id !== mainDiagram?.id && d.id !== legacyFoh?.id)
+    change({ diagrams: [diagram, ...rest] })
     setActiveDiagramId(diagram.id)
-    setAgentApplied((n) => n + 1) // remount DiagramEditor — ผังเดิม id เดียวกันแต่เนื้อหาเปลี่ยนทั้งก้อน
+    setAgentApplied((n) => n + 1) // remount DiagramEditor — ผังเดิม id เดียวกันแต่เนื้อหาเปลี่ยน
     setTab('diagrams')
     setConfirmFoh(false)
   }
   const requestFohDiagram = () => {
-    if (existingFoh && existingFoh.nodes.length > 0) setConfirmFoh(true)
+    if (hasFohDrawn) setConfirmFoh(true)
     else applyFohDiagram()
   }
 
   const addDiagram = () => {
-    const used = new Set(plan.diagrams.map((d) => d.name))
-    const name = DIAGRAM_PRESETS.find((n) => !used.has(n)) ?? `ผัง ${plan.diagrams.length + 1}`
-    const diagram: PlanDiagram = { id: newId(), name, nodes: [], edges: [] }
-    change({ diagrams: [...plan.diagrams, diagram] })
+    const diagram: PlanDiagram = { id: newId(), name: 'Video', nodes: [], edges: [] }
+    change({ diagrams: [diagram] })
     setActiveDiagramId(diagram.id)
+  }
+  // ข้อมูลเก่าที่แยกหลายผัง → รวมเป็นผังเดียว
+  const mergeAllDiagrams = () => {
+    const merged = mergeDiagrams(plan.diagrams)
+    change({ diagrams: [merged] })
+    setActiveDiagramId(merged.id)
+    setAgentApplied((n) => n + 1)
+    setConfirmMerge(false)
   }
 
   const layouts = plan.layouts ?? []
@@ -389,11 +448,11 @@ function PlanEditor() {
               })()}
             </InfoField>
             <InfoField label="ระบบภาพ">{plan.videoFormat ? formatFullLabel(plan.videoFormat) : <span className="text-gray-400">ยังไม่ระบุ</span>}</InfoField>
-            <InfoField label="format ไฟล์บันทึก" wide>{recordingsLabel(plan.recordings, plan.videoFormat) || <span className="text-gray-400">ไม่มี</span>}</InfoField>
+            <InfoField label="format ไฟล์บันทึก" wide><RecordingList recordings={plan.recordings} main={plan.videoFormat} /></InfoField>
             <InfoField label="ส่งภาพให้ทีม Visual (FOH)" wide>
               {fohSummary(plan.fohFeeds) || <span className="text-gray-400">ไม่มี</span>}
               {(plan.fohFeeds?.length ?? 0) > 0 && (
-                <button onClick={requestFohDiagram} className="ml-2 text-xs font-medium text-brand hover:underline">จัดผังส่ง FOH</button>
+                <button onClick={requestFohDiagram} className="ml-2 text-xs font-medium text-brand hover:underline">วาดลงผังโยง</button>
               )}
             </InfoField>
             {plan.notes && <InfoField label="หมายเหตุของแผน" full><span className="whitespace-pre-wrap">{plan.notes}</span></InfoField>}
@@ -409,7 +468,8 @@ function PlanEditor() {
 
       <PlanInfoModal key={infoKey} isOpen={showInfo} onClose={() => setShowInfo(false)} plan={plan} jobs={jobs} onSave={(patch) => change(patch)} />
 
-      {/* Tabs */}
+      {/* Tabs + ตัวเลือกผัง (ผังโยง/ผังวาง) อยู่แถวเดียวกัน ประหยัดที่ */}
+      <div className="flex items-center gap-3 flex-wrap">
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {([['items', `รายการอุปกรณ์ (${plan.items.length})`], ['diagrams', `ผังโยง (${plan.diagrams.length})`], ['layouts', `ผังวาง 3D (${layouts.length})`]] as const).map(([key, label]) => (
           <button
@@ -420,6 +480,96 @@ function PlanEditor() {
             {label}
           </button>
         ))}
+      </div>
+        {tab === 'diagrams' ? (
+          <div className="flex items-center justify-end gap-2 flex-wrap flex-1 min-w-0">
+            {activeDiagram && <span className="text-xs text-gray-400 mr-auto">{activeDiagram.nodes.length} อุปกรณ์ · {activeDiagram.edges.length} สาย</span>}
+            {(() => {
+              const switchers = activeDiagram?.nodes.filter((n) => n.category === 'switcher' && n.inputs.length > 0) ?? []
+              if (switchers.length === 0) return null
+              return (
+                <div className="relative">
+                  <button
+                    onClick={() => (switchers.length === 1 ? setAtemFor(switchers[0].id) : setAtemMenu((v) => !v))}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" /> Download XML ATEM
+                  </button>
+                  {atemMenu && switchers.length > 1 && (
+                    <div className="absolute right-0 mt-1 z-20 w-64 bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+                      <p className="px-3 py-1.5 text-[11px] text-gray-400">เลือกสวิตเชอร์</p>
+                      {switchers.map((n) => (
+                        <button key={n.id} onClick={() => { setAtemFor(n.id); setAtemMenu(false) }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                          {n.label}{n.sub && <span className="block text-[11px] text-gray-400 truncate">{n.sub}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            {plan.diagrams.length > 1 && plan.diagrams.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setActiveDiagramId(d.id)}
+                className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+                  activeDiagram?.id === d.id ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {d.name || 'ไม่มีชื่อ'}
+              </button>
+            ))}
+            {plan.diagrams.length > 1 && (
+              <button onClick={() => setConfirmMerge(true)} className="px-3 py-1 rounded-full text-sm font-medium border border-dashed border-amber-400 text-amber-700 hover:bg-amber-50 transition-colors">
+                รวมเป็นผังเดียว
+              </button>
+            )}
+            {activeDiagram && (
+              <>
+                <span className="text-xs font-semibold text-gray-500 ml-2">ชื่อผัง</span>
+                <input
+                  value={activeDiagram.name}
+                  onChange={(e) => updateDiagram({ ...activeDiagram, name: e.target.value })}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm w-40 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+                />
+                <button onClick={() => setDeleteDiagram(activeDiagram)} title="ลบผังนี้" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        ) : tab === 'layouts' ? (
+          <div className="flex items-center justify-end gap-2 flex-wrap flex-1 min-w-0">
+            {activeLayout && <span className="text-xs text-gray-400 mr-auto">{activeLayout.venue.name} · {activeLayout.objects.length} ชิ้น</span>}
+            {layouts.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => setActiveLayoutId(l.id)}
+                className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+                  activeLayout?.id === l.id ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {l.name || 'ไม่มีชื่อ'}
+              </button>
+            ))}
+            <button onClick={addLayout} className="flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-brand hover:text-brand transition-colors">
+              <PlusIcon className="w-4 h-4" /> เพิ่มผังวาง
+            </button>
+            {activeLayout && (
+              <>
+                <span className="text-xs font-semibold text-gray-500 ml-2">ชื่อผัง</span>
+                <input
+                  value={activeLayout.name}
+                  onChange={(e) => updateLayout({ ...activeLayout, name: e.target.value })}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm w-40 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+                />
+                <button onClick={() => setDeleteLayout(activeLayout)} title="ลบผังนี้" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {tab === 'items' ? (
@@ -456,7 +606,7 @@ function PlanEditor() {
               </button>
             </div>
           </div>
-          <PlanItemsTable items={plan.items} onChange={(items) => change({ items })} vendorOptions={knownVendors} locationOptions={knownLocations} onAddLens={setLensFor} planDate={plan.date} planEndDate={plan.endDate} />
+          <PlanItemsTable items={plan.items} onChange={(items) => change({ items })} vendorOptions={knownVendors} locationOptions={knownLocations} onAddKit={setKitFor} planDate={plan.date} planEndDate={plan.endDate} camLabels={camLabels(plan)} onPickFromStock={setReplaceRow} />
 
         </div>
 
@@ -491,37 +641,8 @@ function PlanEditor() {
         </div>
       ) : tab === 'layouts' ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {layouts.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => setActiveLayoutId(l.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  activeLayout?.id === l.id ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                {l.name || 'ไม่มีชื่อ'}
-              </button>
-            ))}
-            <button onClick={addLayout} className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-brand hover:text-brand transition-colors">
-              <PlusIcon className="w-4 h-4" /> เพิ่มผังวาง
-            </button>
-          </div>
-
           {activeLayout ? (
             <>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-gray-500">ชื่อผัง</span>
-                <input
-                  value={activeLayout.name}
-                  onChange={(e) => updateLayout({ ...activeLayout, name: e.target.value })}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm w-56 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                />
-                <button onClick={() => setDeleteLayout(activeLayout)} title="ลบผังนี้" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                  <TrashIcon className="w-4 h-4" />
-                </button>
-                <span className="text-xs text-gray-400 ml-auto">{activeLayout.venue.name} · {activeLayout.objects.length} ชิ้น</span>
-              </div>
               <LayoutEditor key={`${activeLayout.id}-${agentApplied}`} planId={plan.id} layout={activeLayout} onChange={updateLayout} planItems={plan.items} onRequestAdd={() => setShowPicker(true)} />
             </>
           ) : (
@@ -532,37 +653,8 @@ function PlanEditor() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {plan.diagrams.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setActiveDiagramId(d.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  activeDiagram?.id === d.id ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                {d.name || 'ไม่มีชื่อ'}
-              </button>
-            ))}
-            <button onClick={addDiagram} className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-brand hover:text-brand transition-colors">
-              <PlusIcon className="w-4 h-4" /> เพิ่มผัง
-            </button>
-          </div>
-
           {activeDiagram ? (
             <>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-gray-500">ชื่อผัง</span>
-                <input
-                  value={activeDiagram.name}
-                  onChange={(e) => updateDiagram({ ...activeDiagram, name: e.target.value })}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm w-56 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                />
-                <button onClick={() => setDeleteDiagram(activeDiagram)} title="ลบผังนี้" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                  <TrashIcon className="w-4 h-4" />
-                </button>
-                <span className="text-xs text-gray-400 ml-auto">{activeDiagram.nodes.length} อุปกรณ์ · {activeDiagram.edges.length} สาย</span>
-              </div>
               <DiagramEditor
                 key={`${activeDiagram.id}-${agentApplied}`}
                 diagram={activeDiagram}
@@ -574,7 +666,10 @@ function PlanEditor() {
             </>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
-              <p className="text-gray-400 text-sm">ยังไม่มีผังโยง — กด “เพิ่มผัง” เพื่อเริ่มวาด (แยกผัง Video / Audio / Intercom ได้)</p>
+              <p className="text-gray-400 text-sm">ยังไม่มีผังโยง — ภาพ เสียง ส่งจอ FOH และ Intercom อยู่ในผังเดียวกัน</p>
+              <button onClick={addDiagram} className="mt-3 inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-brand hover:text-brand transition-colors">
+                <PlusIcon className="w-4 h-4" /> เริ่มวาดผังโยง
+              </button>
             </div>
           )}
         </div>
@@ -584,34 +679,69 @@ function PlanEditor() {
         isOpen={showPicker}
         onClose={() => setShowPicker(false)}
         equipment={equipment}
-        existingIds={new Set(plan.items.map((i) => i.equipmentId).filter((x): x is string => !!x))}
+        existingIds={new Set()}
+        // ของที่อยู่ในแผนแล้วเลือกเพิ่มได้อีกแถว (เช่น ของพาร์ทเนอร์ 6 ชิ้น แยกให้กล้องคนละตัว) — นับรวมกับที่ใช้แล้วตอนเช็กว่าง
+        inPlanQty={inPlanQty}
         usage={usage}
         noDate={!plan.date}
         onConfirm={(picked) => addPicked(picked)}
       />
 
-      {/* เลือกเลนส์ให้กล้อง — key ตามกล้องให้ state (หมวด/ที่เลือก) เริ่มใหม่ทุกครั้ง */}
+      {/* แทนแถวนอกสต็อกด้วยของเช่า/พาร์ทเนอร์ในสต็อก — เปิดแท็บตามที่มาเดิม ค้นด้วยชื่อเดิมถ้าเจอ */}
       <EquipmentPicker
-        key={lensFor?.id ?? 'none'}
-        isOpen={!!lensFor}
-        onClose={() => setLensFor(null)}
-        title={`เลือกเลนส์ให้ ${lensFor?.name ?? 'กล้อง'}${lensFor?.code ? ` (${lensFor.code})` : ''}`}
-        initialCategory="lens"
+        key={replaceRow?.id ?? 'none-replace'}
+        isOpen={!!replaceRow}
+        onClose={() => setReplaceRow(null)}
+        single
+        title={`เลือกจากสต็อกแทน “${replaceRow?.name || 'แถวนอกสต็อก'}”`}
+        initialOwnership={replaceRow?.origin === 'partner' ? 'partner' : 'rental'}
+        initialSearch={replaceRow && equipment.some((e) => e.name.toLowerCase().includes(replaceRow.name.trim().toLowerCase())) ? replaceRow.name.trim() : ''}
+        initialCategory={replaceRow && replaceRow.category !== 'other' ? replaceRow.category : ''}
         equipment={equipment}
         existingIds={new Set()}
         inPlanQty={inPlanQty}
         usage={usage}
         noDate={!plan.date}
-        onConfirm={(picked) => lensFor && addPicked(picked, lensFor)}
+        onConfirm={(picked) => { if (replaceRow && picked[0]) replaceWithStock(replaceRow, picked[0].equipment) }}
       />
+
+      {/* เพิ่มของในชุดให้กล้อง — ทุกหมวด ทุกที่มา (บริษัท/เช่า/พาร์ทเนอร์) ติดกล้องตัวนั้น · หรือเช่าเพิ่มนอกสต็อก */}
+      <EquipmentPicker
+        key={kitFor ? `kit-${kitFor.id}` : 'none-kit'}
+        isOpen={!!kitFor}
+        onClose={() => setKitFor(null)}
+        title={`เพิ่มอุปกรณ์ให้ ${kitFor ? (camLabels(plan).get(kitFor.id) ?? kitFor.name) : 'กล้อง'}${kitFor?.toLocation ? ` · ${kitFor.toLocation}` : ''}`}
+        equipment={equipment}
+        existingIds={new Set()}
+        inPlanQty={inPlanQty}
+        usage={usage}
+        noDate={!plan.date}
+        onConfirm={(picked) => kitFor && addPicked(picked, kitFor)}
+        onExternal={(name) => kitFor && addExternalFor(kitFor, name)}
+      />
+
 
       <ConfirmDialog
         isOpen={confirmFoh}
-        title="จัดผังส่ง FOH ใหม่"
-        message={`ผัง “${FOH_DIAGRAM_NAME}” มีอยู่แล้ว จะถูกสร้างใหม่จากรายการ feed ตอนนี้ — ที่แก้ในผังเองจะหาย (บันทึก Revision ไว้ก่อนได้)`}
-        confirmLabel="สร้างใหม่"
+        title="วาดสายส่ง FOH ใหม่"
+        message={`กล่อง/สายส่ง FOH ที่เคยวาดไว้จะถูกลบแล้ววาดใหม่ในผังหลักจากรายการ feed ตอนนี้${legacyFoh ? ` (ผังแยก “${FOH_DIAGRAM_NAME}” แบบเก่าจะถูกเอาออก)` : ''} — ที่แก้ในส่วนนั้นเองจะหาย กล่องอื่นในผังไม่แตะ (บันทึก Revision ไว้ก่อนได้)`}
+        confirmLabel="วาดใหม่"
         onConfirm={applyFohDiagram}
         onClose={() => setConfirmFoh(false)}
+      />
+
+      {(() => {
+        const sw = atemFor ? activeDiagram?.nodes.find((n) => n.id === atemFor) : undefined
+        return activeDiagram && sw ? <AtemExportModal key={sw.id} isOpen onClose={() => setAtemFor(null)} diagram={activeDiagram} switcher={sw} /> : null
+      })()}
+
+      <ConfirmDialog
+        isOpen={confirmMerge}
+        title="รวมเป็นผังเดียว"
+        message={`รวม ${plan.diagrams.length} ผัง (${plan.diagrams.map((d) => d.name).join(', ')}) เป็นผังเดียว — ผังถัดไปวางต่อด้านล่าง กล่องของแถวเดียวกันที่ซ้ำกันรวมเป็นกล่องเดียว (บันทึก Revision ไว้ก่อนได้)`}
+        confirmLabel="รวมผัง"
+        onConfirm={mergeAllDiagrams}
+        onClose={() => setConfirmMerge(false)}
       />
 
       <ConfirmDialog

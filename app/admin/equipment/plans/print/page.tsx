@@ -8,7 +8,8 @@ import FormCheckbox from '@/components/ui/FormCheckbox'
 import { Skeleton } from '@/components/ui/Skeleton'
 import PlanPrintDocument, { type GroupBy } from '@/components/admin/equipment/PlanPrintDocument'
 import { getEquipmentPlan } from '@/lib/equipment/plans'
-import { useLensLines } from '@/lib/equipment/lens-lines'
+import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
+import LabelSizePicker from '@/components/admin/equipment/LabelSizePicker'
 import { getRevision, isModifiedSinceRevision, revisionLabel } from '@/lib/equipment/revisions'
 import type { EquipmentPlan } from '@/lib/types'
 
@@ -25,6 +26,7 @@ function PlanPrint() {
   const [showDiagrams, setShowDiagrams] = useState(true)
   const [showLayouts, setShowLayouts] = useState(true)
   const [lensLines, setLensLines] = useLensLines()
+  const [labelSize] = useLabelSize()
   const [showCosts, setShowCosts] = useState(false)
   const [showFoh, setShowFoh] = useState(true)
   const [groupBy, setGroupBy] = useState<GroupBy>('destination')
@@ -65,6 +67,7 @@ function PlanPrint() {
           <FormCheckbox checked={showDiagrams} onChange={setShowDiagrams} label={`ผังโยง (${diagrams.length})`} />
           <FormCheckbox checked={showLayouts} onChange={setShowLayouts} label={`ผังวาง 3D (${plan.layouts?.length ?? 0})`} />
           {showLayouts && !!plan.layouts?.length && <FormCheckbox checked={lensLines} onChange={setLensLines} label="แนวเลนส์ในผังวาง" />}
+          {showLayouts && !!plan.layouts?.length && <LabelSizePicker />}
           <FormCheckbox checked={showCosts} onChange={setShowCosts} label="ต้นทุน (ค่าเช่า + ค่าใช้จ่ายอื่น)" />
           <FormCheckbox checked={showCables} onChange={setShowCables} label="ตารางสาย" />
           {(plan.fohFeeds?.length ?? 0) > 0 && <FormCheckbox checked={showFoh} onChange={setShowFoh} label={`ส่งภาพทีม Visual (${plan.fohFeeds?.length})`} />}
@@ -87,7 +90,7 @@ function PlanPrint() {
       </div>
 
       {revMissing && <p className="print:hidden text-sm text-red-600">ไม่พบ revision ที่ระบุ — แสดงแผนปัจจุบันแทน</p>}
-      <PlanPrintDocument showFoh={showFoh} revisionLabel={revLabel} plan={plan} showList={showList} showDiagrams={showDiagrams} showCables={showCables} showLayouts={showLayouts} lensLines={lensLines} showCosts={showCosts} groupBy={groupBy} />
+      <PlanPrintDocument showFoh={showFoh} revisionLabel={revLabel} plan={plan} showList={showList} showDiagrams={showDiagrams} showCables={showCables} showLayouts={showLayouts} lensLines={lensLines} labelScale={LABEL_SCALE[labelSize]} showCosts={showCosts} groupBy={groupBy} />
     </div>
   )
 }

@@ -14,7 +14,7 @@ import { formatFullLabel } from '@/lib/equipment/video-format'
 import { recordingsLabel } from '@/lib/equipment/recording-format'
 import { FEED_CONNECTIONS, feedFormatLabel, fohSummary } from '@/lib/equipment/foh-feeds'
 import type { EquipmentPlan, PlanDiagram, PlanLayout } from '@/lib/types'
-import { camTag, groupItems, type GroupBy } from '@/lib/equipment/item-groups'
+import { camLabels, camTag, groupItems, isCamOnlyNote, type GroupBy } from '@/lib/equipment/item-groups'
 import { itemUseLabel } from '@/lib/equipment/availability'
 
 export type { GroupBy }
@@ -27,6 +27,8 @@ interface PlanPrintDocumentProps {
   showLayouts: boolean
   /** วาดแนวเลนส์ (กรวยมุมรับภาพ) ในภาพผังวาง — ไม่ส่ง = วาด */
   lensLines?: boolean
+  /** ตัวคูณขนาดป้ายชื่อในผังวาง (S/M/L) */
+  labelScale?: number
   /** ต้นทุนค่าเช่า — ปิดเป็นค่าเริ่มต้น เพราะเอกสารนี้มักแจกทีมหน้างาน */
   showCosts?: boolean
   groupBy: GroupBy
@@ -48,10 +50,11 @@ export default function PlanPrintDocument(props: PlanPrintDocumentProps) {
   )
 }
 
-function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, lensLines = true, showCosts = false, showFoh = true, groupBy }: PlanPrintDocumentProps) {
+function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, lensLines = true, labelScale = 1, showCosts = false, showFoh = true, groupBy }: PlanPrintDocumentProps) {
   const feeds = (plan.fohFeeds ?? []).filter((f) => f.source || f.destination)
   const diagrams = plan.diagrams.filter((d) => d.nodes.length > 0)
   const totalQty = plan.items.reduce((s, i) => s + i.quantity, 0)
+  const labels = camLabels(plan)
 
   const rentalItems = plan.items.filter((i) => itemCost(i) > 0)
   const extraCosts = (plan.extraCosts ?? []).filter((c) => extraCostAmount(c) > 0)
@@ -80,7 +83,7 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
             </thead>
             {(() => {
               let n = 0
-              return groupItems(plan.items, groupBy).map((group) => (
+              return groupItems(plan.items, groupBy, labels).map((group) => (
                 <tbody key={group.title}>
                   <tr className="break-after-avoid">
                     <td colSpan={8} className="pt-3 pb-1 font-bold text-[11px] border-b border-gray-300">
@@ -97,14 +100,14 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
                         <td className="py-1.5 pr-2 font-mono text-[10px]">{it.code ?? '—'}</td>
                         <td className={`py-1.5 pr-2 font-medium ${child ? 'pl-4' : ''}`}>
                           {child && <span className="text-gray-400 mr-1">↳</span>}
-                          {camTag(it) && <span className="mr-1 px-1 rounded bg-black text-white text-[10px] font-bold whitespace-nowrap">{camTag(it)}</span>}
+                          {camTag(it, labels) && <span className="mr-1 px-1 rounded bg-black text-white text-[10px] font-bold whitespace-nowrap">{camTag(it, labels)}</span>}
                           {it.name || '—'}
-                          {parent && <span className="font-normal text-gray-500"> (ใส่กับ {camTag(parent) || parent.name})</span>}
+                          {parent && <span className="font-normal text-gray-500"> (ใส่กับ {camTag(parent, labels) || parent.name})</span>}
                           {itemUseLabel(it, plan) && <span className="ml-1 px-1 border border-gray-400 rounded text-[9px] font-semibold whitespace-nowrap">📅 {itemUseLabel(it, plan)}</span>}
                         </td>
                         <td className="py-1.5 pr-2 text-right tabular-nums">{it.quantity}</td>
                         <td className="py-1.5 px-2">{it.fromLocation || '—'} → <b>{it.toLocation || '—'}</b></td>
-                        <td className="py-1.5 pr-2">{it.note}</td>
+                        <td className="py-1.5 pr-2">{isCamOnlyNote(it.note) ? '' : it.note}</td>
                         <td className="py-1.5 text-center"><Box checked={!!it.packed} /></td>
                         <td className="py-1.5 text-center"><Box checked={!!it.returned} /></td>
                       </tr>
@@ -173,7 +176,7 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
         </section>
       ))}
 
-      {showLayouts && (plan.layouts ?? []).map((l) => <LayoutPages key={l.id} plan={plan} layout={l} lensLines={lensLines} />)}
+      {showLayouts && (plan.layouts ?? []).map((l) => <LayoutPages key={l.id} plan={plan} layout={l} lensLines={lensLines} labelScale={labelScale} />)}
 
       {showCables && diagrams.some((d) => d.edges.length > 0) && (
         <section className="print-portrait mt-10 print:mt-0">
@@ -269,7 +272,7 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
 }
 
 /** ผังวาง 3D → รูปมุมบน + รูป perspective (หน้าละรูป, A4 นอน) + ตารางตำแหน่ง */
-function LayoutPages({ plan, layout, lensLines }: { plan: EquipmentPlan; layout: PlanLayout; lensLines: boolean }) {
+function LayoutPages({ plan, layout, lensLines, labelScale }: { plan: EquipmentPlan; layout: PlanLayout; lensLines: boolean; labelScale: number }) {
   const [shots, setShots] = useState<{ top: string; persp: string } | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -279,12 +282,12 @@ function LayoutPages({ plan, layout, lensLines }: { plan: EquipmentPlan; layout:
       // three.js โหลดเฉพาะตอนมีผัง 3D ให้พิมพ์
       const { snapshotLayout } = await import('@/lib/equipment/layout-scene')
       const floor = layout.venue.floorImageId ? await getPlanAsset(layout.venue.floorImageId).catch(() => null) : null
-      const top = await snapshotLayout(layout, 'top', floor, undefined, undefined, lensLines)
-      const persp = await snapshotLayout(layout, 'perspective', floor, undefined, undefined, lensLines)
+      const top = await snapshotLayout(layout, 'top', floor, undefined, undefined, lensLines, undefined, labelScale)
+      const persp = await snapshotLayout(layout, 'perspective', floor, undefined, undefined, lensLines, undefined, labelScale)
       if (alive) setShots({ top, persp })
     })().catch((e) => { console.error(e); if (alive) setFailed(true) })
     return () => { alive = false }
-  }, [layout, lensLines])
+  }, [layout, lensLines, labelScale])
 
   const views = [['มุมบน', shots?.top], ['3D', shots?.persp]] as const
   return (

@@ -60,7 +60,7 @@ export function daysIn(r: PlanRange, max = 92): string[] {
   return out
 }
 
-/** การจองของ 1 แถว (เฉพาะของในคลัง) */
+/** การจองของ 1 แถว (เฉพาะของในสต็อก) */
 export interface Booking { equipmentId: string; quantity: number; start: string; end: string; planId: string; title: string; itemId: string }
 
 export function planBookings(p: EquipmentPlan): Booking[] {

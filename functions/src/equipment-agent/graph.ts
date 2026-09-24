@@ -287,7 +287,7 @@ export async function runAgentGraph(opts: {
       ws.plan.fohFeeds ? `ส่งภาพให้ทีม Visual (FOH):\n${ws.plan.fohFeeds}` : 'ส่งภาพให้ทีม Visual (FOH): (ไม่มี)',
       ws.plan.notes ? `หมายเหตุของแผน: ${ws.plan.notes}` : '',
       '',
-      // ให้รายการคลังไปเลย — ไม่ต้องเสียรอบ (รอโมเดลรอบละหลายวินาที) ไปกับ inventory_overview/search_inventory
+      // ให้รายการสต็อกไปเลย — ไม่ต้องเสียรอบ (รอโมเดลรอบละหลายวินาที) ไปกับ inventory_overview/search_inventory
       ws.inventoryCatalog(),
       '',
       'ร่างปัจจุบัน:',

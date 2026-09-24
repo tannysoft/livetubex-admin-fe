@@ -36,7 +36,7 @@ export default function EquipmentInventoryPage() {
     try {
       const [list, vendors] = await Promise.all([
         getEquipmentList(),
-        getActiveVendors().catch(() => []),  // ยังไม่ได้ตั้งระบบบัญชีก็ให้คลังใช้ได้
+        getActiveVendors().catch(() => []),  // ยังไม่ได้ตั้งระบบบัญชีก็ให้สต็อกใช้ได้
       ])
       setItems(list)
       setVendorNames(vendors.map((v) => v.name))
@@ -87,7 +87,7 @@ export default function EquipmentInventoryPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">คลังอุปกรณ์</h1>
+          <h1 className="text-2xl font-bold text-gray-900">สต็อกอุปกรณ์</h1>
           <p className="text-gray-500 mt-1">
             ของบริษัท {items.length - rentalCount - partnerCount} รายการ ({totalPieces.toLocaleString()} ชิ้น)
             {totalValue > 0 && <> มูลค่ารวม ~{formatCurrency(totalValue)}</>} · ของเช่า {rentalCount} · ของพาร์ทเนอร์ {partnerCount}
@@ -131,7 +131,7 @@ export default function EquipmentInventoryPage() {
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
             <CubeIcon className="w-10 h-10 text-gray-300 mx-auto" />
-            <p className="text-gray-400 text-sm mt-3">{items.length === 0 ? 'ยังไม่มีอุปกรณ์ในคลัง' : 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'}</p>
+            <p className="text-gray-400 text-sm mt-3">{items.length === 0 ? 'ยังไม่มีอุปกรณ์ในสต็อก' : 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -228,7 +228,7 @@ export default function EquipmentInventoryPage() {
       <ConfirmDialog
         isOpen={!!deleteTarget}
         title="ลบอุปกรณ์"
-        message={`ต้องการลบ "${deleteTarget?.name}" ออกจากคลังใช่หรือไม่? แผนจัดของที่เคยใช้อุปกรณ์นี้จะยังเก็บชื่อไว้ตามเดิม`}
+        message={`ต้องการลบ "${deleteTarget?.name}" ออกจากสต็อกใช่หรือไม่? แผนจัดของที่เคยใช้อุปกรณ์นี้จะยังเก็บชื่อไว้ตามเดิม`}
         confirmLabel="ลบ"
         onConfirm={handleDelete}
         onClose={() => setDeleteTarget(null)}

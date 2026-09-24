@@ -31,7 +31,7 @@ function rangeLabel(start: string, end: string): string {
 interface Row { eq: Equipment; total: number; booked: number; left: number; usage?: RangeUsage }
 
 /**
- * ของเหลือในคลังตามช่วงวันที่ — หักของที่แผนอื่นจองไว้ (แผนที่ยังไม่เก็บกลับ)
+ * ของเหลือในสต็อกตามช่วงวันที่ — หักของที่แผนอื่นจองไว้ (แผนที่ยังไม่เก็บกลับ)
  * ช่วงหลายวัน = ดูวันที่ใช้มากที่สุด เพราะแผนคนละวันไม่แย่งของกัน
  */
 export default function EquipmentAvailabilityPage() {
@@ -95,7 +95,7 @@ export default function EquipmentAvailabilityPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">ของเหลือในคลัง</h1>
+        <h1 className="text-2xl font-bold text-gray-900">ของเหลือในสต็อก</h1>
         <p className="text-gray-500 mt-1">เลือกวันที่ แล้วดูว่าหลังหักของที่แผนงานจองไว้ ยังเหลืออะไรบ้าง</p>
       </div>
 
@@ -162,7 +162,7 @@ export default function EquipmentAvailabilityPage() {
                   </Link>
                 )
               })}
-              {outsideItems > 0 && <span className="text-xs text-gray-400">· ของนอกคลังในแผน {outsideItems} แถวไม่นับ</span>}
+              {outsideItems > 0 && <span className="text-xs text-gray-400">· ของนอกสต็อกในแผน {outsideItems} แถวไม่นับ</span>}
             </div>
           ) : (
             <p className="text-sm text-gray-500">ไม่มีแผนงานในช่วง {rangeLabel(start, end)} — ของทุกชิ้นว่าง</p>

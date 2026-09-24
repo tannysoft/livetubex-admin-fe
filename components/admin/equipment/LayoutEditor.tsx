@@ -17,7 +17,8 @@ import {
 } from '@/lib/equipment/layout-scene'
 import { getPlanAsset, uploadPlanAsset } from '@/lib/equipment/plan-assets'
 import { newId } from '@/lib/equipment/plans'
-import { useLensLines } from '@/lib/equipment/lens-lines'
+import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
+import LabelSizePicker from './LabelSizePicker'
 import { ORIGIN_LABEL, isRentalItem, itemOrigin } from '@/lib/equipment/rental-cost'
 
 interface LayoutEditorProps {
@@ -49,6 +50,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   const [povId, setPovId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'3d' | 'top'>('3d')
   const [lensLines, setLensLines] = useLensLines()
+  const [labelSizeKey] = useLabelSize()
   const [panel, setPanel] = useState<'objects' | 'venue'>('objects')
   const [floorImg, setFloorImg] = useState<HTMLImageElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -248,7 +250,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venueKey, activeFloorImg])
 
-  const labelSize = labelSizeFor(venue)
+  const labelSize = labelSizeFor(venue, LABEL_SCALE[labelSizeKey])
   useEffect(() => {
     const t = three.current
     if (!t) return
@@ -319,7 +321,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
 
   const nextLabel = (kind: LayoutObjectKind) => {
     const count = layout.objects.filter((o) => o.kind === kind).length + 1
-    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
+    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : kind === 'micro_stand' ? `MICRO ${count}` : kind === 'action_cam' ? `ACTION ${count}` : kind === 'ptz' ? `PTZ ${count}` : kind === 'tele_lens' ? `TELE ${count}` : kind === 'box_lens' ? `BOX ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
   }
 
   /** ปรับความสูง riser → ของที่ยืนอยู่บนแท่นต้องขึ้น/ลงตาม ไม่งั้นลอยหรือจมแท่น */
@@ -410,6 +412,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
           >
             {lensLines ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />} แนวเลนส์
           </button>
+          <LabelSizePicker className="!border-0 !p-0" />
         </div>
 
         {povObject && (
@@ -597,6 +600,17 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
                       <Num label="จำนวนขั้น" value={venue.tiers.steps} step={1} onChange={(v) => patchVenue({ tiers: { ...venue.tiers!, steps: Math.min(40, Math.max(1, Math.round(v))) } })} />
                       <Num label="ขั้นสูง" value={venue.tiers.rise} step={0.05} onChange={(v) => patchVenue({ tiers: { ...venue.tiers!, rise: Math.max(0.1, v) } })} />
                       <Num label="ขั้นลึก" value={venue.tiers.run} step={0.1} onChange={(v) => patchVenue({ tiers: { ...venue.tiers!, run: Math.max(0.3, v) } })} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                      {/* ผนังตรงใต้แถวแรก (นั่งไม่ได้) — อัฒจันทร์เริ่มสูงจากพื้น เช่น Impact Arena ~3 ขั้น */}
+                      <Num label="ผนังล่าง (ขั้น)" value={venue.tiers.wallSteps ?? 0} step={1} onChange={(v) => patchVenue({ tiers: { ...venue.tiers!, wallSteps: Math.min(10, Math.max(0, Math.round(v))) } })} />
+                      <p className="col-span-2 text-[11px] text-gray-400 pb-1.5">ขอบตรงลงพื้น สูง {((venue.tiers.wallSteps ?? 0) * venue.tiers.rise).toFixed(1)} ม. ก่อนถึงแถวแรก</p>
+                      {!venue.tiers.curved && venue.tiers.sides && (venue.tiers.back || venue.tiers.front) && (
+                        <>
+                          <Num label="มุมโค้ง รัศมี (ม.)" value={venue.tiers.cornerRadius ?? 0} step={1} onChange={(v) => patchVenue({ tiers: { ...venue.tiers!, cornerRadius: Math.max(0, v) } })} />
+                          <p className="col-span-2 text-[11px] text-gray-400 pb-1.5">0 = มุมเหลี่ยม</p>
+                        </>
+                      )}
                     </div>
                     <FormCheckbox
                       size="sm"

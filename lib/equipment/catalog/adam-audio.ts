@@ -3,7 +3,7 @@ import type { CatalogProduct } from './blackmagic'
 /**
  * ADAM Audio — ลำโพงมอนิเตอร์สตูดิโอ (active) + ซับวูฟเฟอร์
  * ⚠️ port ต่อรุ่นมาจากความรู้ทั่วไป ไม่ใช่ spec sheet — ตรวจกับตัวเครื่องอีกครั้ง
- * ราคาในคลัง = ต่อข้าง (ร้านไทยมักขายเป็นคู่ — ดู prices.ts)
+ * ราคาในสต็อก = ต่อข้าง (ร้านไทยมักขายเป็นคู่ — ดู prices.ts)
  */
 const AD = 'ADAM Audio'
 const A = ['adam', 'adam audio', 'อดัม', 'monitor speaker', 'ลำโพง', 'ลำโพงมอนิเตอร์', 'studio monitor']

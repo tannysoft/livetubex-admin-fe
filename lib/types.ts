@@ -449,7 +449,7 @@ export type SignalType =
 
 export interface DiagramNode {
   id: string
-  equipmentId?: string        // ว่าง = กล่องอิสระ (ของสถานที่/ของลูกค้า ไม่อยู่ในคลัง)
+  equipmentId?: string        // ว่าง = กล่องอิสระ (ของสถานที่/ของลูกค้า ไม่อยู่ในสต็อก)
   planItemId?: string         // แถวในรายการของแผนที่กล่องนี้มาจาก — ใช้นับว่าวางไปแล้วกี่ตัว
   label: string
   sub?: string                // บรรทัดรอง เช่น รุ่น หรือจุดติดตั้ง
@@ -460,6 +460,7 @@ export interface DiagramNode {
   outputs: string[]
   ios?: string[]              // port เข้า-ออก — วางฝั่งขวาต่อจาก outputs โยงได้ทั้งสองทาง (ไม่มี field = ข้อมูลเก่า)
   note?: string               // หมายเหตุของกล่อง — โชว์ใต้ port ในผัง (ตัดที่ NOTE_MAX_LINES บรรทัด ฉบับเต็มอยู่ในหน้า print)
+  generated?: 'foh'           // กล่องที่ปุ่ม "วาดลงผังโยง" (ส่ง FOH) สร้าง — กดซ้ำจะลบชุดเดิมแล้ววาดใหม่ (กล่องอื่นในผังไม่แตะ)
 }
 
 export type PortSide = 'in' | 'out' | 'io'
@@ -486,10 +487,10 @@ export interface PlanDiagram {
   edges: DiagramEdge[]
 }
 
-/** 1 แถวในรายการจัดของ — snapshot ชื่อ/รหัสไว้ กันของในคลังถูกแก้/ลบทีหลัง */
+/** 1 แถวในรายการจัดของ — snapshot ชื่อ/รหัสไว้ กันของในสต็อกถูกแก้/ลบทีหลัง */
 export interface PlanItem {
   id: string
-  equipmentId?: string        // ว่าง = ของนอกคลัง (พิมพ์ชื่อเอง)
+  equipmentId?: string        // ว่าง = ของนอกสต็อก (พิมพ์ชื่อเอง)
   isRental?: boolean          // @deprecated → ใช้ origin (คงไว้อ่านข้อมูลเก่า)
   origin?: 'owned' | 'rental' | 'partner'  // ที่มาของของ — ไม่มี field = ดูจาก isRental/equipmentId (ข้อมูลเก่า)
   code?: string
@@ -504,7 +505,7 @@ export interface PlanItem {
   useTo?: string              //   อ่านผ่าน itemRange()/clipItemRange() เสมอ (ตัดให้อยู่ในวันงานเอง)
   packed?: boolean            // จัดขึ้นรถแล้ว
   returned?: boolean          // เก็บกลับครบแล้ว
-  // ── ต้นทุนค่าเช่า (เฉพาะของนอกคลัง) — ยอด = unitCost × quantity × rentalDays (ก่อน VAT) ──
+  // ── ต้นทุนค่าเช่า (เฉพาะของนอกสต็อก) — ยอด = unitCost × quantity × rentalDays (ก่อน VAT) ──
   rentalVendor?: string       // ผู้ให้เช่า / ชื่อพาร์ทเนอร์
   unitCost?: number           // ราคาเช่าต่อชิ้นต่อวัน (พาร์ทเนอร์ปกติ 0 — กรอกเมื่อมีข้อตกลงค่าใช้จ่าย)
   rentalDays?: number         // จำนวนวันเช่า (default 1)
@@ -529,6 +530,10 @@ export interface VenueConfig {
   tiers?: {
     steps: number; rise: number; run: number; back: boolean; sides: boolean; front?: boolean; curved?: boolean
     aisleWidth?: number; sectionWidth?: number; crossAisle?: number
+    /** ผนังตรงใต้ขั้นแรก สูงกี่ขั้น (นั่งไม่ได้) — ที่นั่งแถวแรกเริ่มที่ความสูง rise × (wallSteps + 1) เช่น Impact Arena = 3 */
+    wallSteps?: number
+    /** มุมระหว่างอัฒจันทร์ข้างกับหน้า/หลังเป็นโค้ง รัศมีกี่เมตร (ที่ขอบพื้นราบ) — 0/ไม่มี = มุมเหลี่ยม เช่น Impact Arena */
+    cornerRadius?: number
   }
   pitch?: { width: number; depth: number } // สนามกีฬากลาง (หญ้า) เช่น ฟุตบอล 105×68 — วาดเป็นพื้นเขียวมีเส้นขอบ
   floorImageId?: string       // → equipmentPlanAssets/{id} (รูป floor plan จริงปูพื้น)
@@ -538,7 +543,7 @@ export interface VenueConfig {
 }
 
 export type LayoutObjectKind =
-  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'generic'
+  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'micro_stand' | 'action_cam' | 'ptz' | 'tele_lens' | 'box_lens' | 'generic'
 
 export interface LayoutObject {
   id: string

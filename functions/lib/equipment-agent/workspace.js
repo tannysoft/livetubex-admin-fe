@@ -32,6 +32,13 @@ class Workspace {
         this.newNodeIds = new Set();
         /** วัตถุที่จะวาง/ย้ายในผังวาง 3D — เว็บแปลงโซนเป็นพิกัดเอง */
         this.placements = [];
+        // ── แก้รายการอุปกรณ์ ──────────────────────────────────────────────────────
+        /**
+         * เลนส์/ขาตั้งที่ไม่ได้ attachTo แต่ปลายทางตรงกับกล้องตัวเดียวพอดี → ติดกล้องตัวนั้นให้เอง
+         * (โมเดลมักลืม attachTo ตอนเพิ่มขาตั้งที่มากับเลนส์เช่า/ขาตั้งเช่าเพิ่ม) · กล้องมีของหมวดนั้นติดอยู่แล้ว = ไม่แตะ
+         */
+        /** แถวที่ถูกสั่งถอดออกจากกล้อง (attachTo "") — ห้ามจับคู่กลับเอง */
+        this.detached = new Set();
         this.items = structuredClone(plan.items ?? []);
         this.diagrams = structuredClone(plan.diagrams ?? []);
         this.equipment = new Map(equipmentList.map((e) => [e.id, e]));
@@ -114,23 +121,23 @@ class Workspace {
         const dateNote = this.usage.noDate
             ? '⚠ แผนนี้ยังไม่มีวันที่ — ตัวเลข "ว่าง" ไม่ได้หักงานอื่น'
             : `ช่วงงาน ${this.plan.date}${this.plan.endDate && this.plan.endDate !== this.plan.date ? ` ถึง ${this.plan.endDate}` : ''} (หักของที่งานอื่นช่วงนี้ใช้แล้ว)`;
-        return rows.length ? `${dateNote}\n${rows.join('\n')}` : 'คลังว่าง — ยังไม่มีอุปกรณ์ในระบบ';
+        return rows.length ? `${dateNote}\n${rows.join('\n')}` : 'สต็อกว่าง — ยังไม่มีอุปกรณ์ในระบบ';
     }
     /**
-     * รายการคลังทั้งหมด (ไม่รวมที่ปลดระวาง) ใส่ใน message แรก — ตัดรอบค้นคลังทิ้งเกือบหมด
-     * คลังใหญ่เกิน → ส่งแค่ภาพรวม ให้โมเดลค้นเอง (กัน context บวม)
+     * รายการสต็อกทั้งหมด (ไม่รวมที่ปลดระวาง) ใส่ใน message แรก — ตัดรอบค้นสต็อกทิ้งเกือบหมด
+     * สต็อกใหญ่เกิน → ส่งแค่ภาพรวม ให้โมเดลค้นเอง (กัน context บวม)
      */
     inventoryCatalog(max = 400) {
         const list = [...this.equipment.values()]
             .filter((e) => e.status !== 'retired')
             .sort((a, b) => a.category.localeCompare(b.category) || ownRank(a) - ownRank(b) || a.code.localeCompare(b.code));
         if (list.length === 0)
-            return 'คลังอุปกรณ์: ว่าง — ยังไม่มีอุปกรณ์ในระบบ';
+            return 'สต็อกอุปกรณ์: ว่าง — ยังไม่มีอุปกรณ์ในระบบ';
         if (list.length > max) {
-            return `คลังอุปกรณ์ (${list.length} รายการ — มากเกินจะแสดงทั้งหมด ใช้ search_inventory ค้น):\n${this.inventoryOverview()}`;
+            return `สต็อกอุปกรณ์ (${list.length} รายการ — มากเกินจะแสดงทั้งหมด ใช้ search_inventory ค้น):\n${this.inventoryOverview()}`;
         }
         return [
-            `คลังอุปกรณ์ทั้งหมด ${list.length} รายการ (id | รหัส | ชื่อ | หมวด | ที่มา | ว่าง/ทั้งหมด | จำนวน port) — ใช้ id จากตรงนี้กับ add_items ได้เลย:`,
+            `สต็อกอุปกรณ์ทั้งหมด ${list.length} รายการ (id | รหัส | ชื่อ | หมวด | ที่มา | ว่าง/ทั้งหมด | จำนวน port) — ใช้ id จากตรงนี้กับ add_items ได้เลย:`,
             this.inventoryOverview().split('\n')[0],
             ...list.map((e) => this.describeEquipment(e)),
         ].join('\n');
@@ -161,7 +168,7 @@ class Workspace {
         return ids.map((id) => {
             const e = this.equipment.get(id);
             if (!e)
-                return `${id}: ไม่พบในคลัง`;
+                return `${id}: ไม่พบในสต็อก`;
             const d = types_1.DEFAULT_PORTS[e.category];
             const ins = e.inputs ?? d.inputs;
             const outs = e.outputs ?? d.outputs;
@@ -287,12 +294,33 @@ class Workspace {
             return `✓ ${label} → ${o.zone}`;
         }).join('\n');
     }
-    // ── แก้รายการอุปกรณ์ ──────────────────────────────────────────────────────
+    autoAttachKits() {
+        const cams = this.items.filter((i) => i.category === 'camera' && !i.attachedTo);
+        const done = [];
+        for (const it of this.items) {
+            if (it.attachedTo || this.detached.has(it.id) || (it.category !== 'lens' && it.category !== 'support') || !it.toLocation?.trim())
+                continue;
+            if (this.items.some((c) => c.attachedTo === it.id))
+                continue;
+            const at = cams.filter((c) => (c.toLocation ?? '').trim() === it.toLocation.trim());
+            if (at.length !== 1)
+                continue;
+            const cam = at[0];
+            if (this.items.some((c) => c.attachedTo === cam.id && c.category === it.category))
+                continue;
+            it.attachedTo = cam.id;
+            done.push(`${it.name} → ${this.labelOf(cam)}`);
+        }
+        return done.length ? `\n↳ จับคู่กับกล้องให้อัตโนมัติ (ปลายทางเดียวกัน): ${done.join(', ')}` : '';
+    }
     addItems(items) {
+        return this.addItemsInner(items) + this.autoAttachKits();
+    }
+    addItemsInner(items) {
         return items.map((req) => {
             const e = this.equipment.get(req.equipmentId);
             if (!e)
-                return `✗ ${req.equipmentId}: ไม่พบในคลัง (ใช้ id จาก search_inventory เท่านั้น)`;
+                return `✗ ${req.equipmentId}: ไม่พบในสต็อก (ใช้ id จาก search_inventory เท่านั้น)`;
             const use = this.parseUseRange(req.useFrom, req.useTo);
             if (typeof use === 'string')
                 return `✗ ${e.name}: ${use}`;
@@ -340,6 +368,9 @@ class Workspace {
         }).join('\n');
     }
     addExternalItems(items) {
+        return this.addExternalInner(items) + this.autoAttachKits();
+    }
+    addExternalInner(items) {
         return items.map((req) => {
             if (!req.name?.trim())
                 return '✗ ต้องมีชื่อ';
@@ -350,7 +381,7 @@ class Workspace {
             const item = {
                 id: (0, types_1.newId)(), name: req.name.trim(), category: req.category, quantity: Math.max(1, Math.floor(req.quantity || 1)),
                 packed: false, returned: false, origin: req.origin ?? 'rental',
-                ...(req.vendor ? { rentalVendor: req.vendor } : {}),
+                ...(req.vendor ? { rentalVendor: req.vendor, fromLocation: req.vendor } : {}),
                 unitCost: Math.max(0, req.unitCost ?? 0),
                 rentalDays: Math.max(1, Math.floor(req.rentalDays ?? (useR ? daysIn(useR).length : 1))),
                 ...use,
@@ -358,10 +389,13 @@ class Workspace {
                 ...(req.note ? { note: req.note } : {}),
             };
             this.items.push(item);
-            return `✓ (นอกคลัง) ${item.name} x${item.quantity} → item ${item.id}`;
+            return `✓ (นอกสต็อก) ${item.name} x${item.quantity} → item ${item.id}`;
         }).join('\n');
     }
     updateItems(updates) {
+        return this.updateItemsInner(updates) + this.autoAttachKits();
+    }
+    updateItemsInner(updates) {
         return updates.map((u) => {
             const it = this.items.find((i) => i.id === u.itemId);
             if (!it)
@@ -408,8 +442,10 @@ class Workspace {
                 it.note = u.note;
             if (u.attachTo != null) {
                 // "" = ถอดออกจากกล้อง
-                if (u.attachTo === '')
+                if (u.attachTo === '') {
                     delete it.attachedTo;
+                    this.detached.add(it.id);
+                }
                 else {
                     const parent = this.items.find((i) => i.id === u.attachTo);
                     if (!parent || parent.id === it.id)
@@ -419,6 +455,7 @@ class Workspace {
                     if (this.items.some((i) => i.attachedTo === it.id))
                         return `✗ ${it.name}: มีของติดอยู่กับแถวนี้ ย้ายไปติดแถวอื่นไม่ได้`;
                     it.attachedTo = parent.id;
+                    this.detached.delete(it.id);
                     // เปลี่ยน/สลับเลนส์ไปกล้องอื่น → ไปอยู่ที่เดียวกับกล้องใหม่ (ถ้าไม่ได้สั่งปลายทางเอง)
                     if (u.toLocation == null && parent.toLocation)
                         it.toLocation = parent.toLocation;
@@ -456,10 +493,11 @@ class Workspace {
         return this.diagrams.find((d) => d.id === id) ?? this.diagrams.find((d) => norm(d.name) === norm(id));
     }
     createDiagram(name) {
-        const existing = this.diagrams.find((d) => norm(d.name) === norm(name));
+        // 1 แผน = 1 ผังโยง (ฝาแฝดของหน้าเว็บที่ไม่มีปุ่มเพิ่มผังแล้ว) — มีผังแล้วคืนผังเดิมเสมอ ไม่ว่าจะขอชื่ออะไร
+        const existing = this.diagrams.find((d) => norm(d.name) === norm(name)) ?? this.diagrams[0];
         if (existing)
-            return `มีผัง "${existing.name}" อยู่แล้ว → ${existing.id} (ใช้ต่อได้ หรือ clear_diagram ก่อนถ้าจะวาดใหม่)`;
-        const d = { id: (0, types_1.newId)(), name: name.trim() || 'Video', nodes: [], edges: [] };
+            return `แผนมีผังโยงผังเดียว "${existing.name}" → ${existing.id} (วาดต่อในผังนี้ — ภาพ/เสียง/FOH/Intercom รวมกัน หรือ clear_diagram ก่อนถ้าจะวาดใหม่)`;
+        const d = { id: (0, types_1.newId)(), name: 'Video', nodes: [], edges: [] };
         this.diagrams.push(d);
         this.newDiagramIds.add(d.id);
         return `✓ สร้างผัง "${d.name}" → ${d.id}`;
@@ -660,7 +698,7 @@ class Workspace {
             if (worst)
                 issues.push({ level: 'error', message: `${e.name}: ใช้ ${worst.need} แต่ว่างแค่ ${Math.max(0, worst.free)}/${e.quantity}${worst.day && pr && pr.start !== pr.end ? ` วันที่ ${worst.day}` : ''}${this.usage.plans.get(id) ? ` (ชนกับ ${this.usage.plans.get(id).join(', ')})` : ''}` });
             if (e.status === 'repair')
-                issues.push({ level: 'warning', message: `${e.name}: สถานะในคลังคือ "ส่งซ่อม"` });
+                issues.push({ level: 'warning', message: `${e.name}: สถานะในสต็อกคือ "ส่งซ่อม"` });
         }
         for (const d of this.diagrams) {
             const ids = new Set(d.nodes.map((n) => n.id));

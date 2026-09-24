@@ -112,9 +112,9 @@ body {
 .celebration-out { animation: celebration-fade-out 0.6s ease forwards; }
 
 /* ── Print (แผนจัดอุปกรณ์ / ผังโยง) ──────────────────────────────────────────
- * รายการ = A4 ตั้ง, ผังโยง = A4 นอน ในงานพิมพ์เดียวกัน ด้วย named page
- * section ที่ติด class จะขึ้นหน้าใหม่เองเพราะชนิดหน้าเปลี่ยน */
-@page { size: A4 portrait; margin: 12mm; }
+ * ทุกหน้าเป็น A4 แนวนอน (รายการ/ตารางสายก็อ่านง่ายกว่าเมื่อกว้าง ไม่สลับแนวไปมา)
+ * section ที่ติด class .print-landscape / .print-portrait = ขึ้นหน้าใหม่ (ชื่อ class เก่า ตอนยังสลับแนว) */
+@page { size: A4 landscape; margin: 10mm; }
 @page diagram { size: A4 landscape; margin: 10mm; }
 @media print {
   body { background: #fff; }

@@ -74,7 +74,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'อุปกรณ์ OB',
     items: [
-      { href: '/admin/equipment/inventory', label: 'คลังอุปกรณ์', icon: CubeIcon },
+      { href: '/admin/equipment/inventory', label: 'สต็อกอุปกรณ์', icon: CubeIcon },
       { href: '/admin/equipment/availability', label: 'ของเหลือตามวันที่', icon: CalendarDaysIcon },
       { href: '/admin/equipment/plans', label: 'แผนจัดของ / ผังโยง', icon: ClipboardDocumentListIcon },
       { href: '/admin/equipment/agent-settings', label: 'ตั้งค่าผู้ช่วย AI', icon: SparklesIcon },

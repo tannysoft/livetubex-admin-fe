@@ -26,3 +26,24 @@ export function setLensLines(on: boolean) {
 export function useLensLines(): [boolean, (on: boolean) => void] {
   return [useSyncExternalStore(subscribe, read, () => true), setLensLines]
 }
+
+// ── ขนาดป้ายชื่อในผังวาง 3D (S / M / L) — ค่าเดียวใช้ทุกที่ เหมือนแนวเลนส์ ──
+export type LabelSize = 'S' | 'M' | 'L'
+export const LABEL_SIZES: LabelSize[] = ['S', 'M', 'L']
+/** ตัวคูณจากขนาดตั้งต้นของสถานที่ (labelSizeFor) */
+export const LABEL_SCALE: Record<LabelSize, number> = { S: 0.6, M: 1, L: 1.6 }
+const SIZE_KEY = 'layout:labelSize'
+
+function readSize(): LabelSize {
+  try { const v = localStorage.getItem(SIZE_KEY); return v === 'S' || v === 'L' ? v : 'M' } catch { return 'M' }
+}
+
+export function setLabelSize(size: LabelSize) {
+  try { localStorage.setItem(SIZE_KEY, size) } catch { /* private mode */ }
+  listeners.forEach((cb) => cb())
+}
+
+/** [ขนาดป้าย, ตั้งค่า] — ตอน prerender = M */
+export function useLabelSize(): [LabelSize, (s: LabelSize) => void] {
+  return [useSyncExternalStore(subscribe, readSize, () => 'M' as LabelSize), setLabelSize]
+}

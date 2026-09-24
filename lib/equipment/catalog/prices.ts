@@ -5,7 +5,7 @@
  *  - ที่มีราคาไทยจริงจากร้าน (proplugin, 4kplus, musicarms) ใช้ตามนั้น
  *  - ที่เหลือประมาณจากราคา USD ของผู้ผลิต × ~40 (อัตราตลาดไทยรวม VAT/นำเข้า ที่เทียบจากรุ่นที่รู้ราคาไทย)
  *  - รุ่นเก่า/เลิกผลิต (Broadcast Panel, HyperDeck ตัวเทา ฯลฯ) ไม่ใส่ราคา — ราคามือสองต่างกันมาก ให้กรอกเอง
- *  - ลำโพง ADAM ร้านไทยขายเป็นคู่ → หาร 2 เป็นราคาต่อข้าง (คลังนับเป็นชิ้น)
+ *  - ลำโพง ADAM ร้านไทยขายเป็นคู่ → หาร 2 เป็นราคาต่อข้าง (สต็อกนับเป็นชิ้น)
  * key = ชื่อรุ่น (name) ในแค็ตตาล็อก · ค่าเป็นตัวเลข หรือ [ตัวเลข, หมายเหตุ]
  */
 export type PriceEntry = number | [number, string]
@@ -403,4 +403,34 @@ export const PRICE_THB: Record<string, PriceEntry> = {
   'Lumix GH7': [69990, 'body อย่างเดียว'],
   'Panasonic DMW-XLR1 (XLR adapter)': 12900,
   'Panasonic DMW-XLR2 (XLR adapter 4ch 32-bit)': 17900,
+
+  // ── AJA (USD × ~40 โดยประมาณ) ─────────────────────────────────────────────
+  'AJA Hi5-12G': 24000,
+  'AJA HA5-12G': 26000,
+  'AJA Hi5-4K-Plus': 32000,
+  'AJA HA5-4K': 36000,
+  'AJA Hi5-3G': 12000,
+  'AJA HA5': 16000,
+  'AJA ROI-SDI': 36000,
+  'AJA ROI-HDMI': 36000,
+  'AJA 12G-AM': 40000,
+  'AJA ColorBox': 80000,
+  'AJA 12GDA 1×6 12G-SDI DA': 20000,
+  'AJA 3GDA 1×6 3G-SDI DA': 12000,
+  'AJA FiDO-T-12G (SDI → Fiber)': 28000,
+  'AJA FiDO-R-12G (Fiber → SDI)': 28000,
+  'AJA FiDO-TR-12G (Transceiver)': 40000,
+  'AJA FS-HDR': 300000,
+  'AJA FS4': 200000,
+  'AJA Ki Pro Ultra 12G': 160000,
+  'AJA Ki Pro GO2': 120000,
+  'AJA HELO Plus': 60000,
+  'AJA BRIDGE LIVE': 400000,
+  'AJA U-TAP SDI': 14000,
+  'AJA U-TAP HDMI': 14000,
+  'AJA Io X3': 100000,
+  'AJA KONA 5': 90000,
+  'AJA KUMO 1604 (16×4)': 60000,
+  'AJA KUMO 1616-12G (16×16)': 160000,
+  'AJA KUMO 3232-12G (32×32)': 320000,
 }

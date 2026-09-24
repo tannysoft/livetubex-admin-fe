@@ -20,7 +20,7 @@ exports.LAYOUT_ZONES = [
     'stage_front_left', 'stage_front_center', 'stage_front_right', 'on_stage',
     'floor_left', 'floor_right', 'foh_center', 'back_left', 'back_right', 'ob_area',
 ];
-exports.LAYOUT_KINDS = ['camera', 'jib', 'ob_truck', 'desk', 'screen', 'speaker', 'riser', 'podium', 'gimbal', 'remote_head', 'generic'];
+exports.LAYOUT_KINDS = ['camera', 'jib', 'ob_truck', 'desk', 'screen', 'speaker', 'riser', 'podium', 'gimbal', 'remote_head', 'micro_stand', 'action_cam', 'ptz', 'tele_lens', 'box_lens', 'generic'];
 exports.SIGNALS = ['sdi', 'hdmi', 'fiber', 'audio', 'network', 'intercom', 'control', 'power', 'other'];
 exports.DEFAULT_PORTS = {
     camera: { inputs: [], outputs: ['SDI OUT'] },

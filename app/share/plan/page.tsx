@@ -4,19 +4,21 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
-  ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, LockClosedIcon, MagnifyingGlassIcon, MapPinIcon, CalendarDaysIcon,
+  ArrowDownTrayIcon, ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, LockClosedIcon, MagnifyingGlassIcon, MapPinIcon, CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import ZoomPan from '@/components/ui/ZoomPan'
 import { Skeleton } from '@/components/ui/Skeleton'
 import DiagramGraph from '@/components/admin/equipment/DiagramGraph'
-import { EQUIPMENT_CATEGORIES, SIGNAL_TYPES } from '@/lib/equipment/constants'
+import AtemExportModal from '@/components/admin/equipment/AtemExportModal'
+import { SIGNAL_TYPES } from '@/lib/equipment/constants'
 import { NOTE_MAX_LINES, diagramBounds, wrapNote } from '@/lib/equipment/diagram'
-import { camTag, groupItems, type GroupBy } from '@/lib/equipment/item-groups'
+import { camLabels, camTag, groupItems, isCamOnlyNote, type CamLabels, type GroupBy } from '@/lib/equipment/item-groups'
 import { formatFullLabel } from '@/lib/equipment/video-format'
-import { recordingsLabel } from '@/lib/equipment/recording-format'
+import RecordingList from '@/components/admin/equipment/RecordingList'
 import { fohSummary } from '@/lib/equipment/foh-feeds'
-import { useLensLines } from '@/lib/equipment/lens-lines'
+import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
+import LabelSizePicker from '@/components/admin/equipment/LabelSizePicker'
 import { itemUseLabel } from '@/lib/equipment/availability'
 import { fetchSharedPlan, shareErrorMessage, type SharedPlan, type SharedPlanItem } from '@/lib/equipment/plan-share'
 import { formatDate, formatDateTime } from '@/lib/utils'
@@ -204,22 +206,29 @@ function ItemsTab({ plan }: { plan: SharedPlan }) {
     const ids = new Set(plan.items.filter(hit).map((i) => i.id))
     return plan.items.filter((i) => ids.has(i.id) || (i.attachedTo && ids.has(i.attachedTo)))
   }, [plan.items, q])
-  const groups = groupItems(items, groupBy)
+  const labels = useMemo(() => camLabels(plan), [plan])
+  const groups = groupItems(items, groupBy, labels)
   const totalQty = plan.items.reduce((s, i) => s + (i.quantity || 0), 0)
 
   const info = [
     plan.videoFormat && { label: 'ระบบภาพ', value: formatFullLabel(plan.videoFormat) },
-    recordingsLabel(plan.recordings, plan.videoFormat) && { label: 'บันทึก', value: recordingsLabel(plan.recordings, plan.videoFormat) },
     fohSummary(plan.fohFeeds) && { label: 'ส่งทีม Visual (FOH)', value: fohSummary(plan.fohFeeds) },
   ].filter(Boolean) as { label: string; value: string }[]
+  const hasRecordings = (plan.recordings ?? []).some((r) => r.codec)
 
   return (
     <div className="px-3 py-3 space-y-3 lg:px-6 lg:py-4">
-      {(info.length > 0 || plan.notes) && (
+      {(info.length > 0 || hasRecordings || plan.notes) && (
         <section className="bg-white rounded-2xl border border-gray-100 px-4 py-3 space-y-1.5 text-sm lg:flex lg:flex-wrap lg:gap-x-8 lg:gap-y-1 lg:space-y-0">
           {info.map((r) => (
             <p key={r.label}><span className="text-gray-500">{r.label}:</span> <b className="font-semibold">{r.value}</b></p>
           ))}
+          {hasRecordings && (
+            <div className="flex gap-1.5 lg:basis-full">
+              <span className="text-gray-500 shrink-0">บันทึก:</span>
+              <RecordingList recordings={plan.recordings} main={plan.videoFormat} compact />
+            </div>
+          )}
           {plan.notes && <p className="text-gray-700 whitespace-pre-wrap pt-1 border-t border-gray-100 lg:basis-full lg:mt-1">{plan.notes}</p>}
         </section>
       )}
@@ -260,7 +269,7 @@ function ItemsTab({ plan }: { plan: SharedPlan }) {
           </h2>
           <ul className="divide-y divide-gray-50">
             {g.rows.map(({ item, child }) => (
-              <ItemRow key={item.id} item={item} child={child} groupBy={groupBy} useLabel={itemUseLabel(item, plan)} />
+              <ItemRow key={item.id} item={item} child={child} groupBy={groupBy} useLabel={itemUseLabel(item, plan)} cardTags={g.rows.map((r) => camTag(r.item, labels)).filter(Boolean)} cardTitle={g.title} labels={labels} />
             ))}
           </ul>
         </section>
@@ -270,28 +279,78 @@ function ItemsTab({ plan }: { plan: SharedPlan }) {
   )
 }
 
-function ItemRow({ item, child, groupBy, useLabel }: { item: SharedPlanItem; child: boolean; groupBy: GroupBy; useLabel: string }) {
-  const category = EQUIPMENT_CATEGORIES.find((c) => c.value === item.category)?.label
-  // จัดตามปลายทาง → หัวกลุ่มบอกปลายทางแล้ว บรรทัดรองบอก "หยิบจาก" แทน
+const NOTE_KIND_PREFIX = /^(เลนส์|ขาตั้งกล้อง|ขาตั้ง|gimbal|wireless|lens|tripod)(?=[\s,(]|$)/i
+const NOTE_FILLER = new Set(['ที่', 'ของ', 'จาก', 'กับ', 'และ', 'ใช้', '+'])
+const NOTE_RENTAL_WORDS = new Set(['เช่า', 'ที่เช่า', 'เช่ามา', 'ยืม', 'พาร์ทเนอร์'])
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * ตัดส่วนของหมายเหตุที่การ์ดโชว์อยู่แล้ว — เบอร์กล้องที่มีป้ายในการ์ดนี้ (CAM1 / CAM 1), ชื่ออุปกรณ์ซ้ำ,
+ * ชื่อผู้ให้เช่า/พาร์ทเนอร์ที่อยู่ในป้าย ("ของ Windblue") แล้วเก็บวงเล็บ/เครื่องหมายที่ค้าง · เหลือว่าง = ไม่โชว์
+ * แก้แค่ตอนแสดงผล — หมายเหตุในแผนไม่เปลี่ยน
+ */
+function tidyNote(note: string | undefined, item: SharedPlanItem, cardTags: string[], cardTitle = ''): string {
+  let t = (note ?? '').trim()
+  if (!t) return ''
+  for (const tag of new Set(cardTags)) t = t.replace(new RegExp(`\\bcam\\s*-?\\s*${tag.slice(4)}(?!\\d)`, 'gi'), ' ')
+  const names = [item.name, item.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim()].filter((n) => n.length >= 4)
+  for (const n of names) t = t.replace(new RegExp(escapeRe(n), 'gi'), ' ')
+  // "เจ้าเดียวกับ GH7" / "ของเจ้าเดียวกัน" — ป้ายเจ้าของบอกอยู่แล้ว
+  t = t.replace(/(ของ\s*)?เจ้าเดียว(กัน)?(\s*กับ\s*[^\s,()·]+)?/g, ' ')
+  const from = item.fromLocation?.trim()
+  if (from && (item.origin === 'rental' || item.origin === 'partner')) t = t.replace(new RegExp(`(ของ\\s*)?${escapeRe(from)}`, 'gi'), ' ')
+  let prev = ''
+  while (prev !== t) {
+    prev = t
+    t = t
+      .replace(/\(\s*[-–—:·,]?\s*\)/g, ' ')            // วงเล็บว่าง
+      .replace(/\(\s+/g, '(').replace(/\s+\)/g, ')')
+      .replace(/\s+([,，])/g, '$1')
+      .replace(/^[\s\-–—:·,]+|[\s\-–—:·,]+$/g, '')      // เครื่องหมายค้างหัว/ท้าย
+      .replace(/\s+(ติด|ของ|ใส่กับ|สำหรับ|ที่|กับ)$/, '')     // คำเชื่อมที่ค้างหลังตัดเบอร์กล้อง ("TX ติด CAM5" → "TX")
+      .replace(NOTE_KIND_PREFIX, '')                        // ชนิดของที่ชื่อบอกอยู่แล้ว ("เลนส์ 16x" → "16x")
+      .replace(/^\(([^()]*)\)$/, '$1')                     // เหลือแต่วงเล็บทั้งก้อน → แกะออก
+      .replace(/\s{2,}/g, ' ')
+  }
+  // ทุกคำรู้อยู่แล้วจากการ์ด (ชื่อของ · ป้ายเช่า/พาร์ทเนอร์ · หัวการ์ด) = ไม่มีข้อมูลใหม่
+  // เช่น เลนส์ "Fujinon Box Lens 76x" [เช่า · SJ Grip Service] ในการ์ด "จุดกล้อง 3 (TELE 76x)" → "TELE 76x (SJ Grip)" ไม่ต้องโชว์
+  const known = [item.name, item.fromLocation, item.toLocation, cardTitle].filter(Boolean).join(' ').toLowerCase()
+  const outside = item.origin === 'rental' || item.origin === 'partner'
+  const isKnown = (w: string) => NOTE_FILLER.has(w) || (outside && NOTE_RENTAL_WORDS.has(w)) || known.includes(w)
+  const allKnown = (x: string) => x.toLowerCase().split(/[\s,()·:/\-–—]+/).filter(Boolean).every(isKnown)
+  t = t.replace(/\s*\(([^()]*)\)/g, (m, inner: string) => (allKnown(inner) ? '' : m)).replace(/^[\s\-–—:·,]+/, '').trim()
+  return allKnown(t) ? '' : t
+}
+
+/**
+ * แถวอุปกรณ์หน้าแชร์ — ชื่อ + ป้าย + รหัส / หมายเหตุ · หยิบจาก (ไม่มี = บรรทัดเดียว)
+ * ตัดที่ซ้ำ: หมวด (ดูจากชื่อได้), หมายเหตุที่มีแค่เบอร์กล้อง, "หยิบจาก" ของเช่า/พาร์ทเนอร์ (อยู่ในป้ายแล้ว)
+ */
+function ItemRow({ item, child, groupBy, useLabel, cardTags, cardTitle, labels }: { item: SharedPlanItem; child: boolean; groupBy: GroupBy; useLabel: string; cardTags: string[]; cardTitle: string; labels: CamLabels }) {
+  const outside = item.origin === 'rental' || item.origin === 'partner'
+  const from = item.fromLocation?.trim()
   const where = groupBy === 'destination'
-    ? item.fromLocation && `หยิบจาก ${item.fromLocation}`
-    : [item.fromLocation, item.toLocation].filter(Boolean).join(' → ')
+    ? (!outside && from ? `จาก ${from}` : '')
+    : [outside ? '' : from, item.toLocation].filter(Boolean).join(' → ')
+  const note = isCamOnlyNote(item.note) ? '' : tidyNote(item.note, item, cardTags, cardTitle)
+  const tag = camTag(item, labels)
   return (
-    <li className={`px-4 py-2.5 ${child ? 'pl-9 bg-gray-50/40' : ''}`}>
+    <li className={`px-4 py-2 ${child ? 'pl-9 bg-gray-50/40' : ''}`}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-gray-900 leading-snug">
             {child && <span className="text-gray-400 mr-1">↳</span>}
-            {camTag(item) && <span className="mr-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold align-middle bg-gray-900 text-white tabular-nums">{camTag(item)}</span>}
+            {tag && <span className="mr-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold align-middle bg-gray-900 text-white tabular-nums">{tag}</span>}
             {item.name}
-            {item.origin === 'rental' && <Badge className="bg-amber-100 text-amber-800">เช่า</Badge>}
-            {item.origin === 'partner' && <Badge className="bg-sky-100 text-sky-800">พาร์ทเนอร์</Badge>}
+            {item.origin === 'rental' && <Badge className="bg-amber-100 text-amber-800">เช่า{from ? ` · ${from}` : ''}</Badge>}
+            {item.origin === 'partner' && <Badge className="bg-sky-100 text-sky-800">{from || 'พาร์ทเนอร์'}</Badge>}
             {useLabel && <Badge className="bg-violet-100 text-violet-800">{useLabel}</Badge>}
+            {/* รหัสต่อท้ายบรรทัดชื่อ — ไม่กินบรรทัดเอง เมื่อไม่มีหมายเหตุแถวเหลือบรรทัดเดียว */}
+            {item.code && <span className="ml-1.5 align-middle text-[11px] font-normal text-gray-400 whitespace-nowrap">{item.code}</span>}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {[item.code, groupBy === 'destination' ? category : '', where].filter(Boolean).join(' · ')}
-          </p>
-          {item.note && <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">{item.note}</p>}
+          {(note || where) && (
+            <p className="text-xs text-gray-600 mt-0.5 leading-snug">{[note, where].filter(Boolean).join(' · ')}</p>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold tabular-nums">×{item.quantity}</p>
@@ -327,14 +386,32 @@ function Chips<T extends { id: string; name: string }>({ list, active, onPick }:
 
 function DiagramsTab({ diagrams }: { diagrams: PlanDiagram[] }) {
   const [activeId, setActiveId] = useState(diagrams[0]?.id ?? '')
+  const [atemFor, setAtemFor] = useState<string | null>(null)
   const diagram = diagrams.find((d) => d.id === activeId) ?? diagrams[0]
   if (!diagram) return <p className="py-16 text-center text-sm text-gray-400">ยังไม่มีผังโยง</p>
+  // ทีมหน้างานโหลดไฟล์ตั้งค่า ATEM ไป Restore ที่เครื่องเองได้ (ชื่อ input / AUX / Multiview จากผัง)
+  const switchers = diagram.nodes.filter((n) => n.category === 'switcher' && n.inputs.length > 0)
+  const atemNode = switchers.find((n) => n.id === atemFor)
   const b = diagramBounds(diagram, 30)
   const used = SIGNAL_TYPES.filter((s) => diagram.edges.some((e) => e.signal === s.value))
   const longNotes = diagram.nodes.filter((n) => wrapNote(n.note, 999).length > NOTE_MAX_LINES)
   return (
     <div>
       <Chips list={diagrams} active={diagram.id} onPick={setActiveId} />
+      {switchers.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto px-3 lg:px-6 pt-2 [scrollbar-width:none]">
+          {switchers.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => setAtemFor(n.id)}
+              className="shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-900 text-white hover:bg-gray-800"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" /> Download XML ATEM{switchers.length > 1 ? ` · ${n.label}` : ''}
+            </button>
+          ))}
+        </div>
+      )}
+      {atemNode && <AtemExportModal key={atemNode.id} isOpen onClose={() => setAtemFor(null)} diagram={diagram} switcher={atemNode} />}
       <div className="px-3 pt-2 lg:px-6">
         {/* key = รีเซ็ตซูมเมื่อเปลี่ยนผัง · ผังใหญ่ซูมได้ลึกขึ้น · desktop หัวเตี้ยกว่า ผังได้ความสูงเพิ่ม */}
         <ZoomPan key={diagram.id} maxScale={Math.max(6, b.w / 250)} className="h-[calc(100dvh-190px)] lg:h-[calc(100dvh-150px)] min-h-[360px] bg-white rounded-2xl border border-gray-100">
@@ -383,6 +460,7 @@ function LayoutsTab({ layouts }: { layouts: PlanLayout[] }) {
   const [activeId, setActiveId] = useState(layouts[0]?.id ?? '')
   const [view, setView] = useState<'top' | 'perspective'>('top')
   const [lensLines, setLensLines] = useLensLines()
+  const [labelSize] = useLabelSize()
   const layout = layouts.find((l) => l.id === activeId) ?? layouts[0]
 
   if (!layout) return null
@@ -390,7 +468,7 @@ function LayoutsTab({ layouts }: { layouts: PlanLayout[] }) {
     <div>
       <Chips list={layouts} active={layout.id} onPick={setActiveId} />
       <div className="px-3 pt-2 space-y-2 lg:px-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl border border-gray-200 bg-white p-0.5 text-xs font-medium w-fit">
             {([['top', 'มุมบน'], ['perspective', 'มุมเอียง']] as const).map(([id, label]) => (
               <button key={id} onClick={() => setView(id)} className={`px-4 py-2 rounded-lg ${view === id ? 'bg-brand-soft text-gray-900' : 'text-gray-500'}`}>{label}</button>
@@ -403,11 +481,13 @@ function LayoutsTab({ layouts }: { layouts: PlanLayout[] }) {
           >
             {lensLines ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />} แนวเลนส์
           </button>
+          <LabelSizePicker className="!rounded-xl !p-1" />
         </div>
         <LayoutViewer
           layout={layout}
           view={view}
           lensLines={lensLines}
+          labelScale={LABEL_SCALE[labelSize]}
           className="h-[calc(100dvh-230px)] lg:h-[calc(100dvh-190px)] min-h-[320px] bg-white rounded-2xl border border-gray-100"
         />
         <p className="text-[11px] text-gray-400 text-center">

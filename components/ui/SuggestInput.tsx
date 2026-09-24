@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 interface SuggestInputProps {
   value: string
@@ -17,6 +17,17 @@ interface SuggestInputProps {
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
 
+/** กล่องที่ position: fixed อ้างอิง — ปกติคือจอ แต่ถ้ามีบรรพบุรุษที่มี transform/filter (เช่น panel ของ Modal) จะอ้างกล่องนั้นแทน */
+function fixedContainer(el: HTMLElement): DOMRect | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const cs = getComputedStyle(p)
+    if (cs.transform !== 'none' || cs.filter !== 'none' || cs.perspective !== 'none' || /paint|layout|strict|content/.test(cs.contain)) return p.getBoundingClientRect()
+  }
+  return null
+}
+
+type ListPos = { left: number; width: number; top?: number; bottom?: number; maxHeight: number }
+
 /**
  * ช่องพิมพ์ + รายการแนะนำ (แทน <datalist> ที่ Safari/มือถือโชว์ไม่ค่อยติดและกรองไม่ได้)
  * โฟกัสแล้วเห็นตัวเลือกทั้งหมดทันที พิมพ์แล้วกรองแบบ "มีคำนี้อยู่ตรงไหนก็ได้" · ↑↓ Enter Esc ใช้ได้
@@ -26,6 +37,9 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
   const [open, setOpen] = useState(false)
   const [idx, setIdx] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // รายการลอยแบบ fixed — ไม่โดนตัดโดยกล่องที่ overflow (เช่น ตารางที่เลื่อนแนวนอน) และเปิดขึ้นบนเมื่อข้างล่างไม่พอ
+  const [pos, setPos] = useState<ListPos | null>(null)
 
   const q = norm(value)
   const list = [...new Set(options.filter(Boolean))]
@@ -34,6 +48,30 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
     .sort((a, b) => (Number(!norm(a).startsWith(q)) - Number(!norm(b).startsWith(q))) || a.localeCompare(b, 'th'))
     .slice(0, 12)
   const showing = open && list.length > 0 && !(list.length === 1 && norm(list[0]) === q)
+
+  const place = useCallback(() => {
+    const input = inputRef.current
+    if (!input) return
+    const r = input.getBoundingClientRect()
+    const cb = fixedContainer(input)
+    const offX = cb?.left ?? 0
+    const offY = cb?.top ?? 0
+    const cbBottom = cb ? cb.bottom : window.innerHeight
+    const below = window.innerHeight - r.bottom
+    const up = below < 220 && r.top > below
+    const room = (up ? r.top : below) - 12
+    setPos(up
+      ? { left: r.left - offX, width: r.width, bottom: cbBottom - r.top + 4, maxHeight: Math.max(120, Math.min(240, room)) }
+      : { left: r.left - offX, width: r.width, top: r.bottom - offY + 4, maxHeight: Math.max(120, Math.min(240, room)) })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!showing) return
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place) }
+  }, [showing, place])
 
   useEffect(() => {
     if (!open) return
@@ -64,6 +102,7 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
   return (
     <div ref={boxRef} className="relative">
       <input
+        ref={inputRef}
         className={className}
         value={value}
         disabled={disabled}
@@ -73,8 +112,11 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
         onFocus={() => { setOpen(true); setIdx(0) }}
         onKeyDown={onKeyDown}
       />
-      {showing && (
-        <ul className="absolute z-[210] left-0 right-0 mt-1 max-h-60 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg text-sm">
+      {showing && pos && (
+        <ul
+          style={{ left: pos.left, width: pos.width, minWidth: 180, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
+          className="fixed z-[210] overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg text-sm"
+        >
           {list.map((o, i) => (
             <li key={o}>
               <button

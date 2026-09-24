@@ -67,7 +67,7 @@ export const HOLLYLAND_PRODUCTS: CatalogProduct[] = [
   { brand: H, name: 'Pyro 7', category: 'monitor', aliases: [...A, 'monitor', 'tx', 'rx'], inputs: ['HDMI IN', 'SDI IN'], outputs: ['HDMI OUT', 'SDI OUT'], ios: ['USB-C'] },
 
   // ── Wireless intercom ────────────────────────────────────────────────────
-  // ชุด = 1 รายการในคลัง (นับเป็น 1 ชุด) และเป็น 1 กล่องในผังโยง — port คือของตัวแม่/base station
+  // ชุด = 1 รายการในสต็อก (นับเป็น 1 ชุด) และเป็น 1 กล่องในผังโยง — port คือของตัวแม่/base station
   // ตัวเดี่ยว (เพิ่ม/อะไหล่) เก็บไว้ท้ายชุดสำหรับซื้อเพิ่มทีหลัง
   // Solidcom C1 — master headset + remote headsets (ไม่ต้องมี base)
   ...[2, 3, 4, 6, 8].map((n) => hsSet('Solidcom C1', n)),

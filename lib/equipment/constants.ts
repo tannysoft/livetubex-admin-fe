@@ -97,4 +97,3 @@ export function signalMeta(s: SignalType) {
 }
 
 /** ชื่อผังที่ใช้บ่อย — เป็นแค่ปุ่มลัดตอนสร้างผังใหม่ */
-export const DIAGRAM_PRESETS = ['Video', 'Audio', 'Intercom / Tally', 'Network', 'Power']

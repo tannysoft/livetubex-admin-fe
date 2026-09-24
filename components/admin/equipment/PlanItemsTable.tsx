@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import Link from 'next/link'
-import { ArrowRightIcon, TrashIcon, CubeIcon, PlusIcon, LinkSlashIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
+import { ArrowRightIcon, TrashIcon, CubeIcon, PlusIcon, LinkSlashIcon, CalendarDaysIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import FormCheckbox from '@/components/ui/FormCheckbox'
 import SuggestInput from '@/components/ui/SuggestInput'
@@ -11,26 +11,32 @@ import { ORIGIN_LABEL, isRentalItem, itemCost, itemOrigin } from '@/lib/equipmen
 import { clipItemRange, daysIn, planRange } from '@/lib/equipment/availability'
 import { formatCurrency, formatDatePill } from '@/lib/utils'
 import type { EquipmentCategory, PlanItem } from '@/lib/types'
-import { camTag, sortByCam } from '@/lib/equipment/item-groups'
+import { camTag, sortByCam, type CamLabels } from '@/lib/equipment/item-groups'
+import { teleTripodFor } from '@/lib/equipment/tele-tripod'
 
 interface PlanItemsTableProps {
   items: PlanItem[]
   onChange: (items: PlanItem[]) => void
-  /** ผู้ให้เช่า/พาร์ทเนอร์ที่รู้จัก (จากคลัง + ผู้ขายในบัญชี) — autocomplete ช่องผู้รับเงิน */
+  /** ผู้ให้เช่า/พาร์ทเนอร์ที่รู้จัก (จากสต็อก + ผู้ขายในบัญชี) — autocomplete ช่องผู้รับเงิน */
   vendorOptions?: string[]
-  /** ที่เก็บ/ปลายทางที่รู้จัก (จากคลัง) — เพิ่มจากที่พิมพ์ในแผนนี้ */
+  /** ที่เก็บ/ปลายทางที่รู้จัก (จากสต็อก) — เพิ่มจากที่พิมพ์ในแผนนี้ */
   locationOptions?: string[]
   /** กด "+ เลนส์" ที่แถวกล้อง → เปิด picker เลือกเลนส์มาจับคู่ (ไม่ส่ง = ไม่มีปุ่ม) */
-  onAddLens?: (camera: PlanItem) => void
+  /** กล้อง → เพิ่มของในชุด (ขาตั้ง, converter, จอ ฯลฯ) จากสต็อกบริษัท/เช่า/พาร์ทเนอร์ หรือเช่าเพิ่มนอกสต็อก */
+  onAddKit?: (camera: PlanItem) => void
   /** วันงาน — งานหลายวันถึงจะกำหนด "วันที่ใช้" รายแถวได้ (ไม่ล็อกคิวเกินวันที่ใช้จริง) */
   planDate?: string
   planEndDate?: string
+  /** planItemId → "CAM n" จากผังโยง/ผัง 3D (camLabels) — ป้ายกล้องไม่ต้องพึ่งหมายเหตุ */
+  camLabels?: CamLabels
+  /** แถวนอกสต็อก (พิมพ์เอง) → เปิดตัวเลือกของเช่า/พาร์ทเนอร์ในสต็อกมาแทนแถวนี้ */
+  onPickFromStock?: (item: PlanItem) => void
 }
 
 const cellInput = 'w-full px-2 py-1 rounded-lg border border-transparent bg-transparent text-sm hover:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
 /** รายการจัดของ — แก้ในตารางได้ทุกช่อง จัดกลุ่มตามหมวด */
-export default function PlanItemsTable({ items, onChange, vendorOptions = [], locationOptions = [], onAddLens, planDate, planEndDate }: PlanItemsTableProps) {
+export default function PlanItemsTable({ items, onChange, vendorOptions = [], locationOptions = [], onAddKit, planDate, planEndDate, camLabels, onPickFromStock }: PlanItemsTableProps) {
   const [bulkTo, setBulkTo] = useState('')
   // ── วันที่ใช้รายแถว (เฉพาะงานหลายวัน) ──
   const pr = planRange({ date: planDate, endDate: planEndDate })
@@ -86,14 +92,17 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
   const isChild = (it: PlanItem) => !!it.attachedTo && it.attachedTo !== it.id && ids.has(it.attachedTo)
   const childrenOf = (id: string) => items.filter((c) => c.attachedTo === id && isChild(c))
   const cameras = items.filter((i) => i.category === 'camera' && !isChild(i))
-  const cameraLabel = (c: PlanItem) => `${camTag(c) ? `${camTag(c)} · ` : ''}${c.name || 'กล้อง'}${c.code ? ` (${c.code})` : ''}`
+  const cameraLabel = (c: PlanItem) => `${camTag(c, camLabels) ? `${camTag(c, camLabels)} · ` : ''}${c.name || 'กล้อง'}${c.code ? ` (${c.code})` : ''}`
 
   const attach = (it: PlanItem, parentId: string) => {
     const parent = items.find((p) => p.id === parentId)
     // ติดกล้องไหน ปลายทางตามกล้องนั้น (ถ้ายังไม่ได้ตั้งเอง)
-    patch(it.id, parentId
-      ? { attachedTo: parentId, ...(!it.toLocation && parent?.toLocation ? { toLocation: parent.toLocation } : {}) }
-      : { attachedTo: undefined })
+    const next = items.map((x) => (x.id !== it.id ? x : parentId
+      ? { ...x, attachedTo: parentId, ...(!x.toLocation && parent?.toLocation ? { toLocation: parent.toLocation } : {}) }
+      : { ...x, attachedTo: undefined }))
+    // เลนส์ tele เช่า → ขาตั้งที่มากับเลนส์ติดกล้องตัวนั้นด้วย
+    const tripod = parentId ? teleTripodFor(it, parent, next) : null
+    onChange(tripod ? [...next, tripod] : next)
   }
 
   /** เปลี่ยนปลายทางกล้อง → เลนส์ที่ติดอยู่ (ปลายทางว่างหรือเดิมตรงกับกล้อง) ย้ายตาม */
@@ -126,13 +135,13 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
       <div className="py-16 text-center">
         <CubeIcon className="w-10 h-10 text-gray-300 mx-auto" />
         <p className="text-gray-400 text-sm mt-3">ยังไม่มีอุปกรณ์ในแผนนี้</p>
-        <p className="text-gray-400 text-xs mt-1">กด “เพิ่มจากคลัง” เพื่อเลือกของที่จะใช้</p>
+        <p className="text-gray-400 text-xs mt-1">กด “เพิ่มจากสต็อก” เพื่อเลือกของที่จะใช้</p>
       </div>
     )
   }
 
   const groups = EQUIPMENT_CATEGORIES
-    .map((c) => ({ ...c, rows: sortByCam(items.filter((i) => i.category === c.value && !isChild(i))) }))
+    .map((c) => ({ ...c, rows: sortByCam(items.filter((i) => i.category === c.value && !isChild(i)), camLabels) }))
     .filter((g) => g.rows.length > 0)
 
   /** ใต้ชื่อ: วันที่ใช้ — ใช้ไม่เต็มงาน = ป้ายวัน (กดแก้) · เต็มงาน = ลิงก์จางๆ โผล่ตอนชี้แถว */
@@ -161,11 +170,11 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
         </button>
       )
     }
-    if (it.category === 'camera' && onAddLens) {
-      const lenses = childrenOf(it.id).filter((c) => c.category === 'lens').length
+    if (it.category === 'camera' && onAddKit) {
+      // เลนส์ ขาตั้ง converter ฯลฯ เลือกจากหน้าต่างเดียวกัน (ทุกหมวด ทุกที่มา + เช่าเพิ่มนอกสต็อก)
       return (
-        <button type="button" onClick={() => onAddLens(it)} className="inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline">
-          <PlusIcon className="w-3 h-3" /> {lenses ? 'เพิ่มเลนส์' : 'เลือกเลนส์'}
+        <button type="button" onClick={() => onAddKit(it)} className="inline-flex items-center gap-1 text-[11px] font-medium text-brand hover:underline">
+          <PlusIcon className="w-3 h-3" /> เพิ่มของ
         </button>
       )
     }
@@ -185,12 +194,22 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
     return null
   }
 
-  /** บรรทัดรองใต้ชื่อ: รหัส · จับคู่กล้อง · วันที่ใช้ — รวมบรรทัดเดียว แถวไม่สูงเกิน */
-  const metaLine = (it: PlanItem, child: boolean) => (
-    <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5 min-h-[18px]">
+  /**
+   * บรรทัดรองใต้ชื่อ: รหัส · ป้ายเช่า/พาร์ทเนอร์ · วันที่ใช้ · ปุ่มจับคู่ — รวมบรรทัดเดียว
+   * ปุ่มที่โผล่ตอนชี้แถว (ถอดออกจากกล้อง / กำหนดวัน) อยู่ท้ายสุด ไม่ดันของที่เห็นอยู่ให้เว้นช่อง
+   */
+  const metaLine = (it: PlanItem, child: boolean, badge = true) => (
+    <div className="flex items-center gap-x-2 gap-y-1 flex-wrap mt-0.5 min-h-[18px]">
       {it.code && <span className="text-[11px] text-gray-400">{it.code}</span>}
+      {badge && costBadge(it)}
+      {!it.equipmentId && !it.expenseId && onPickFromStock && (
+        <button type="button" onClick={() => onPickFromStock(it)} className="inline-flex items-center gap-1 px-1.5 py-px rounded border border-dashed border-gray-300 text-[11px] font-medium text-gray-600 hover:border-brand hover:text-brand">
+          <ArrowsRightLeftIcon className="w-3 h-3" /> เลือกจากสต็อก (เช่า / พาร์ทเนอร์)
+        </button>
+      )}
+      {isPartial(it) && dateControl(it)}
       {pairControls(it, child)}
-      {dateControl(it)}
+      {!isPartial(it) && dateControl(it)}
     </div>
   )
 
@@ -205,7 +224,7 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
         onClick={() => toggleCost(it.id)}
         disabled={costIncomplete(it)}
         title={showCostRow(it) ? 'ซ่อนแถวค่าใช้จ่าย' : partner ? 'แก้ชื่อพาร์ทเนอร์ / ใส่ค่าใช้จ่าย' : 'แก้ผู้ให้เช่า / ราคา / จำนวนวัน'}
-        className={`px-1.5 py-0.5 rounded text-[10px] font-medium align-middle whitespace-nowrap disabled:cursor-default ${partner ? 'bg-sky-100 text-sky-700 hover:bg-sky-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'} ${className}`}
+        className={`px-1.5 py-px rounded text-[11px] font-medium whitespace-nowrap disabled:cursor-default ${partner ? 'bg-sky-100 text-sky-700 hover:bg-sky-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'} ${className}`}
       >
         {ORIGIN_LABEL[itemOrigin(it)]}{it.rentalVendor?.trim() ? ` · ${it.rentalVendor.trim()}` : ''}
         {(cost > 0 || !partner) && !costIncomplete(it) && ` · ${formatCurrency(cost)}`}
@@ -225,19 +244,17 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
         {it.equipmentId ? (
           <div className="px-2">
             <p className="font-medium text-gray-900 leading-snug">
-              {camTag(it) && <span className="mr-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold align-middle bg-gray-900 text-white tabular-nums">{camTag(it)}</span>}
+              {camTag(it, camLabels) && <span className="mr-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold align-middle bg-gray-900 text-white tabular-nums">{camTag(it, camLabels)}</span>}
               {it.name}
-              {costBadge(it, 'ml-1.5')}
             </p>
             {metaLine(it, child)}
           </div>
         ) : (
-          // ของนอกคลัง (เช่า/ยืม) — แก้ชื่อและหมวดได้เอง
+          // ของนอกสต็อก (เช่า/ยืม) — แก้ชื่อและหมวดได้เอง
           <div>
           <div className="flex items-center gap-1.5">
-            {camTag(it) && <span className="shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold bg-gray-900 text-white tabular-nums">{camTag(it)}</span>}
-            <input className={`${cellInput} font-medium`} value={it.name} placeholder="ชื่ออุปกรณ์ (นอกคลัง)" onChange={(e) => patch(it.id, { name: e.target.value })} />
-            {costBadge(it, 'shrink-0')}
+            {camTag(it, camLabels) && <span className="shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold bg-gray-900 text-white tabular-nums">{camTag(it, camLabels)}</span>}
+            <input className={`${cellInput} font-medium`} value={it.name} placeholder="ชื่ออุปกรณ์ (นอกสต็อก)" onChange={(e) => patch(it.id, { name: e.target.value })} />
             <div className={`${child ? 'w-28' : 'w-36'} shrink-0`}>
               <FormListbox
                 value={it.category}
@@ -303,7 +320,7 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
       )
     })()}
     {showCostRow(it) && (
-      // ของเช่า/นอกคลัง → แถวต้นทุน: ยอด = ราคา × จำนวน × วัน (ก่อน VAT)
+      // ของเช่า/นอกสต็อก → แถวต้นทุน: ยอด = ราคา × จำนวน × วัน (ก่อน VAT)
       <tr className={itemOrigin(it) === 'partner' ? 'bg-sky-50/40' : 'bg-amber-50/40'}>
         <td />
         <td colSpan={8} className="px-2 pb-2 pt-0.5">

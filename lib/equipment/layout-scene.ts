@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { LayoutObject, PlanLayout, VenueConfig } from '../types'
-import { KIND_DEFAULTS, kindMeta } from './venues'
+import { KIND_DEFAULTS, isCameraKind, kindMeta } from './venues'
 
 // ฉาก 3D ของผังวางอุปกรณ์ — ใช้ร่วมกันทั้งตัวแก้ไข (LayoutEditor) และ snapshot ตอนพิมพ์
 // ⚠️ ไฟล์นี้ดึง three.js ทั้งก้อน — import แบบ dynamic เท่านั้น (next/dynamic หรือ await import)
@@ -23,9 +23,10 @@ export function venueExtent(v: VenueConfig) {
   }
 }
 
-export function labelSizeFor(v: VenueConfig): number {
+/** scale = ตัวคูณที่ผู้ใช้เลือก (S/M/L ใน lens-lines.ts) */
+export function labelSizeFor(v: VenueConfig, scale = 1): number {
   // ป้ายเล็กลง ~30% จากเดิม (/40, 1.2–5) — ของวางชิดกันแล้วป้ายทับกันจนอ่านไม่ออก
-  return Math.min(3.5, Math.max(0.8, Math.max(v.width, v.depth) / 56))
+  return Math.min(3.5, Math.max(0.8, Math.max(v.width, v.depth) / 56)) * scale
 }
 
 // ── labels ─────────────────────────────────────────────────────────────────
@@ -198,6 +199,24 @@ function ellipseSlab(a: number, b: number, hole: [number, number] | null, h: num
   return mesh
 }
 
+/**
+ * ขั้นอัฒจันทร์ตรงมุมโค้ง: วงแหวน 1/4 รอบจุด (cx, cz) รัศมี r0..r1 หนา h — sx/sz = ทิศของมุม (±1)
+ * shape อยู่ระนาบ xy แล้วพลิกลงพื้น: shape (x, y) → world (x, −y) จึงใส่ y = −z
+ */
+function cornerSlab(cx: number, cz: number, sx: number, sz: number, r0: number, r1: number, h: number, color: number): THREE.Mesh {
+  const mid = Math.atan2(-sz, sx)
+  const a0 = mid - Math.PI / 4, a1 = mid + Math.PI / 4
+  const shape = new THREE.Shape()
+  shape.absarc(cx, -cz, r1, a0, a1, false)
+  shape.absarc(cx, -cz, r0, a1, a0, true)
+  shape.closePath()
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 16 })
+  geo.rotateX(-Math.PI / 2)
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }))
+  mesh.userData.ground = true
+  return mesh
+}
+
 const AISLE_COLOR = 0xeee3cc // ทางเดินบนอัฒจันทร์ — สีทรายอ่อน แยกจากที่นั่งสีเทาฟ้า
 
 /**
@@ -283,8 +302,12 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
     const sideGaps = aisleW ? aisleGaps(v.depth, v.tiers.sectionWidth ?? 10, aisleW) : []
     const endGaps = aisleW ? aisleGaps(v.width, v.tiers.sectionWidth ?? 10, aisleW) : []
     const cross = v.tiers.crossAisle ?? 0
+    // ผนังตรงใต้แถวแรก: ทุกขั้นยกขึ้น wallSteps ขั้น → หน้าแถวแรกเป็นผนังตั้งฉากจากพื้น (นั่ง/วางของที่ผนังไม่ได้)
+    const wall = Math.max(0, Math.round(v.tiers.wallSteps ?? 0))
+    // รัศมีมุมโค้ง (ที่ขอบพื้นราบ) — ไม่เกินครึ่งด้านที่สั้นกว่า
+    const R = Math.max(0, Math.min(v.tiers.cornerRadius ?? 0, v.width / 2, v.depth / 2))
     for (let i = 0; i < steps; i++) {
-      const h = rise * (i + 1)
+      const h = rise * (i + 1 + wall)
       const shade = i % 2 === 0 ? 0xcbd5e1 : 0xb6c2d2
       if (curved) {
         // ชามวงรี: แต่ละขั้นเป็นวงแหวนวงรี ล้อมรอบพื้นทุกด้าน
@@ -304,6 +327,22 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
           else box.position.set((s0 + s1) / 2, h / 2, fixed)
           g.add(box)
         }
+      }
+      if (R > 0 && sides) {
+        // มุมโค้ง: ข้าง/หน้า/หลังเป็นแนวตรงถึงจุดเริ่มโค้ง แล้วต่อด้วยวงแหวน 1/4 รอบศูนย์กลางที่ร่นเข้ามา R จากมุมพื้น
+        const zBack = back ? v.depth / 2 - R : v.depth / 2
+        const zFront = front ? -(v.depth / 2 - R) : -v.depth / 2
+        for (const sign of [-1, 1]) tierRow('z', zFront, zBack, sign * (v.width / 2 + run * i + run / 2), sideGaps)
+        const xHalf = v.width / 2 - R
+        if (back) tierRow('x', -xHalf, xHalf, v.depth / 2 + run * i + run / 2, endGaps)
+        if (front) tierRow('x', -xHalf, xHalf, -(v.depth / 2 + run * i + run / 2), endGaps)
+        const cornerColor = isCross ? AISLE_COLOR : shade
+        for (const sx of [-1, 1]) {
+          for (const sz of [...(back ? [1] : []), ...(front ? [-1] : [])]) {
+            g.add(cornerSlab(sx * xHalf, sz * (v.depth / 2 - R), sx, sz, R + run * i, R + run * (i + 1), h, cornerColor))
+          }
+        }
+        continue
       }
       if (sides) {
         // ขั้นด้านข้างยืดไปคลุมมุมด้วย → มุมสูง = max(ขั้นข้าง, ขั้นหน้า/หลัง) ไม่มีรู
@@ -365,6 +404,7 @@ function fovWedge(fov: number, range: number, color: string): THREE.Group {
   const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 }))
   edge.raycast = () => {}
   g.add(fill, edge)
+  g.userData.wedge = true
   g.rotation.x = -Math.PI / 2 // วงกลมอยู่ระนาบ xy (+y = ข้างหน้า) → พลิกลงระนาบพื้น ให้ +y ไปเป็น -z
   return g
 }
@@ -380,13 +420,44 @@ export function objectDims(o: LayoutObject) {
 }
 
 /** lensLines = วาดกรวยมุมรับภาพของกล้อง (ปิดได้เมื่อผังแน่นจนดูตำแหน่งยาก) */
-export function buildObject(o: LayoutObject, labelSize: number, selected: boolean, lensLines = true): THREE.Group {
+
+/** ขาตั้ง 3 ขา: เอียงจากพื้น (รัศมี footR) ขึ้นไปบรรจบที่ (0, legH, 0) — หมุนแกน Y ของทรงกระบอกให้ตรงแนวขา */
+function tripodLegs(g: THREE.Group, legH: number, footR: number, legR: number, mat: THREE.Material) {
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.PI / 6
+    const foot = new THREE.Vector3(Math.sin(a) * footR, 0, Math.cos(a) * footR)
+    const dir = new THREE.Vector3(0, legH, 0).sub(foot)
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(legR, legR, dir.length(), 6), mat)
+    leg.position.copy(foot).addScaledVector(dir, 0.5)
+    leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize())
+    g.add(leg)
+  }
+}
+
+/**
+ * ตัวคูณขนาดโมเดลกล้อง — ขนาดจริงเล็กจนแทบมองไม่เห็นในผังสถานที่หลายสิบเมตร
+ * สร้างโมเดลที่ความสูง mountHeight / S แล้วขยายทั้งก้อน S เท่า → ระดับเลนส์ยังตรงค่าจริง ขาตั้งยังถึงพื้น
+ * (กรวยมุมภาพย้ายออกมานอกก้อนที่ขยาย ระยะจึงไม่เพี้ยน) · jib ไม่ขยาย เพราะขนาดเป็นเมตรที่ผู้ใช้ตั้งเอง
+ */
+const CAMERA_MODEL_SCALE = 1.6
+
+/**
+ * boost = ขยายโมเดลกล้องเพิ่มอีก (หน้าพิมพ์ — กระดาษย่อทั้งสถานที่จนกล้องเหลือจุดเดียว) ขยายจากพื้นทั้งก้อน กล้องจึงดูสูงขึ้นตาม
+ * ไม่ใช่ขนาดจริง แต่อ่านออก · ระยะกรวยมุมภาพยังคงค่าจริง
+ */
+export function buildObject(o: LayoutObject, labelSize: number, selected: boolean, lensLines = true, boost = 1): THREE.Group {
+  const root = new THREE.Group()
+  root.userData.objectId = o.id
+  root.position.set(o.x, o.y, o.z)
+  root.rotation.y = -deg(o.rotation) // องศาเพิ่ม = หมุนตามเข็มเมื่อมองจากด้านบน
+  const S = isCameraKind(o.kind) && o.kind !== 'jib' ? CAMERA_MODEL_SCALE : 1
+  const E = S === 1 ? 1 : S * boost // ตัวคูณจริงของก้อน (ความสูงคงค่าจริงเฉพาะส่วน S)
   const g = new THREE.Group()
-  g.userData.objectId = o.id
-  g.position.set(o.x, o.y, o.z)
-  g.rotation.y = -deg(o.rotation) // องศาเพิ่ม = หมุนตามเข็มเมื่อมองจากด้านบน
+  g.scale.setScalar(E)
+  root.add(g)
   const { color } = kindMeta(o.kind)
-  const m = objectDims(o)
+  const real = objectDims(o)
+  const m = S === 1 ? real : { ...real, mountHeight: real.mountHeight / S }
   let top = m.h
 
   if (o.kind === 'camera') {
@@ -405,25 +476,195 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
     }
     top = m.mountHeight + 0.3
   } else if (o.kind === 'gimbal') {
-    // คนถือกิมบอล: ตัวคน (แคปซูลเทา) + ด้ามจับ + กล้องเล็กบนกิมบอลระดับอก
-    const person = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.1, 4, 10), new THREE.MeshLambertMaterial({ color: 0x9ca3af }))
-    person.position.set(0, 0.77, 0.25)
-    const handle = box(0.5, 0.04, 0.04, '#111827')
-    handle.position.set(0, m.mountHeight + 0.12, -0.05)
-    const body = box(0.18, 0.14, 0.26, color)
-    body.position.set(0, m.mountHeight, -0.1)
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 10), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    // Ronin / DJI RS: ด้ามจับตั้ง → มอเตอร์ pan → แขนขึ้นหลังกล้อง → มอเตอร์ roll → แขน L ลงข้างกล้อง → มอเตอร์ tilt
+    // ไม่วาดคน — ขยายตัวกิมบอลให้ปลายด้ามแตะพื้น กล้องอยู่ที่ mountHeight (ตัวกิมบอลเองเป็น "ขา" ที่มองเห็นทั้งฮอลล์)
+    const rig = new THREE.Group()
+    const dark = new THREE.MeshLambertMaterial({ color: 0x1f2937 })
+    const motor = (r: number, h: number) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 16), dark)
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 0.26, 10), new THREE.MeshLambertMaterial({ color: 0x374151 }))
+    grip.position.set(0, -0.32, 0.1)
+    const pan = motor(0.05, 0.07)
+    pan.position.set(0, -0.16, 0.1)
+    const panArm = box(0.03, 0.2, 0.03, '#111827')
+    panArm.position.set(0, -0.03, 0.1)
+    const roll = motor(0.05, 0.06)
+    roll.rotation.x = Math.PI / 2                       // แกน roll ชี้ไปหน้ากล้อง
+    roll.position.set(0, 0.1, 0.1)
+    const rollArm = box(0.17, 0.03, 0.03, '#111827')
+    rollArm.position.set(0.085, 0.1, 0.1)
+    const rollDown = box(0.03, 0.03, 0.17, '#111827')
+    rollDown.position.set(0.17, 0.1, 0.02)
+    const tiltArm = box(0.03, 0.1, 0.03, '#111827')
+    tiltArm.position.set(0.17, 0.05, -0.06)
+    const tilt = motor(0.045, 0.05)
+    tilt.rotation.z = Math.PI / 2                       // แกน tilt ชี้ซ้าย-ขวา
+    tilt.position.set(0.15, 0, -0.06)
+    const body = box(0.2, 0.15, 0.24, color)
+    body.position.set(0, 0, -0.06)
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 12), new THREE.MeshLambertMaterial({ color: 0x111827 }))
     lens.rotation.x = Math.PI / 2
-    lens.position.set(0, m.mountHeight, -0.3)
-    g.add(person, handle, body, lens)
+    lens.position.set(0, 0, -0.26)
+    rig.add(grip, pan, panArm, roll, rollArm, rollDown, tiltArm, tilt, body, lens)
+    const k = Math.min(3.5, Math.max(1.6, m.mountHeight / 0.45)) // ปลายด้าม (−0.45 ในหน่วยของ rig) ลงถึงพื้น
+    rig.scale.setScalar(k)
+    rig.position.set(0, m.mountHeight, 0)
+    g.add(rig)
     if (lensLines) {
       const wedge = fovWedge(m.fov, m.range, color)
       wedge.position.y = m.mountHeight
       g.add(wedge)
     }
-    top = 1.9
+    top = m.mountHeight + 0.15 * k
+  } else if (o.kind === 'tele_lens') {
+    // กล้อง + เลนส์ tele แบบถือ (ENG เช่น Canon CJ45, Fujinon UA46x): ขาตั้ง 3 ขา → หัวแพน + ด้ามแพน → บอดี้กล้อง
+    // → เลนส์ทรงกระบอกยาวยื่นไปหน้า มีแท่งรองเลนส์ด้านล่าง (เล็กกว่า box lens มาก ไม่มีกล่อง)
+    const grey = new THREE.MeshLambertMaterial({ color: 0x4b5563 })
+    const legH = m.mountHeight - 0.3
+    tripodLegs(g, legH, 0.45, 0.028, grey)
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.09, 0.1, 12), grey)
+    bowl.position.y = legH + 0.04
+    const panHead = box(0.22, 0.12, 0.26, '#111827')
+    panHead.position.y = legH + 0.15
+    const panBar = box(0.035, 0.035, 0.65, '#111827')
+    panBar.position.set(0.14, legH + 0.16, 0.45)
+    panBar.rotation.x = -0.35
+    const body = box(0.2, 0.26, 0.42, color)
+    body.position.set(0, m.mountHeight, 0.1)
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.62, 16), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    lens.rotation.x = Math.PI / 2
+    lens.position.set(0, m.mountHeight + 0.01, -0.42)
+    const front = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.1, 0.1, 16), new THREE.MeshLambertMaterial({ color: 0x374151 }))
+    front.rotation.x = Math.PI / 2
+    front.position.set(0, m.mountHeight + 0.01, -0.78)
+    const support = box(0.04, 0.04, 0.5, '#6b7280')
+    support.position.set(0, m.mountHeight - 0.13, -0.3)
+    const vf = box(0.18, 0.14, 0.16, '#1f2937')
+    vf.position.set(0, m.mountHeight + 0.2, -0.05)
+    g.add(bowl, panHead, panBar, body, lens, front, support, vf)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.3
+  } else if (o.kind === 'box_lens') {
+    // กล้อง Box Lens: ขาตั้งงานหนัก 3 ขา + spreader → หัวแพน + ด้ามแพน → บอดี้กล้อง → เลนส์กล่องใหญ่ยื่นไปหน้า + จอ viewfinder บนตัว
+    const grey = new THREE.MeshLambertMaterial({ color: 0x4b5563 })
+    const legH = m.mountHeight - 0.35
+    tripodLegs(g, legH, 0.55, 0.035, grey)
+    const spreader = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.03, 3), grey)
+    spreader.position.y = 0.25
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.14, 12), grey)
+    bowl.position.y = legH + 0.05
+    const panHead = box(0.3, 0.14, 0.34, '#111827')
+    panHead.position.y = legH + 0.19
+    const panBar = box(0.04, 0.04, 0.8, '#111827')
+    panBar.position.set(0.18, legH + 0.2, 0.55)
+    panBar.rotation.x = -0.35
+    const body = box(0.34, 0.36, 0.55, color)
+    body.position.set(0, m.mountHeight, 0.12)
+    const lensBox = box(0.36, 0.42, 0.9, '#111827')
+    lensBox.position.set(0, m.mountHeight + 0.02, -0.6)
+    const hood = box(0.42, 0.36, 0.08, '#374151')
+    hood.position.set(0, m.mountHeight + 0.02, -1.08)
+    const vf = box(0.26, 0.2, 0.22, '#1f2937')
+    vf.position.set(0, m.mountHeight + 0.3, -0.15)
+    g.add(spreader, bowl, panHead, panBar, body, lensBox, hood, vf)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.45
+  } else if (o.kind === 'ptz') {
+    // กล้อง PTZ: ขาตั้งสามขา + เสา → ฐานเหลี่ยม (มอเตอร์ pan) → แอก U → หัวกล้องทรงกระบอกนอน + เลนส์หน้า
+    const grey = new THREE.MeshLambertMaterial({ color: 0x4b5563 })
+    const baseH = m.mountHeight - 0.32
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, Math.max(0.1, baseH - 0.2), 8), grey)
+    pole.position.y = 0.2 + Math.max(0.1, baseH - 0.2) / 2
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.45, 0.2, 3), grey)
+    foot.position.y = 0.1
+    const base = box(0.34, 0.14, 0.34, '#e5e7eb')
+    base.position.y = baseH + 0.07
+    const yokeL = box(0.04, 0.26, 0.16, '#d1d5db')
+    yokeL.position.set(-0.15, baseH + 0.27, 0)
+    const yokeR = yokeL.clone()
+    yokeR.position.x = 0.15
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.26, 20), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }))
+    head.rotation.z = Math.PI / 2
+    head.position.y = m.mountHeight
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.04, 16), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    glass.rotation.x = Math.PI / 2
+    glass.position.set(0, m.mountHeight, -0.12)
+    g.add(foot, pole, base, yokeL, yokeR, head, glass)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.2
+  } else if (o.kind === 'action_cam') {
+    // Action cam บนไม้ถือสั้น: ด้าม + ข้อต่อ + กล้องกล่องเล็ก + เลนส์กลมหน้ากล้อง
+    // ไม่วาดคน — ขยายให้ปลายด้ามแตะพื้น (ของจริงเล็กมาก มองไม่เห็นเมื่อดูทั้งฮอลล์) กล้องอยู่ที่ mountHeight
+    const rig = new THREE.Group()
+    const dark = new THREE.MeshLambertMaterial({ color: 0x1f2937 })
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.34, 10), dark)
+    stick.position.y = -0.23
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 10), new THREE.MeshLambertMaterial({ color: 0x374151 }))
+    grip.position.y = -0.34
+    const joint = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), dark)
+    joint.position.y = -0.05
+    const cam = box(0.07, 0.05, 0.035, color)
+    const lensC = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.012, 14), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    lensC.rotation.x = Math.PI / 2
+    lensC.position.set(-0.012, 0.004, -0.023)
+    rig.add(stick, grip, joint, cam, lensC)
+    const k = Math.min(4.5, Math.max(2, m.mountHeight / 0.4)) // ปลายด้าม (−0.4 ในหน่วยของ rig) ลงถึงพื้น
+    rig.scale.setScalar(k)
+    rig.position.set(0, m.mountHeight, 0)
+    g.add(rig)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.05 * k
   } else if (o.kind === 'remote_head') {
-    // หัวรีโมท: เสา + ฐานสามขา + แอก (yoke) รูปตัว U จับกล้องที่ระดับ mountHeight — ไม่มีคนประจำ
+    // Remote head (หัว Jimmy Jib ไม่มีตัวเครน): ท่อน truss ด้านบน → ก้านห้อย → มอเตอร์ pan → แอกคว่ำ (U หัวกลับ) จับกล้องใต้หัว
+    const dark = new THREE.MeshLambertMaterial({ color: 0x111827 })
+    const truss = box(1.6, 0.3, 0.3, '#9ca3af')
+    truss.position.y = m.mountHeight + 1.05
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.55, 8), new THREE.MeshLambertMaterial({ color: 0x4b5563 }))
+    rod.position.y = m.mountHeight + 0.62
+    const clamp = box(0.2, 0.08, 0.34, '#4b5563')
+    clamp.position.y = m.mountHeight + 0.9
+    const panH = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.14, 16), dark)
+    panH.position.y = m.mountHeight + 0.3
+    const plate = box(0.66, 0.05, 0.2, '#111827')
+    plate.position.y = m.mountHeight + 0.22
+    const armL = box(0.05, 0.36, 0.14, '#111827')
+    armL.position.set(-0.3, m.mountHeight + 0.04, 0)
+    const armR = armL.clone()
+    armR.position.x = 0.3
+    const tiltL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 12), dark)
+    tiltL.rotation.z = Math.PI / 2
+    tiltL.position.set(-0.3, m.mountHeight, 0)
+    const tiltR = tiltL.clone()
+    tiltR.position.x = 0.3
+    const hBody = box(0.4, 0.3, 0.6, color)
+    hBody.position.y = m.mountHeight
+    const hLens = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.35, 12), dark)
+    hLens.rotation.x = Math.PI / 2
+    hLens.position.set(0, m.mountHeight, -0.47)
+    g.add(truss, rod, clamp, panH, plate, armL, armR, tiltL, tiltR, hBody, hLens)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 1.2
+  } else if (o.kind === 'micro_stand') {
+    // ขา Micro: เสา + ฐานสามขา + แอก (yoke) รูปตัว U จับกล้องเล็กที่ระดับ mountHeight — ไม่มีคนประจำ
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, m.mountHeight - 0.25, 8), new THREE.MeshLambertMaterial({ color: 0x4b5563 }))
     pole.position.y = (m.mountHeight - 0.25) / 2
     const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.5, 0.25, 3), new THREE.MeshLambertMaterial({ color: 0x4b5563 }))
@@ -497,17 +738,28 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
     g.add(nose)
   }
 
+  // กรวยมุมภาพออกจากก้อนที่ขยาย: ตำแหน่งคูณ S ให้ตรงเลนส์ แต่ระยะ/มุมคงค่าจริง
+  for (const w of g.children.filter((c) => c.userData.wedge)) {
+    g.remove(w)
+    w.position.multiplyScalar(E)
+    root.add(w)
+  }
+  top *= E
+
   if (selected) {
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(Math.max(m.w, m.d, 1.2) * 0.75, Math.max(m.w, m.d, 1.2) * 0.75 + 0.18, 40),
+      new THREE.RingGeometry(Math.max(m.w, m.d, 1.2) * 0.75 * E, Math.max(m.w, m.d, 1.2) * 0.75 * E + 0.18, 40),
       new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, depthTest: false }),
     )
     ring.rotation.x = -Math.PI / 2
     ring.position.y = 0.06
     ring.raycast = () => {}
     ring.renderOrder = 9
-    g.add(ring)
+    root.add(ring)
   }
+
+  // โพเดียมไม่ต้องมีป้าย — รูปทรงบอกอยู่แล้ว และมักวางกลางเวทีบังป้ายกล้อง
+  if (o.kind === 'podium') return root
 
   const label = makeLabel(o.label, color, labelSize)
   label.position.y = top + labelSize * 0.9
@@ -522,8 +774,8 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
   leader.raycast = () => {}
   label.userData.leader = leader
   label.userData.leaderFrom = new THREE.Vector3(0, top, 0)
-  g.add(leader, label)
-  return g
+  root.add(leader, label)
+  return root
 }
 
 export function disposeGroup(group: THREE.Object3D): void {
@@ -568,8 +820,12 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
  * render ผังเป็นรูป (data URL) สำหรับหน้า print — สร้าง renderer ชั่วคราวแล้วทิ้ง
  * pixelRatio 2 = รูปจริงใหญ่เป็น 2 เท่าของ width/height ซูมดูบนจอ/พิมพ์แล้วยังคม
  */
+const PRINT_LABEL_BOOST = 2
+const PRINT_MODEL_BOOST = 2
+
 export async function snapshotLayout(
   layout: PlanLayout, view: 'top' | 'perspective', floorImageSrc?: string | null, width = 1800, height = 1100, lensLines = true, pixelRatio = 2,
+  labelScale = 1,
 ): Promise<string> {
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(pixelRatio)
@@ -580,8 +836,9 @@ export async function snapshotLayout(
   const img = floorImageSrc ? await loadImage(floorImageSrc).catch(() => null) : null
   const venue = buildVenue(layout.venue, img)
   scene.add(venue)
-  const size = labelSizeFor(layout.venue)
-  layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines)))
+  // กระดาษ A4 ย่อทั้งสถานที่ → ป้ายและกล้องขนาดเท่าบนจอเล็กจนอ่านไม่ออก ขยายเพิ่มเฉพาะหน้าพิมพ์
+  const size = labelSizeFor(layout.venue, labelScale) * PRINT_LABEL_BOOST
+  layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines, PRINT_MODEL_BOOST)))
 
   const e = venueExtent(layout.venue)
   const cx = (e.minX + e.maxX) / 2

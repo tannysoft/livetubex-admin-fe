@@ -19,12 +19,12 @@ function buildTools(ws, onFinish) {
     return [
         (0, tools_1.tool)(async () => ws.inventoryOverview(), {
             name: 'inventory_overview',
-            description: 'ภาพรวมคลังต่อหมวด และจำนวนที่ยังว่างในช่วงวันของงานนี้ เรียกก่อนเลือกของ',
+            description: 'ภาพรวมสต็อกต่อหมวด และจำนวนที่ยังว่างในช่วงวันของงานนี้ เรียกก่อนเลือกของ',
             schema: zod_1.z.object({}),
         }),
         (0, tools_1.tool)(async (a) => ws.searchInventory(a), {
             name: 'search_inventory',
-            description: 'ค้นอุปกรณ์ในคลัง (ของบริษัท/พาร์ทเนอร์/ของเช่า) คืน id, จำนวนว่าง, จำนวน port — id ที่ใช้กับ add_items ต้องมาจากที่นี่เท่านั้น',
+            description: 'ค้นอุปกรณ์ในสต็อก (ของบริษัท/พาร์ทเนอร์/ของเช่า) คืน id, จำนวนว่าง, จำนวน port — id ที่ใช้กับ add_items ต้องมาจากที่นี่เท่านั้น',
             schema: zod_1.z.object({
                 query: zod_1.z.string().optional().describe('คำค้น เช่น "atem", "sdi", "mars 400", "สาย sdi"'),
                 category: category.optional(),
@@ -35,7 +35,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ equipmentIds }) => ws.getPorts(equipmentIds), {
             name: 'get_ports',
-            description: 'ชื่อ port IN/OUT/IO ของอุปกรณ์ในคลัง — ใช้ดูก่อนวางแผนการโยง',
+            description: 'ชื่อ port IN/OUT/IO ของอุปกรณ์ในสต็อก — ใช้ดูก่อนวางแผนการโยง',
             schema: zod_1.z.object({ equipmentIds: zod_1.z.array(zod_1.z.string()).min(1).max(30) }),
         }),
         (0, tools_1.tool)(async () => ws.listPlan(), {
@@ -45,7 +45,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ items }) => ws.addItems(items), {
             name: 'add_items',
-            description: 'หยิบของจากคลังเข้าแผน (เช็กของว่างให้) — toLocation = ปลายทางที่ของไปอยู่ในงาน · ของในชุดกล้อง (เลนส์, ขาตั้ง, converter/fiber ฝั่งกล้อง, ส่งภาพไร้สาย, gimbal) ใส่ attachTo = item id ของกล้อง — แยกแถว quantity 1 ต่อกล้อง',
+            description: 'หยิบของจากสต็อกเข้าแผน (เช็กของว่างให้) — toLocation = ปลายทางที่ของไปอยู่ในงาน · ของในชุดกล้อง (เลนส์, ขาตั้ง, converter/fiber ฝั่งกล้อง, ส่งภาพไร้สาย, gimbal) ใส่ attachTo = item id ของกล้อง — แยกแถว quantity 1 ต่อกล้อง',
             schema: zod_1.z.object({
                 items: zod_1.z.array(zod_1.z.object({
                     equipmentId: zod_1.z.string(),
@@ -59,7 +59,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ items }) => ws.addExternalItems(items), {
             name: 'add_external_items',
-            description: 'เพิ่มของที่ไม่มีในคลัง (ต้องเช่า/ยืมเพิ่ม) — ใช้เมื่อค้นในคลังแล้วไม่มีหรือไม่พอเท่านั้น และต้องแจ้งผู้ใช้ใน finish',
+            description: 'เพิ่มของที่ไม่มีในสต็อก (ต้องเช่า/ยืมเพิ่ม) — ใช้เมื่อค้นในสต็อกแล้วไม่มีหรือไม่พอเท่านั้น และต้องแจ้งผู้ใช้ใน finish',
             schema: zod_1.z.object({
                 items: zod_1.z.array(zod_1.z.object({
                     name: zod_1.z.string(),
@@ -98,7 +98,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ name }) => ws.createDiagram(name), {
             name: 'create_diagram',
-            description: 'สร้างผังโยงใหม่ — ภาพ+เสียงใช้ผัง "Video" ผังเดียว (ไม่แยก Audio) แยกได้เฉพาะ "Intercom / Tally", "Network" — ชื่อซ้ำจะคืนผังเดิม',
+            description: 'สร้างผังโยง "Video" — 1 แผนมีผังเดียว (ภาพ เสียง FOH Intercom รวมกัน) มีผังอยู่แล้วจะคืนผังเดิม',
             schema: zod_1.z.object({ name: zod_1.z.string() }),
         }),
         (0, tools_1.tool)(async ({ diagramId }) => ws.clearDiagram(diagramId), {
@@ -113,7 +113,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ diagramId, nodes }) => ws.addNodes(diagramId, nodes), {
             name: 'add_nodes',
-            description: 'วางกล่องลงผัง — ปกติระบุ itemId (port มาจากคลังให้เอง) กล่องอิสระ (ของสถานที่ เช่น จอ LED, Internet ของ venue) ใส่ label + category + port เอง ไม่ต้องใส่พิกัด',
+            description: 'วางกล่องลงผัง — ปกติระบุ itemId (port มาจากสต็อกให้เอง) กล่องอิสระ (ของสถานที่ เช่น จอ LED, Internet ของ venue) ใส่ label + category + port เอง ไม่ต้องใส่พิกัด',
             schema: zod_1.z.object({
                 diagramId: zod_1.z.string(),
                 nodes: zod_1.z.array(zod_1.z.object({
@@ -141,7 +141,7 @@ function buildTools(ws, onFinish) {
         }),
         (0, tools_1.tool)(async ({ diagramId, nodeId, side, names }) => ws.addPorts(diagramId, nodeId, side, names), {
             name: 'add_ports',
-            description: 'เพิ่ม port ต่อท้ายกล่อง เมื่อข้อมูล port ในคลังไม่ครบ (ต้องบอกผู้ใช้ให้แก้ข้อมูลคลังด้วย)',
+            description: 'เพิ่ม port ต่อท้ายกล่อง เมื่อข้อมูล port ในสต็อกไม่ครบ (ต้องบอกผู้ใช้ให้แก้ข้อมูลสต็อกด้วย)',
             schema: zod_1.z.object({ diagramId: zod_1.z.string(), nodeId: zod_1.z.string(), side: zod_1.z.enum(['in', 'out', 'io']), names: zod_1.z.array(zod_1.z.string()).min(1) }),
         }),
         (0, tools_1.tool)(async ({ diagramId, nodeIds }) => ws.removeNodes(diagramId, nodeIds), {

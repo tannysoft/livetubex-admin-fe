@@ -219,7 +219,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
                   {itemChanges.added.map((it) => (
                     <li key={it.id} className="px-4 py-1.5 flex gap-2">
                       <span className="text-green-600 font-semibold w-4">+</span>
-                      <span className="flex-1 text-gray-900">{it.name} ×{it.quantity}{!it.equipmentId && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px]">นอกคลัง</span>}</span>
+                      <span className="flex-1 text-gray-900">{it.name} ×{it.quantity}{!it.equipmentId && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px]">นอกสต็อก</span>}</span>
                       <span className="text-gray-500">{it.toLocation || '—'}</span>
                     </li>
                   ))}
@@ -353,7 +353,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
               {' · '}{ruleCount(settings.rules) ? `กฎของทีม ${ruleCount(settings.rules)} ข้อ` : 'ไม่มีกฎของทีม'}
             </p>
           )}
-          {!draft && !running && <p className="text-xs text-gray-400">ผลลัพธ์เป็นร่างให้ตรวจก่อน ยังไม่แก้แผนจนกว่าจะกด “ใช้ร่างนี้” · port ในคลังเป็นค่าประมาณ ตรวจผังก่อนใช้งานจริง</p>}
+          {!draft && !running && <p className="text-xs text-gray-400">ผลลัพธ์เป็นร่างให้ตรวจก่อน ยังไม่แก้แผนจนกว่าจะกด “ใช้ร่างนี้” · port ในสต็อกเป็นค่าประมาณ ตรวจผังก่อนใช้งานจริง</p>}
         </div>
       </div>
     </Modal>
@@ -434,8 +434,8 @@ function ruleCount(rules: string): number {
 
 /** tool ที่กำลังรอผล → คำที่โชว์ (ไม่มีในนี้ = ใช้คำทั่วไปวนไป) */
 const TOOL_VERBS: Record<string, string> = {
-  inventory_overview: 'กำลังดูคลัง',
-  search_inventory: 'กำลังค้นคลัง',
+  inventory_overview: 'กำลังดูสต็อก',
+  search_inventory: 'กำลังค้นสต็อก',
   get_ports: 'กำลังเช็ก port',
   list_plan: 'กำลังอ่านร่าง',
   add_items: 'กำลังจัดของ',

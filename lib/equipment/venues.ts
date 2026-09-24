@@ -11,7 +11,8 @@ export const VENUE_PRESETS: (VenueConfig & { presetId: string })[] = [
     width: 46, depth: 76, height: 24,
     stage: { enabled: true, width: 30, depth: 16, height: 1.8, offset: 2 },
     // ทางเดินขึ้นทุก ~10 ม. + ทางเดินขวางคั่นชั้นล่าง/บน — ตัวเลขประมาณจากภาพถ่าย ไม่ใช่แบบจริง
-    tiers: { steps: 14, rise: 0.9, run: 1.7, back: true, sides: true, aisleWidth: 1.4, sectionWidth: 10, crossAisle: 8 },
+    // มุมอัฒจันทร์เป็นโค้ง (ไม่ใช่เหลี่ยม) · ขอบล่างเป็นผนังตรง ~3 ขั้น (นั่งไม่ได้) แล้วค่อยเป็นที่นั่ง 11 แถว — ความสูงรวมเท่าเดิม (14 ขั้น)
+    tiers: { steps: 11, rise: 0.9, run: 1.7, back: true, sides: true, aisleWidth: 1.4, sectionWidth: 10, crossAisle: 5, wallSteps: 3, cornerRadius: 14 },
   },
   {
     presetId: 'impact-challenger', name: 'Impact Challenger Hall (1 ฮอลล์)', shape: 'hall',
@@ -82,7 +83,12 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
   { value: 'camera', label: 'กล้อง (ขาตั้ง)', color: '#2563eb' },
   { value: 'jib', label: 'Jib / Crane', color: '#0891b2' },
   { value: 'gimbal', label: 'กล้องโรนิน / Gimbal', color: '#4f46e5' },
-  { value: 'remote_head', label: 'Remote Head (หัวรีโมท)', color: '#db2777' },
+  { value: 'remote_head', label: 'Remote Head (หัวแขวน)', color: '#db2777' },
+  { value: 'micro_stand', label: 'ขา Micro (เสาสูง)', color: '#0d9488' },
+  { value: 'action_cam', label: 'Action Cam (ไม้ถือสั้น)', color: '#ea580c' },
+  { value: 'ptz', label: 'กล้อง PTZ', color: '#65a30d' },
+  { value: 'tele_lens', label: 'กล้องเลนส์ Tele (40x)', color: '#0369a1' },
+  { value: 'box_lens', label: 'กล้อง Box Lens (เลนส์ tele)', color: '#1e40af' },
   { value: 'ob_truck', label: 'รถ OB', color: '#475569' },
   { value: 'desk', label: 'FOH / โต๊ะคอนโทรล', color: '#7c3aed' },
   { value: 'screen', label: 'จอ LED / Projector', color: '#111827' },
@@ -94,7 +100,7 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
 
 /** วัตถุที่มีกรวยมุมภาพ + มุมมองจากกล้อง + คอลัมน์เลนส์ในหน้าพิมพ์ */
 export function isCameraKind(kind: LayoutObjectKind): boolean {
-  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head'
+  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head' || kind === 'micro_stand' || kind === 'action_cam' || kind === 'ptz' || kind === 'tele_lens' || kind === 'box_lens'
 }
 
 export function kindMeta(kind: LayoutObjectKind) {
@@ -106,8 +112,18 @@ export const KIND_DEFAULTS: Record<LayoutObjectKind, Partial<LayoutObject>> = {
   camera: { mountHeight: 1.6, fov: 30, range: 40 },
   // ถือด้วยมือ — เลนส์ราวระดับอก, มุมกว้าง ระยะใกล้
   gimbal: { mountHeight: 1.3, fov: 60, range: 15 },
-  // หัวรีโมท pan/tilt บนเสา/ขาสูงหรือแขวน truss — คุมจากห้องคอนโทรล ไม่มีคนยืนประจำ
-  remote_head: { mountHeight: 3, fov: 40, range: 30 },
+  // Remote head (หัว Jimmy Jib ไม่มีตัวเครน) ห้อยหัวลงจาก truss/เพดาน — mountHeight = ระดับเลนส์ คุมจากห้องคอนโทรล
+  remote_head: { mountHeight: 6, fov: 40, range: 30 },
+  // กล้องเล็ก (Micro Studio ฯลฯ) บนเสาสูง/ขาตั้งไฟ ฐานสามขา — ไม่มีคนประจำ
+  micro_stand: { mountHeight: 3, fov: 40, range: 30 },
+  // GoPro/Insta360/Osmo Action บนไม้ถือสั้น (คล้ายไม้ selfie) — ถือระดับอก มุมกว้างมาก ระยะใกล้
+  action_cam: { mountHeight: 1.4, fov: 110, range: 8 },
+  // กล้อง PTZ (หัวหมุนในตัว) บนขาตั้งสูง/ชั้นวาง — คุมจากห้องคอนโทรล
+  ptz: { mountHeight: 2.2, fov: 45, range: 30 },
+  // กล้อง + เลนส์ tele แบบถือ (ENG ~40x–46x เช่น Canon CJ45, Fujinon UA46x) บนขาตั้ง — แคบกว่ากล้องปกติ แต่ไม่ไกลเท่า box lens
+  tele_lens: { mountHeight: 1.7, fov: 15, range: 50 },
+  // กล้อง broadcast + box lens (เช่น Fujinon 76x) บนขาตั้งงานหนัก — มุมแคบ ยิงไกลจาก FOH
+  box_lens: { mountHeight: 1.8, fov: 10, range: 60 },
   jib: { mountHeight: 4, fov: 50, range: 30, w: 1.2, d: 7, h: 1.2 },
   ob_truck: { w: 2.6, d: 12, h: 3.6 },
   desk: { w: 4, d: 2, h: 1 },
@@ -119,7 +135,7 @@ export const KIND_DEFAULTS: Record<LayoutObjectKind, Partial<LayoutObject>> = {
   generic: { w: 1, d: 1, h: 1 },
 }
 
-/** หมวดอุปกรณ์ในคลัง → ชนิดวัตถุ 3D ที่น่าจะใช่ */
+/** หมวดอุปกรณ์ในสต็อก → ชนิดวัตถุ 3D ที่น่าจะใช่ */
 export function kindForCategory(category: string): LayoutObjectKind {
   if (category === 'camera') return 'camera'
   if (category === 'monitor') return 'screen'

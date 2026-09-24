@@ -219,7 +219,7 @@ export default function EquipmentForm({ defaultValues, locationOptions, vendorOp
           <input className={inputCls} type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         </Field>
         <Field label={ownership === 'owned' ? 'ที่เก็บประจำ' : 'รับของที่'}>
-          <SuggestInput className={inputCls} value={storageLocation} onChange={setStorageLocation} options={locationOptions} placeholder="เช่น ห้องเก็บของ A ชั้น 2, รถ OB, Flight case #3" hint="ที่เก็บที่เคยกรอกในคลัง" />
+          <SuggestInput className={inputCls} value={storageLocation} onChange={setStorageLocation} options={locationOptions} placeholder="เช่น ห้องเก็บของ A ชั้น 2, รถ OB, Flight case #3" hint="ที่เก็บที่เคยกรอกในสต็อก" />
         </Field>
         <Field label={ownership === 'owned' ? 'ราคาซื้อ / มูลค่าต่อชิ้น (บาท)' : 'มูลค่าต่อชิ้น (บาท) — ไว้ประกัน/ประเมินความเสียหาย'}>
           <input className={inputCls} type="number" min={0} value={price} onChange={(e) => { setPrice(e.target.value); setPriceNote('') }} placeholder="0 = ไม่ระบุ" />
