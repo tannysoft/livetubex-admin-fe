@@ -1,6 +1,7 @@
 import { Document, Page, View, Image } from '@react-pdf/renderer'
 import { Text } from './PdfText'
-import LogoSvg from './LogoSvg'
+import PdfLogo from './PdfLogo'
+import { pdfBrand } from './brand-runtime'
 import { styles } from './styles'
 import { bahtText, calcTotals } from '../calc'
 import type {
@@ -70,9 +71,9 @@ export default function DocumentPdf({ type, doc, company, isVoid }: Props) {
         <View style={styles.header}>
           <View style={styles.companyBlock}>
             <View style={{ marginBottom: 6 }}>
-              <LogoSvg width={140} />
+              <PdfLogo width={140} />
             </View>
-            <Text style={styles.companyName}>{company.name}</Text>
+            <Text style={[styles.companyName, { color: pdfBrand().color }]}>{company.name}</Text>
             {company.nameEn ? <Text style={styles.companyInfo}>{company.nameEn}</Text> : null}
             <Text style={styles.companyInfo}>เลขประจำตัวผู้เสียภาษี: {company.taxId} ({company.branch})</Text>
             <Text style={styles.companyInfo}>{company.address}</Text>
@@ -199,7 +200,7 @@ export default function DocumentPdf({ type, doc, company, isVoid }: Props) {
             </View>
             <View style={styles.grandTotalRow}>
               <Text style={styles.grandTotalLabel}>รวมทั้งสิ้น</Text>
-              <Text style={styles.grandTotalValue}>{formatMoney(totals.grandTotal)}</Text>
+              <Text style={[styles.grandTotalValue, { color: pdfBrand().color }]}>{formatMoney(totals.grandTotal)}</Text>
             </View>
             {totals.whtAmount && totals.whtAmount > 0 ? (
               <>

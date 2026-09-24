@@ -3,6 +3,7 @@
 import { pdf, type DocumentProps } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
 import { registerPdfFonts } from './setup'
+import { loadPdfBrand } from './brand-runtime'
 
 export type PdfElement = ReactElement<DocumentProps>
 
@@ -11,6 +12,8 @@ export type PdfElement = ReactElement<DocumentProps>
  */
 export async function generatePdfBlob(element: PdfElement): Promise<Blob> {
   registerPdfFonts()
+  // โหลดสี/โลโก้ตามแบรนด์ก่อน render (cache ไว้ — เรียกซ้ำไม่เสียเวลา)
+  await loadPdfBrand()
   return await pdf(element).toBlob()
 }
 

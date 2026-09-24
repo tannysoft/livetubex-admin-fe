@@ -214,7 +214,7 @@ export default function AdminEarningsPage() {
               onClick={() => setBasis(b)}
               title={EARNINGS_BASIS_HINTS[b]}
               className={`px-3.5 py-2.5 text-sm font-medium transition-colors ${
-                basis === b ? 'bg-[#f73727] text-white' : 'text-gray-600 hover:bg-gray-50'
+                basis === b ? 'bg-brand text-white' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               {EARNINGS_BASIS_LABELS[b]}
@@ -228,7 +228,7 @@ export default function AdminEarningsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อ freelancer"
-            className="w-56 pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-56 pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
 
@@ -341,7 +341,7 @@ export default function AdminEarningsPage() {
                                     </div>
                                     <div>
                                       {e.payment.position
-                                        ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{e.payment.position}</span>
+                                        ? <span className="px-2 py-0.5 bg-brand-soft text-brand text-xs font-medium rounded-lg">{e.payment.position}</span>
                                         : <span className="text-gray-300 text-xs">-</span>
                                       }
                                     </div>
@@ -380,7 +380,7 @@ export default function AdminEarningsPage() {
                     <Cell value={basisAmount(m, basis)} />
                   </span>
                 ))}
-                <span className="text-sm font-bold text-[#f73727] text-right tabular-nums">
+                <span className="text-sm font-bold text-brand text-right tabular-nums">
                   {formatCurrency(basisAmount(footerTotal, basis))}
                 </span>
               </div>

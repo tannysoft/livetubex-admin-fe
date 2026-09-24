@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useBrand } from '@/components/BrandProvider'
+import { getStorageDownloadUrl } from '@/lib/firebase-storage'
 
-const COLORS = ['#f73727', '#FFD700', '#06C755', '#4A90E2', '#FF69B4', '#FF8C00', '#9B59B6', '#00BCD4']
+// สีแรกใช้สีแบรนด์ (ใส่ตอน runtime) — ที่เหลือเป็นสีเทศกาลกลางๆ
+const CONFETTI_COLORS = ['#FFD700', '#06C755', '#4A90E2', '#FF69B4', '#FF8C00', '#9B59B6', '#00BCD4']
 const COUNT   = 60
 
 interface Piece {
@@ -16,7 +19,21 @@ interface Piece {
 }
 
 export default function CelebrationOverlay({ onDone }: { onDone: () => void }) {
+  const brand = useBrand()
   const [leaving, setLeaving] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
+  // รูปฉลองตามแบรนด์ — "/xxx.png" = ไฟล์ใน public/, ที่เหลือ = Storage path
+  useEffect(() => {
+    const src = brand.celebrationImage
+    if (!src) { setImageUrl(null); return }
+    if (src.startsWith('/') || src.startsWith('http')) { setImageUrl(src); return }
+    let alive = true
+    getStorageDownloadUrl(src)
+      .then((url) => { if (alive) setImageUrl(url) })
+      .catch(() => { if (alive) setImageUrl(null) })
+    return () => { alive = false }
+  }, [brand.celebrationImage])
 
   useEffect(() => {
     const t1 = setTimeout(() => setLeaving(true), 3200)
@@ -24,16 +41,18 @@ export default function CelebrationOverlay({ onDone }: { onDone: () => void }) {
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [onDone])
 
-  const pieces = useMemo<Piece[]>(() =>
-    Array.from({ length: COUNT }, (_, i) => ({
+  const pieces = useMemo<Piece[]>(() => {
+    const colors = [brand.primaryColor, ...CONFETTI_COLORS]
+    return Array.from({ length: COUNT }, (_, i) => ({
       id: i,
-      color: COLORS[i % COLORS.length],
+      color: colors[i % colors.length],
       left: `${(i / COUNT) * 100 + (Math.random() - 0.5) * 4}%`,
       size: `${7 + (i % 5) * 3}px`,
       delay: `${(i % 20) * 0.07}s`,
       duration: `${2 + (i % 8) * 0.25}s`,
       shape: i % 3 === 0 ? 'circle' : 'rect',
-    })), [])
+    }))
+  }, [brand.primaryColor])
 
   return (
     <div
@@ -60,22 +79,24 @@ export default function CelebrationOverlay({ onDone }: { onDone: () => void }) {
         />
       ))}
 
-      {/* CEO + badge */}
+      {/* รูป + ป้าย */}
       <div className="relative z-10 flex flex-col items-center pb-0 ceo-enter">
         {/* Badge */}
         <div className="badge-pop mb-3 bg-white rounded-2xl px-6 py-3 shadow-2xl text-center">
-          <p className="text-2xl font-black text-[#f73727] leading-tight">โอนสำเร็จแล้ว! 🎉</p>
+          <p className="text-2xl font-black text-brand leading-tight">โอนสำเร็จแล้ว! 🎉</p>
           <p className="text-sm text-gray-500 mt-0.5">ขอบคุณที่ได้ร่วมงานค้าบ 🙏</p>
         </div>
 
-        {/* CEO photo */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/ceo.png"
-          alt="CEO"
-          className="h-72 sm:h-80 object-contain drop-shadow-2xl select-none"
-          draggable={false}
-        />
+        {/* รูปฉลอง (ตั้งได้ต่อ tenant — ไม่ตั้งก็โชว์แค่ป้าย) */}
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-72 sm:h-80 object-contain drop-shadow-2xl select-none"
+            draggable={false}
+          />
+        )}
       </div>
     </div>
   )

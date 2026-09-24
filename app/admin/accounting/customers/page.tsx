@@ -98,7 +98,7 @@ export default function CustomersPage() {
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มลูกค้า
@@ -114,7 +114,7 @@ export default function CustomersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาด้วยชื่อ, รหัส, เลขผู้เสียภาษี, เบอร์โทร"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function CustomersPage() {
             {!search && (
               <button
                 onClick={openCreate}
-                className="text-[#f73727] hover:underline text-sm mt-2"
+                className="text-brand hover:underline text-sm mt-2"
               >
                 เพิ่มลูกค้ารายแรก
               </button>
@@ -155,8 +155,8 @@ export default function CustomersPage() {
               <li key={c.id} className="flex items-center gap-3 px-5 py-4">
                 <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0">
                   {c.type === 'company'
-                    ? <BuildingOffice2Icon className="w-5 h-5 text-[#f73727]" />
-                    : <UserIcon className="w-5 h-5 text-[#f73727]" />
+                    ? <BuildingOffice2Icon className="w-5 h-5 text-brand" />
+                    : <UserIcon className="w-5 h-5 text-brand" />
                   }
                 </div>
 

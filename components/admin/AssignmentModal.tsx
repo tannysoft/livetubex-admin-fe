@@ -64,7 +64,7 @@ export default function AssignmentModal({ isOpen, onClose, job, assignments, onR
     onRefresh()
   }
 
-  const inputCls = 'w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]'
+  const inputCls = 'w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
   return (
     <>
@@ -139,7 +139,7 @@ export default function AssignmentModal({ isOpen, onClose, job, assignments, onR
               <button
                 type="submit"
                 disabled={saving}
-                className="px-5 py-2 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center gap-2"
+                className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center gap-2"
               >
                 {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 เพิ่ม

@@ -3,8 +3,17 @@ import type { AdminRole } from './types'
 /**
  * อีเมล owner ตั้งต้น (bootstrap) — ถือเป็น owner เสมอ แม้ยังไม่มี doc ใน adminUsers
  * ใช้แก้ปัญหา "ไก่กับไข่" ตอนยังไม่มีใครเป็น owner
+ *
+ * ตั้งต่อ tenant ผ่าน NEXT_PUBLIC_BOOTSTRAP_OWNER_EMAIL (build-time)
+ * และ BOOTSTRAP_OWNER_EMAIL ใน functions/.env ให้ตรงกัน
+ * ว่าง = ไม่มี bootstrap owner (ต้องมี doc ใน adminUsers เท่านั้น)
  */
-export const BOOTSTRAP_OWNER_EMAIL = 't@livetubex.com'
+export const BOOTSTRAP_OWNER_EMAIL = (process.env.NEXT_PUBLIC_BOOTSTRAP_OWNER_EMAIL ?? '').toLowerCase()
+
+/** เทียบอีเมลกับ bootstrap owner — ว่างแปลว่า "ไม่มีใครใช่" ไม่ใช่ "ทุกคนใช่" */
+export function isBootstrapOwnerEmail(email: string | null | undefined): boolean {
+  return !!BOOTSTRAP_OWNER_EMAIL && (email ?? '').toLowerCase() === BOOTSTRAP_OWNER_EMAIL
+}
 
 export const ADMIN_ROLES: AdminRole[] = ['owner', 'admin', 'accountant']
 

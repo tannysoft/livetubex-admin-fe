@@ -100,7 +100,7 @@ export default function TrendChart({ data, height = 240 }: Props) {
                 cx={groupX + barW}
                 cy={padding.top + yProfit(d.profit)}
                 r={3}
-                fill={d.profit >= 0 ? '#f73727' : '#dc2626'}
+                fill={d.profit >= 0 ? 'var(--brand)' : '#dc2626'}
                 stroke="#fff"
                 strokeWidth={1.5}
               />
@@ -111,7 +111,7 @@ export default function TrendChart({ data, height = 240 }: Props) {
         {/* profit line */}
         <polyline
           fill="none"
-          stroke="#f73727"
+          stroke="var(--brand)"
           strokeWidth={1.5}
           points={paddedData.map((d, i) => {
             const x = padding.left + i * groupW + 6 + barW
@@ -143,7 +143,7 @@ export default function TrendChart({ data, height = 240 }: Props) {
           รายจ่าย
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-1 rounded-sm bg-[#f73727]"></span>
+          <span className="w-3 h-1 rounded-sm bg-brand"></span>
           กำไรสุทธิ
         </span>
       </div>

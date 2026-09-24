@@ -13,7 +13,7 @@ import { db } from '../firebase'
  * ใช้ Firestore transaction กัน race condition (ไม่ซ้ำเลย แม้คน 2 คนกดพร้อมกัน)
  */
 
-export type DocCounterField = 'quotation' | 'invoice' | 'taxInvoice' | 'receipt' | 'customer' | 'vendor' | 'expense'
+export type DocCounterField = 'quotation' | 'invoice' | 'taxInvoice' | 'receipt' | 'customer' | 'vendor' | 'expense' | 'equipment'
 
 const PREFIX_MAP: Record<DocCounterField, string> = {
   quotation: 'QO',
@@ -23,6 +23,7 @@ const PREFIX_MAP: Record<DocCounterField, string> = {
   customer: 'CUS',
   vendor: 'VEN',
   expense: 'EX',
+  equipment: 'EQ',
 }
 
 function pad(n: number, width: number): string {
@@ -39,8 +40,8 @@ function toBuddhistYear2(date: Date): string {
  * Counter doc path: `documentCounters/all` สำหรับ customer code (ไม่ reset)
  */
 export async function nextDocNumber(field: DocCounterField, date: Date = new Date()): Promise<string> {
-  // customer/vendor — running ยาวต่อเนื่อง ไม่ reset
-  if (field === 'customer' || field === 'vendor') {
+  // customer/vendor/equipment — running ยาวต่อเนื่อง ไม่ reset
+  if (field === 'customer' || field === 'vendor' || field === 'equipment') {
     return nextRunningCode(field)
   }
 
@@ -69,7 +70,7 @@ export async function nextDocNumber(field: DocCounterField, date: Date = new Dat
  * Code ไม่ reset รายเดือน — running ยาวต่อเนื่อง (CUS-0001, VEN-0001)
  * เก็บที่ documentCounters/all
  */
-async function nextRunningCode(field: 'customer' | 'vendor'): Promise<string> {
+async function nextRunningCode(field: 'customer' | 'vendor' | 'equipment'): Promise<string> {
   const counterRef = doc(db, 'documentCounters', 'all')
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef)

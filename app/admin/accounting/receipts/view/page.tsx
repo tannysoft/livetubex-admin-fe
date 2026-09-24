@@ -69,7 +69,7 @@ function ReceiptViewer() {
     return (
       <div className="text-center py-16">
         <p className="text-gray-500">ไม่พบใบเสร็จ</p>
-        <Link href="/admin/accounting/receipts" className="text-[#f73727] hover:underline text-sm mt-2 inline-block">
+        <Link href="/admin/accounting/receipts" className="text-brand hover:underline text-sm mt-2 inline-block">
           กลับไปที่รายการ
         </Link>
       </div>
@@ -177,14 +177,14 @@ function ReceiptViewer() {
             )}
             <div className="flex justify-between">
               <span className="text-gray-500">ใบแจ้งหนี้:</span>
-              <Link href={`/admin/accounting/invoices/new?id=${doc.invoiceId}`} className="text-[#f73727] hover:underline text-xs">
+              <Link href={`/admin/accounting/invoices/new?id=${doc.invoiceId}`} className="text-brand hover:underline text-xs">
                 ดูใบแจ้งหนี้ ↗
               </Link>
             </div>
             {doc.taxInvoiceId && (
               <div className="flex justify-between">
                 <span className="text-gray-500">ใบกำกับภาษี:</span>
-                <Link href={`/admin/accounting/tax-invoices/view?id=${doc.taxInvoiceId}`} className="text-[#f73727] hover:underline text-xs">
+                <Link href={`/admin/accounting/tax-invoices/view?id=${doc.taxInvoiceId}`} className="text-brand hover:underline text-xs">
                   ดูใบกำกับ ↗
                 </Link>
               </div>
@@ -239,7 +239,7 @@ function ReceiptViewer() {
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
               placeholder="เช่น ลูกค้าโอนผิด, บันทึกผิดจำนวน"
             />
             <div className="flex justify-end gap-2 mt-5">

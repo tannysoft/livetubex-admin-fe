@@ -6,13 +6,17 @@ import type { CompanySettings } from '../types'
 const DOC_PATH = 'companySettings'
 const DOC_ID = 'main'
 
+/**
+ * ค่าตั้งต้นตอนยังไม่มี doc — ว่างไว้ให้แต่ละบริษัทกรอกเองที่หน้า
+ * /admin/accounting/company-settings (ห้าม hardcode ข้อมูลนิติบุคคลของเจ้าใด)
+ */
 export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
-  name: 'บริษัท ไลฟ์ทูป เอ็กซ์ จำกัด',
-  nameEn: 'LiveTubeX Co., Ltd.',
-  taxId: '0105566147487',
+  name: '',
+  nameEn: '',
+  taxId: '',
   branch: 'สำนักงานใหญ่',
-  address: 'เลขที่ 5 บางบอน 4 ซอย 16 แขวงหนองแขม เขตหนองแขม กรุงเทพมหานคร 10160',
-  phone: '082-962-9641',
+  address: '',
+  phone: '',
   email: '',
   website: '',
   bankAccounts: [],

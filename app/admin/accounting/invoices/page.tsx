@@ -78,7 +78,7 @@ export default function InvoicesPage() {
         </div>
         <Link
           href="/admin/accounting/invoices/new"
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
         >
           <PlusIcon className="w-4 h-4" />
           สร้างใบแจ้งหนี้
@@ -93,7 +93,7 @@ export default function InvoicesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาด้วยเลขที่, ชื่อลูกค้า, หมายเหตุ"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
         <div className="w-44">
@@ -122,7 +122,7 @@ export default function InvoicesPage() {
               {search || statusFilter ? 'ไม่พบใบแจ้งหนี้ที่ตรงเงื่อนไข' : 'ยังไม่มีใบแจ้งหนี้'}
             </p>
             {!search && !statusFilter && (
-              <Link href="/admin/accounting/invoices/new" className="inline-block text-[#f73727] hover:underline text-sm mt-2">
+              <Link href="/admin/accounting/invoices/new" className="inline-block text-brand hover:underline text-sm mt-2">
                 สร้างใบแจ้งหนี้ฉบับแรก
               </Link>
             )}

@@ -42,10 +42,10 @@ const FormCheckbox = forwardRef<HTMLButtonElement, FormCheckboxProps>(function F
           'bg-white',
           invalid
             ? 'border-red-400 data-checked:bg-red-500 data-checked:border-red-500'
-            : 'border-gray-300 data-checked:bg-[#f73727] data-checked:border-[#f73727]',
-          'data-focus:outline-none data-focus:ring-2 data-focus:ring-[#f73727]/30 data-focus:ring-offset-1',
+            : 'border-gray-300 data-checked:bg-brand data-checked:border-brand',
+          'data-focus:outline-none data-focus:ring-2 data-focus:ring-brand/30 data-focus:ring-offset-1',
           'data-disabled:cursor-not-allowed',
-          'hover:border-[#f73727]/50',
+          'hover:border-brand/50',
         ].join(' ')}
       >
         <CheckIcon className={`${iconSize} text-white opacity-0 group-data-checked:opacity-100 transition-opacity`} strokeWidth={3} />

@@ -162,7 +162,7 @@ export default function WhtReportPage() {
               <td className="px-5 py-2 text-right text-gray-600">{e.whtRate}%</td>
               <td className="px-5 py-2 text-right font-semibold tabular-nums text-red-600">{formatCurrency(e.whtAmount ?? 0)}</td>
               <td className="px-5 py-2 text-right">
-                <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-[#f73727] hover:underline text-xs">ดู / 50 ทวิ</Link>
+                <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-brand hover:underline text-xs">ดู / 50 ทวิ</Link>
               </td>
             </tr>
           ))}
@@ -224,11 +224,11 @@ export default function WhtReportPage() {
             </>
           )}
         </div>
-        <div className="bg-[#f73727]/5 rounded-2xl border border-[#f73727]/20 p-5">
-          <div className="text-xs text-[#f73727] mb-2">รวมที่ต้องนำส่ง</div>
+        <div className="bg-brand/5 rounded-2xl border border-brand/20 p-5">
+          <div className="text-xs text-brand mb-2">รวมที่ต้องนำส่ง</div>
           {loading ? <Skeleton className="h-7 w-32" /> : (
             <>
-              <p className="text-2xl font-bold tabular-nums text-[#f73727]">{formatCurrency(totals.totalWht)}</p>
+              <p className="text-2xl font-bold tabular-nums text-brand">{formatCurrency(totals.totalWht)}</p>
               <p className="text-xs text-gray-500 mt-1">{expenses.length} รายการ — งวด {periodLabel}</p>
             </>
           )}

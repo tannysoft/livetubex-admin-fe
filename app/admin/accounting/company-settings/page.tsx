@@ -103,7 +103,7 @@ export default function CompanySettingsPage() {
     setData((prev) => ({ ...prev, bankAccounts: prev.bankAccounts.filter((_, i) => i !== idx) }))
   }
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
@@ -129,7 +129,7 @@ export default function CompanySettingsPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
           <div className="p-2 bg-red-50 rounded-xl">
-            <BuildingOffice2Icon className="w-5 h-5 text-[#f73727]" />
+            <BuildingOffice2Icon className="w-5 h-5 text-brand" />
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">ข้อมูลทั่วไป</h2>
@@ -156,7 +156,7 @@ export default function CompanySettingsPage() {
               </div>
               <div>
                 <label className={labelCls}>เลขทะเบียนนิติบุคคล *</label>
-                <input value={data.taxId} onChange={(e) => update('taxId', e.target.value)} className={inputCls} placeholder="0105566147487" />
+                <input value={data.taxId} onChange={(e) => update('taxId', e.target.value)} className={inputCls} placeholder="เลขนิติบุคคล 13 หลัก" />
               </div>
               <div>
                 <label className={labelCls}>สาขา *</label>
@@ -199,7 +199,7 @@ export default function CompanySettingsPage() {
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
-              <BanknotesIcon className="w-5 h-5 text-[#f73727]" />
+              <BanknotesIcon className="w-5 h-5 text-brand" />
             </div>
             <div>
               <h2 className="font-semibold text-gray-900">บัญชีธนาคารบริษัท</h2>
@@ -208,7 +208,7 @@ export default function CompanySettingsPage() {
           </div>
           <button
             onClick={addBank}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
             เพิ่มบัญชี
@@ -257,7 +257,7 @@ export default function CompanySettingsPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
           <div className="p-2 bg-red-50 rounded-xl">
-            <PencilSquareIcon className="w-5 h-5 text-[#f73727]" />
+            <PencilSquareIcon className="w-5 h-5 text-brand" />
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">ลายเซ็นผู้มีอำนาจ</h2>
@@ -318,7 +318,7 @@ export default function CompanySettingsPage() {
         <button
           onClick={handleSave}
           disabled={saving || loading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-50"
         >
           {saving && (
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

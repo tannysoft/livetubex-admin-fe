@@ -199,7 +199,7 @@ function InvoiceEditor() {
             {existing?.quotationId && (
               <p className="text-xs text-gray-500 mt-1">
                 แปลงมาจากใบเสนอราคา{' '}
-                <Link href={`/admin/accounting/quotations/new?id=${existing.quotationId}`} className="text-[#f73727] hover:underline">
+                <Link href={`/admin/accounting/quotations/new?id=${existing.quotationId}`} className="text-brand hover:underline">
                   ดูใบเสนอราคาต้นทาง
                 </Link>
               </p>
@@ -243,8 +243,8 @@ function InvoiceEditor() {
               <p className="text-sm font-semibold tabular-nums mt-0.5 text-green-700">{formatCurrency(existing.paidAmount ?? 0)}</p>
             </div>
             <div className="bg-red-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-[#f73727]">คงเหลือ</p>
-              <p className="text-sm font-bold text-[#f73727] tabular-nums mt-0.5">
+              <p className="text-xs text-brand">คงเหลือ</p>
+              <p className="text-sm font-bold text-brand tabular-nums mt-0.5">
                 {formatCurrency(Math.max(0, existing.grandTotal - (existing.paidAmount ?? 0)))}
               </p>
             </div>
@@ -295,7 +295,7 @@ function InvoiceEditor() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Link href={`/admin/accounting/tax-invoices/view?id=${t.id}`} className="text-[#f73727] hover:underline text-xs">
+                          <Link href={`/admin/accounting/tax-invoices/view?id=${t.id}`} className="text-brand hover:underline text-xs">
                             ดู
                           </Link>
                         </td>
@@ -338,7 +338,7 @@ function InvoiceEditor() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Link href={`/admin/accounting/receipts/view?id=${r.id}`} className="text-[#f73727] hover:underline text-xs">
+                          <Link href={`/admin/accounting/receipts/view?id=${r.id}`} className="text-brand hover:underline text-xs">
                             ดู
                           </Link>
                         </td>

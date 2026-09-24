@@ -235,7 +235,7 @@ export default function ReportPage() {
           <p className="text-gray-500 mt-1">
             สรุปการจ่ายเงินรายเดือน
             {settingPeriod && (
-              <span className="ml-2 px-2.5 py-0.5 bg-red-50 text-[#f73727] text-xs font-semibold rounded-lg">
+              <span className="ml-2 px-2.5 py-0.5 bg-brand-soft text-brand text-xs font-semibold rounded-lg">
                 รอบที่ตั้งค่า: {settingPeriod}
               </span>
             )}
@@ -247,7 +247,7 @@ export default function ReportPage() {
           <button
             onClick={handleSend}
             disabled={sending}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200 disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors shadow-md shadow-brand-tint disabled:opacity-60"
           >
             <EnvelopeIcon className="w-4 h-4" />
             {sending ? 'กำลังส่ง...' : `ส่งอีเมลสรุป (${selectedCount} รายการ)`}
@@ -326,7 +326,7 @@ export default function ReportPage() {
                     type="checkbox"
                     checked={allGroupSelected}
                     onChange={() => toggleGroup(fid, pmts)}
-                    className="w-4 h-4 rounded accent-[#f73727] cursor-pointer"
+                    className="w-4 h-4 rounded accent-brand cursor-pointer"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900">{freelancer.name}</p>
@@ -342,7 +342,7 @@ export default function ReportPage() {
                     <p className="text-xs text-gray-400">สุทธิ {formatCurrency(groupNet)} · ภาษี {formatCurrency(groupTax)}</p>
                   </div>
                   {selectedInGroup > 0 && (
-                    <span className="px-2 py-0.5 bg-red-100 text-[#f73727] text-xs font-medium rounded-full">
+                    <span className="px-2 py-0.5 bg-brand-tint text-brand text-xs font-medium rounded-full">
                       เลือก {selectedInGroup}
                       {selectedGross > 0 && ` · ${formatCurrency(selectedNet)}`}
                     </span>
@@ -383,14 +383,14 @@ export default function ReportPage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => togglePayment(p.id)}
-                            className="w-4 h-4 rounded accent-[#f73727] cursor-pointer"
+                            className="w-4 h-4 rounded accent-brand cursor-pointer"
                           />
                           {/* งาน */}
                           <p className="text-sm font-medium text-gray-900 truncate">{getJobTitle(p)}</p>
                           {/* ตำแหน่ง */}
                           <div>
                             {p.position
-                              ? <span className="px-2 py-0.5 bg-red-50 text-[#f73727] text-xs font-medium rounded-lg">{p.position}</span>
+                              ? <span className="px-2 py-0.5 bg-brand-soft text-brand text-xs font-medium rounded-lg">{p.position}</span>
                               : <span className="text-gray-300 text-xs">-</span>
                             }
                           </div>

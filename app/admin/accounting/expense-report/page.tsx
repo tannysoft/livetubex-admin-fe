@@ -139,7 +139,7 @@ export default function ExpenseReportPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
           <div className="p-2 bg-red-50 rounded-xl">
-            <TagIcon className="w-5 h-5 text-[#f73727]" />
+            <TagIcon className="w-5 h-5 text-brand" />
           </div>
           <h2 className="font-semibold text-gray-900">สรุปตามหมวดค่าใช้จ่าย</h2>
         </div>
@@ -177,7 +177,7 @@ export default function ExpenseReportPage() {
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center gap-2 justify-end">
                           <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-[#f73727]" style={{ width: `${Math.min(100, pct)}%` }} />
+                            <div className="h-full bg-brand" style={{ width: `${Math.min(100, pct)}%` }} />
                           </div>
                           <span className="text-xs text-gray-500 tabular-nums w-10 text-right">{pct.toFixed(1)}%</span>
                         </div>
@@ -195,7 +195,7 @@ export default function ExpenseReportPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
           <div className="p-2 bg-red-50 rounded-xl">
-            <TruckIcon className="w-5 h-5 text-[#f73727]" />
+            <TruckIcon className="w-5 h-5 text-brand" />
           </div>
           <h2 className="font-semibold text-gray-900">สรุปตามผู้ขาย (Top 10)</h2>
         </div>
@@ -216,7 +216,7 @@ export default function ExpenseReportPage() {
                     <div className="text-xs text-gray-500">{v.count} รายการ</div>
                   </div>
                   <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#f73727]" style={{ width: `${Math.min(100, pct)}%` }} />
+                    <div className="h-full bg-brand" style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
                   <div className="font-semibold text-sm tabular-nums w-28 text-right">{formatCurrency(v.totalPaidAmount)}</div>
                 </li>
@@ -286,7 +286,7 @@ function StatCard({
   loading?: boolean
   color?: 'default' | 'red' | 'brand'
 }) {
-  const valueColor = color === 'red' ? 'text-red-600' : color === 'brand' ? 'text-[#f73727]' : 'text-gray-900'
+  const valueColor = color === 'red' ? 'text-red-600' : color === 'brand' ? 'text-brand' : 'text-gray-900'
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">

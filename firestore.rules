@@ -24,6 +24,14 @@ service cloud.firestore {
       return isFreelancer() && request.auth.uid == lineUserId;
     }
 
+    // ── publicSettings: แบรนด์ของ tenant (ชื่อระบบ, โลโก้, สี) ───────────────
+    // อ่านได้โดยไม่ต้อง login — หน้า /login และ LIFF ต้องโชว์โลโก้ตั้งแต่ยังไม่มี auth
+    // ⚠️ ห้ามเก็บข้อมูลลับใน collection นี้เด็ดขาด (public จริงๆ)
+    match /publicSettings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── jobs: Admin เขียนได้, ทุกคนที่ login อ่านได้ ────────────────────────
     match /jobs/{jobId} {
       allow read: if request.auth != null;
@@ -162,6 +170,32 @@ service cloud.firestore {
     }
 
     match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── Equipment: คลังอุปกรณ์ OB + แผนจัดของ/ผังโยง (Admin only) ────────────
+    match /equipment/{equipmentId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /equipmentPlans/{planId} {
+      allow read, write: if isAdmin();
+
+      // revision (snapshot จัดของ + ผัง) — subcollection ต้องมี rule ของตัวเอง ไม่ได้สืบทอดจาก doc แม่
+      match /revisions/{revId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // รูป floor plan ของผัง 3D (data URL) — ดูเหตุผลใน lib/equipment/plan-assets.ts
+    // ลิงก์แชร์แผนให้ทีมงาน — มี hash รหัสผ่าน: admin อ่านสถานะได้ แต่เขียนผ่าน function setPlanShare เท่านั้น
+    // (hash ต้องทำฝั่ง server) · หน้า /share/plan อ่านผ่าน getSharedPlan ไม่ได้อ่านตรง
+    match /planShares/{planId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /equipmentPlanAssets/{assetId} {
       allow read, write: if isAdmin();
     }
 

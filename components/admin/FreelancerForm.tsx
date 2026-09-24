@@ -89,7 +89,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
   }
 
   const inputBaseCls =
-    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+    'px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all'
   const inputCls = `w-full ${inputBaseCls}`
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
@@ -204,7 +204,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
                 checked={value}
                 onChange={onChange}
                 id="isActive"
-                className="group relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:ring-offset-2 data-checked:bg-[#f73727] data-disabled:opacity-50"
+                className="group relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-brand/30 focus:ring-offset-2 data-checked:bg-brand data-disabled:opacity-50"
               >
                 <span className="pointer-events-none inline-block size-5 translate-x-0.5 rounded-full bg-white shadow transition duration-200 ease-in-out group-data-checked:translate-x-5" />
               </Switch>
@@ -227,7 +227,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
         <button
           type="submit"
           disabled={isLoading}
-          className="px-6 py-2.5 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center gap-2"
+          className="px-6 py-2.5 text-sm font-medium text-white bg-brand rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center gap-2"
         >
           {isLoading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
           บันทึก

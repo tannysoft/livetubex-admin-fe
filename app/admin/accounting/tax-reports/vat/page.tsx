@@ -237,7 +237,7 @@ export default function VatReportPage() {
                     <td className="px-5 py-2 text-right tabular-nums text-green-700">{formatCurrency(t.vatAmount)}</td>
                     <td className="px-5 py-2 text-right font-semibold tabular-nums">{formatCurrency(t.grandTotal)}</td>
                     <td className="px-5 py-2 text-right">
-                      <Link href={`/admin/accounting/tax-invoices/view?id=${t.id}`} className="text-[#f73727] hover:underline text-xs">ดู</Link>
+                      <Link href={`/admin/accounting/tax-invoices/view?id=${t.id}`} className="text-brand hover:underline text-xs">ดู</Link>
                     </td>
                   </tr>
                 ))}
@@ -311,7 +311,7 @@ export default function VatReportPage() {
                     <td className="px-5 py-2 text-right tabular-nums">{formatCurrency(e.amount)}</td>
                     <td className="px-5 py-2 text-right tabular-nums text-blue-700">{formatCurrency(e.vatAmount)}</td>
                     <td className="px-5 py-2 text-right">
-                      <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-[#f73727] hover:underline text-xs">ดู</Link>
+                      <Link href={`/admin/accounting/expenses/new?id=${e.id}`} className="text-brand hover:underline text-xs">ดู</Link>
                     </td>
                   </tr>
                 ))}

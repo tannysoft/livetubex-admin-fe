@@ -33,7 +33,7 @@ export default function HomeEntry() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-      <div className="w-10 h-10 border-4 border-[#f73727] border-t-transparent rounded-full animate-spin" />
+      <div className="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin" />
       <p className="mt-4 text-gray-400 text-sm">กำลังโหลด...</p>
     </div>
   )

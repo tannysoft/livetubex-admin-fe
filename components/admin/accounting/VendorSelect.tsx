@@ -54,7 +54,7 @@ export default function VendorSelect({ value, onChange, onCreateNew, reloadKey, 
     <Combobox value={selected} onChange={(v: Vendor | null) => onChange(v)} onClose={() => setQuery('')}>
       <div className="relative">
         <div className={`relative flex items-center rounded-xl border bg-white shadow-sm transition-all ${
-          invalid ? 'border-red-400' : 'border-gray-200 focus-within:border-[#f73727] focus-within:ring-2 focus-within:ring-[#f73727]/30'
+          invalid ? 'border-red-400' : 'border-gray-200 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30'
         }`}>
           <ComboboxInput
             className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent focus:outline-none placeholder:text-gray-400"
@@ -76,7 +76,7 @@ export default function VendorSelect({ value, onChange, onCreateNew, reloadKey, 
             <button
               type="button"
               onClick={onCreateNew}
-              className="w-full flex items-center gap-2 px-3 py-2 text-[#f73727] hover:bg-red-50 transition-colors border-b border-gray-100"
+              className="w-full flex items-center gap-2 px-3 py-2 text-brand hover:bg-brand-soft transition-colors border-b border-gray-100"
             >
               <PlusIcon className="w-4 h-4" />
               เพิ่มผู้ขายใหม่

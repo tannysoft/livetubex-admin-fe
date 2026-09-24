@@ -87,13 +87,13 @@ export default function FreelancerEarningsPage() {
       <ExclamationCircleIcon className="w-12 h-12 text-red-400" />
       <h2 className="mt-4 text-lg font-bold text-gray-800">เกิดข้อผิดพลาด</h2>
       <p className="mt-2 text-sm text-gray-500 max-w-xs">{bootError}</p>
-      <Link href="/freelancer" className="mt-6 text-[#f73727] text-sm font-medium">กลับหน้าหลัก</Link>
+      <Link href="/freelancer" className="mt-6 text-brand text-sm font-medium">กลับหน้าหลัก</Link>
     </div>
   )
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#f73727] text-white">
+      <header className="bg-brand text-white">
         <div className="max-w-lg mx-auto px-4 pt-4 pb-6">
           <div className="flex items-center gap-3">
             <Link href="/freelancer" className="p-2 hover:bg-white/10 rounded-xl transition-colors">
@@ -125,7 +125,7 @@ export default function FreelancerEarningsPage() {
                     key={y}
                     onClick={() => { setYear(y); setOpenMonths(new Set()) }}
                     className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                      y === year ? 'bg-[#f73727] text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
+                      y === year ? 'bg-brand text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
                     }`}
                   >
                     ปี {thaiYear(y)}
@@ -198,7 +198,7 @@ export default function FreelancerEarningsPage() {
                                 <p className="text-sm font-medium text-gray-800 truncate">{e.jobTitle}</p>
                                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                   {e.payment.position && (
-                                    <span className="text-xs bg-red-50 text-[#f73727] px-1.5 py-0.5 rounded-md font-medium">
+                                    <span className="text-xs bg-brand-soft text-brand px-1.5 py-0.5 rounded-md font-medium">
                                       {e.payment.position}
                                     </span>
                                   )}

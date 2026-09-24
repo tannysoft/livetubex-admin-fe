@@ -78,7 +78,7 @@ export default function JobsPage() {
         </div>
         <Link
           href="/admin/jobs/new"
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#f73727] text-white text-sm font-medium rounded-xl hover:bg-red-600 transition-colors shadow-md shadow-red-200"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-xl hover:bg-brand-dark transition-colors shadow-md shadow-brand-tint"
         >
           <PlusIcon className="w-4 h-4" />
           เพิ่มงานใหม่
@@ -92,7 +92,7 @@ export default function JobsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="ค้นหาชื่องาน สถานที่ หรือลูกค้า..."
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] bg-white"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white"
         />
       </div>
 
@@ -144,7 +144,7 @@ export default function JobsPage() {
                       <td className="px-5 py-4 align-top min-w-[200px] max-w-[320px]">
                         <Link
                           href={`/admin/jobs/new?id=${job.id}`}
-                          className="font-semibold text-gray-900 hover:text-[#f73727] transition-colors line-clamp-2 leading-snug"
+                          className="font-semibold text-gray-900 hover:text-brand transition-colors line-clamp-2 leading-snug"
                         >
                           {job.title}
                         </Link>
@@ -167,7 +167,7 @@ export default function JobsPage() {
 
                       {/* ราคาขาย */}
                       <td className="px-5 py-4 align-top text-right whitespace-nowrap">
-                        <div className="font-bold text-[#f73727]">{formatCurrency(job.budget ?? 0)}</div>
+                        <div className="font-bold text-brand">{formatCurrency(job.budget ?? 0)}</div>
                         {job.paymentCycle && (
                           <div className="text-[11px] text-blue-600 mt-0.5">{paymentCycleLabel(job.paymentCycle)}</div>
                         )}

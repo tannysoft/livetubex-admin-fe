@@ -59,7 +59,7 @@ export default function VendorForm({ defaultValues, onSubmit, onCancel, isLoadin
 
   const type = watch('type')
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727] transition-all'
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
 
@@ -176,7 +176,7 @@ export default function VendorForm({ defaultValues, onSubmit, onCancel, isLoadin
         <button
           type="submit"
           disabled={isLoading}
-          className="px-6 py-2.5 text-sm font-medium text-white bg-[#f73727] rounded-xl hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center gap-2"
+          className="px-6 py-2.5 text-sm font-medium text-white bg-brand rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center gap-2"
         >
           {isLoading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
           บันทึก

@@ -52,7 +52,7 @@ export default function TaxInvoicesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ค้นหาด้วยเลขที่, ชื่อลูกค้า"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f73727]/30 focus:border-[#f73727]"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
         </div>
         <div className="w-44">
@@ -112,7 +112,7 @@ export default function TaxInvoicesPage() {
                     <td className="px-5 py-3">
                       <Link
                         href={`/admin/accounting/invoices/new?id=${t.invoiceId}`}
-                        className="text-[#f73727] hover:underline text-xs font-mono"
+                        className="text-brand hover:underline text-xs font-mono"
                       >
                         ดูใบแจ้งหนี้
                       </Link>
