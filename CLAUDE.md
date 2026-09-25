@@ -25,7 +25,7 @@
 | Auth | Firebase Auth (email/password สำหรับ Admin, Custom Token สำหรับ Freelancer) |
 | Database | Cloud Firestore |
 | Storage | Firebase Storage (รูปบัตรประชาชน, สลิปค่าใช้จ่าย) |
-| Functions | Firebase Cloud Functions v2 (Node 20, region: asia-southeast1) |
+| Functions | Firebase Cloud Functions v2 (Node 22, region: asia-southeast1) |
 | Email | Resend API |
 | LINE | @line/liff v2 |
 | Date | date-fns v4 + Thai locale |
@@ -188,6 +188,17 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 `meta` (JSON: toolUseId → สถานะ/ลิงก์ที่หน้าเว็บโชว์) · ข้อความ AI ที่มี tool_use **บันทึกพร้อมผลของ tool ทีเดียว** (ประวัติไม่ค้าง tool_use ที่ไม่มีผล) · ผล tool ยาวถูกตัดให้เอกสาร < 1 MiB
 ไม่ใช้ LangGraph checkpointer — ตัววนรอบอยู่หน้าเว็บ (ปิดหน้าระหว่าง AI ทำงาน = รอบนั้นหยุด ประวัติถึงข้อความล่าสุดยังอยู่) · โค้ด: `lib/system-agent/history.ts`
 
+### `lineGroups` (admin อ่าน · เขียนโดย function `lineWebhook`)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| groupId / name / pictureUrl | string | doc id = groupId · ชื่อ/รูปดึงจาก `/v2/bot/group/{id}/summary` (อย่างมากทุก 6 ชม.) |
+| active | boolean | join/ข้อความในกลุ่ม = true · leave = false (+ `leftAt`) |
+| joinedAt / lastEventAt | string | |
+| label / hidden | string? / boolean? | **แอดมินแก้ได้แค่ 2 field นี้** (rules) — ชื่อเรียกในระบบ / ซ่อนจากตัวเลือกตอนส่ง · ลบ doc ได้ (มี event ใหม่จะกลับมา) |
+
+> LINE ไม่มี API รายการกลุ่ม → จดจาก webhook เท่านั้น (กลุ่มที่บอทอยู่ก่อนตั้ง webhook ต้องมีข้อความในกลุ่ม 1 ครั้ง)
+> จัดการที่ `/admin/settings/line` (`LineGroupsSection`) · Webhook URL = `https://asia-southeast1-{projectId}.cloudfunctions.net/lineWebhook`
+
 ### `settings/app`
 | Field | Type | หมายเหตุ |
 |---|---|---|
@@ -309,6 +320,16 @@ sendJobDetails(onCall)
 // รับ: { jobId, freelancerIds (≤100), message?, includePlans? } — อ่านงานจาก jobs เอง **ไม่ส่งราคา** · log ต่อคนลง lineMessageLogs (kind 'job', jobId, jobTitle)
 // คืน: { sent: id[], failed: {id,name,reason}[] } · UI: components/admin/SendJobModal (หน้างาน, หน้าแก้งาน, ปฏิทินงาน) โชว์ "ส่งแล้ว" จาก log
 // Secret: LINE_CHANNEL_ACCESS_TOKEN
+
+lineWebhook(onRequest)
+// Webhook ของ Messaging API — ตรวจ x-line-signature (HMAC-SHA256 ด้วย LINE_CHANNEL_SECRET) → จด lineGroups (functions/src/line-groups.ts)
+// ตอบ 200 เสมอหลังตรวจลายเซ็นผ่าน · Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN
+
+sendPlanToLine(onCall)
+// Admin only — ส่งแผนจัดอุปกรณ์/ผังระบบทาง LINE: { planId, groupIds (≤20), freelancerIds (≤100), message? }
+// ต้องเปิดลิงก์แชร์ทีมงาน (planShares) ก่อน — ปุ่ม "ดูรายการอุปกรณ์ / ดูผังระบบ / ดูผังวาง 3D" = LIFF /plan?s=&tab= (หน้าแชร์อ่าน ?tab=)
+// ไม่ส่งต้นทุน · log lineMessageLogs kind 'plan' (target 'group' | 'user', groupId, planId, planTitle) · UI: SendPlanModal (ปุ่ม "ส่ง LINE" หน้าแก้แผน)
+// ⚠️ push เข้ากลุ่มนับโควตา LINE ตามจำนวนสมาชิกกลุ่ม · คนในกลุ่มที่ไม่ได้ลงทะเบียน freelancer ต้องใส่รหัสแชร์
 
 systemAgent(onCall)
 // Admin only — ผู้ช่วย AI ทั้งระบบ (/admin/agent) เป็น "ตัวกลาง" เรียก Claude ทีละ 1 รอบ (@anthropic-ai/sdk, stream thinking/text ผ่าน sendChunk)
@@ -543,6 +564,7 @@ RESEND_API_KEY   # API key จาก resend.com (provider = resend)
 SMTP_PASSWORD    # รหัสผ่าน SMTP (provider = smtp) — ต้องมีก่อน deploy เสมอ ใส่ค่าว่างไว้ได้
 MAIL_FROM        # อีเมลผู้ส่ง fallback (ค่าจริงอยู่ใน settings/mail)
 MAIL_TO          # อีเมล admin fallback (ค่าจริงอยู่ใน settings/mail.adminRecipients)
+LINE_CHANNEL_SECRET # ตรวจลายเซ็น webhook (lineWebhook) — ต้องมีก่อน deploy functions
 ANTHROPIC_API_KEY # ผู้ช่วย AI จัดอุปกรณ์ (equipmentAgent) — ต้องมีก่อน deploy functions เสมอ
 ```
 

@@ -19,6 +19,8 @@ import {
   type LineConfig,
 } from '@/lib/line-config'
 import { Skeleton } from '@/components/ui/Skeleton'
+import LineGroupsSection from '@/components/admin/LineGroupsSection'
+import { lineWebhookUrl } from '@/lib/line-groups'
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30'
@@ -208,7 +210,15 @@ export default function LineSettingsPage() {
         <CopyRow label="LIFF Endpoint URL" value={`${origin}/freelancer`} />
         <CopyRow label="Callback URL (LINE Login)" value={`${origin}/freelancer`} />
         {liffValid && <CopyRow label="ลิงก์เปิด LIFF (ส่งให้ freelancer)" value={`https://liff.line.me/${data.liffId}`} />}
+        {lineWebhookUrl() && (
+          <div>
+            <CopyRow label="Webhook URL (Messaging API) — จดกลุ่ม LINE ที่บอทอยู่" value={lineWebhookUrl()} />
+            <p className="text-xs text-gray-500 mt-1.5">เปิด Use webhook + เปิด “Allow bot to join group chats” ใน LINE Official Account Manager</p>
+          </div>
+        )}
       </section>
+
+      <LineGroupsSection />
 
       {/* ── Messaging API token ─────────────────────────────────── */}
       <section className="bg-white rounded-2xl border border-gray-100 p-6">
@@ -223,8 +233,9 @@ export default function LineSettingsPage() {
           ไม่ใช่ Firestore
         </p>
         <pre className="mt-3 px-3 py-2.5 bg-gray-900 text-gray-100 rounded-xl text-xs overflow-x-auto">
-          firebase functions:secrets:set LINE_CHANNEL_ACCESS_TOKEN
+          firebase functions:secrets:set LINE_CHANNEL_ACCESS_TOKEN{'\n'}firebase functions:secrets:set LINE_CHANNEL_SECRET
         </pre>
+        <p className="text-xs text-gray-500 mt-2">Channel secret ใช้ตรวจลายเซ็นของ webhook (กันคนปลอมข้อมูลกลุ่ม)</p>
         <p className="text-xs text-gray-400 mt-2">ตั้งเสร็จต้อง deploy functions ใหม่หนึ่งครั้ง</p>
       </section>
 

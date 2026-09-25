@@ -89,6 +89,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // กลุ่ม LINE ที่บอทอยู่ — function lineWebhook เขียน · แอดมินแก้ได้แค่ชื่อเรียก/ซ่อน หรือเอาออกจากรายการ
+    match /lineGroups/{groupId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['label', 'hidden']);
+      allow delete: if isAdmin();
+      allow create: if false;
+    }
+
     // ── jobAssignments ───────────────────────────────────────────────────────
     match /jobAssignments/{assignmentId} {
       // Admin เขียนได้ทุกอย่าง

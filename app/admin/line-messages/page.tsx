@@ -141,7 +141,7 @@ export default function LineMessagesPage() {
                     <td className="px-5 py-3 text-gray-400 text-xs">{count - idx}</td>
                     <td className="px-5 py-3 text-gray-600">{formatDateTime(log.sentAt)}</td>
                     <td className="px-5 py-3 font-medium text-gray-900">{log.freelancerName}</td>
-                    <td className="px-5 py-3 text-right text-gray-500">{log.kind === 'job' || log.kind === 'job_done' ? <span title={log.jobTitle}>{log.kind === 'job_done' ? 'แจ้งงานเสร็จ/เบิกเงิน' : 'ส่งรายละเอียดงาน'} · <span className="text-gray-700">{log.jobTitle}</span></span> : `แจ้งโอน ${log.paymentCount} งาน`}</td>
+                    <td className="px-5 py-3 text-right text-gray-500">{log.kind === 'plan' ? <span title={log.planTitle}>ส่งแผน/ผัง{log.target === 'group' ? ' (กลุ่ม)' : ''} · <span className="text-gray-700">{log.planTitle}</span></span> : log.kind === 'job' || log.kind === 'job_done' ? <span title={log.jobTitle}>{log.kind === 'job_done' ? 'แจ้งงานเสร็จ/เบิกเงิน' : 'ส่งรายละเอียดงาน'} · <span className="text-gray-700">{log.jobTitle}</span></span> : `แจ้งโอน ${log.paymentCount} งาน`}</td>
                   </tr>
                 ))}
               </tbody>

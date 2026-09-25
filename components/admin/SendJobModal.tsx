@@ -152,6 +152,7 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
                 <li key={f.id}>
                   <FormCheckbox
                     size="sm"
+                    align="center"
                     disabled={!ok}
                     checked={picked.has(f.id)}
                     onChange={() => toggle(f.id)}
@@ -182,9 +183,9 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
               <p className="font-bold text-gray-900">{job.title}</p>
               <p className="text-xs"><span className="text-gray-500">วันที่ </span>{dateText}</p>
               <p className="text-xs"><span className="text-gray-500">สถานที่ </span>{job.location || '-'}</p>
-              {job.clientName && <p className="text-xs"><span className="text-gray-500">ลูกค้า </span>{job.clientName}</p>}
+              {job.clientName && !done && <p className="text-xs"><span className="text-gray-500">ลูกค้า </span>{job.clientName}</p>}
               {done
-                ? <p className="text-xs text-gray-800 border-t border-gray-100 pt-1.5">ขอบคุณที่ร่วมงานนี้ 🙏 งานเสร็จสิ้นแล้ว — ส่งเบิกค่าจ้างได้เลย</p>
+                ? <p className="text-xs text-gray-800 border-t border-gray-100 pt-1.5">🎉 งานเสร็จสิ้นแล้ว — ส่งเบิกค่าจ้างได้เลย 🥳</p>
                 : job.description && <p className="text-xs text-gray-600 whitespace-pre-wrap line-clamp-4 border-t border-gray-100 pt-1.5">{job.description}</p>}
               {message.trim() && <p className="text-xs rounded-lg bg-yellow-50 text-yellow-900 px-2 py-1.5 whitespace-pre-wrap">{message.trim()}</p>}
               {done ? (

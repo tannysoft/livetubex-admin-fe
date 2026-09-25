@@ -50,6 +50,7 @@ function writeSaved(shareId: string, password: string | null) {
 function SharedPlanPage({ via }: { via: 'link' | 'liff' }) {
   const params = useSearchParams()
   const shareId = params.get('s') ?? ''
+  const tabParam = params.get('tab') ?? ''
   const [password, setPassword] = useState('')
   // server ยอมให้ดูโดยไม่ใช้รหัส (LINE freelancer / admin) — โหลดใหม่ก็ไม่ต้องใช้รหัส
   const [trusted, setTrusted] = useState(false)
@@ -57,7 +58,8 @@ function SharedPlanPage({ via }: { via: 'link' | 'liff' }) {
   const [plan, setPlan] = useState<SharedPlan | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<Tab>('items')
+  // ?tab= จากปุ่มในข้อความ LINE (ดูรายการอุปกรณ์ / ดูผังระบบ / ดูผังวาง 3D)
+  const [tab, setTab] = useState<Tab>(() => { return tabParam === 'diagrams' || tabParam === 'layouts' ? tabParam : 'items' })
   // ?print=1 = มาจากปุ่ม "เปิดในเบราว์เซอร์เพื่อบันทึก PDF" ในแอป LINE → เปิดหน้าพิมพ์ให้เลย
   const [printing, setPrinting] = useState(params.get('print') === '1')
 
@@ -110,7 +112,7 @@ function SharedPlanPage({ via }: { via: 'link' | 'liff' }) {
       } else {
         // เปิดลิงก์ในแอป LINE → ไปหน้า LIFF (login LINE อัตโนมัติ ไม่ต้องใส่รหัส)
         if (/\bLine\//i.test(navigator.userAgent) && !readSaved(shareId)) {
-          const url = await liffPlanUrl(shareId).catch(() => '')
+          const url = await liffPlanUrl(shareId, tabParam || undefined).catch(() => '')
           if (url) { redirecting = true; window.location.replace(url); return }
         }
         // admin (หรือ freelancer) ที่ login อยู่ในเบราว์เซอร์นี้แล้ว
@@ -125,7 +127,7 @@ function SharedPlanPage({ via }: { via: 'link' | 'liff' }) {
     }
     boot().finally(() => { if (alive && !redirecting) setBooting(false) })
     return () => { alive = false }
-  }, [shareId, via])
+  }, [shareId, via, tabParam])
 
   if (!shareId) {
     return <CenterMessage title="ลิงก์ไม่ครบ" text="เปิดจากลิงก์ที่ได้รับอีกครั้ง" />
