@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Switch } from '@headlessui/react'
 import FormListbox from '@/components/ui/FormListbox'
-import type { Freelancer } from '@/lib/types'
+import { getPositions } from '@/lib/firebase-utils'
+import type { Freelancer, Position } from '@/lib/types'
 
 type FormData = {
   namePrefix: string
@@ -16,6 +18,7 @@ type FormData = {
   lineUserId: string
   lineDisplayName: string
   isActive: boolean
+  position: string
 }
 
 interface FreelancerFormProps {
@@ -51,6 +54,8 @@ const bankListboxOptions = [
 
 export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLoading }: FreelancerFormProps) {
   const isEditMode = !!defaultValues?.id
+  const [positions, setPositions] = useState<Position[]>([])
+  useEffect(() => { getPositions().then(setPositions).catch(() => {}) }, [])
 
   const { register, control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: {
@@ -64,6 +69,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       lineUserId: defaultValues?.lineUserId ?? '',
       lineDisplayName: defaultValues?.lineDisplayName ?? '',
       isActive: defaultValues?.isActive ?? true,
+      position: defaultValues?.position ?? '',
     },
   })
 
@@ -85,6 +91,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       linePictureUrl: defaultValues?.linePictureUrl ?? '',
       idCardImagePath: defaultValues?.idCardImagePath ?? '',
       isActive: data.isActive,
+      position: data.position,
     })
   }
 
@@ -145,6 +152,28 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
           <label className={labelCls}>อีเมล</label>
           <input {...register('email')} className={inputCls} placeholder="email@example.com" type="email" />
           {errors.email && <p className={errorCls}>{errors.email.message}</p>}
+        </div>
+
+        <div>
+          <label className={labelCls}>ตำแหน่งงาน</label>
+          <Controller
+            name="position"
+            control={control}
+            render={({ field }) => (
+              <FormListbox
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  { value: '', label: 'ไม่ระบุ' },
+                  ...positions.map((p) => ({ value: p.name, label: p.name })),
+                  // ตำแหน่งที่ถูกลบ/เปลี่ยนชื่อไปแล้ว — ยังโชว์ค่าเดิมไว้
+                  ...(field.value && !positions.some((p) => p.name === field.value) ? [{ value: field.value, label: field.value }] : []),
+                ]}
+                buttonClassName={inputCls}
+              />
+            )}
+          />
+          <p className="text-xs text-gray-400 mt-1">เป็นค่าตั้งต้นตอนขอเบิกเงินใน LINE</p>
         </div>
 
         <div>

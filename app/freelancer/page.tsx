@@ -57,6 +57,8 @@ function getDatesInRange(start: string, end?: string): string[] {
 export default function FreelancerPage() {
   const router = useRouter()
   const [pageState, setPageState] = useState<PageState>('loading')
+  // ?claim={jobId} จากปุ่ม "เบิกเงิน" ในข้อความ LINE แจ้งงานเสร็จสิ้น — งานเลือกไม่ได้ (เบิกแล้ว/ซ่อน) = บอกเหตุผลในฟอร์ม
+  const [claimNotice, setClaimNotice] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [liffProfile, setLiffProfile] = useState<LiffUserProfile | null>(null)
   const [freelancer, setFreelancer] = useState<Freelancer | null>(null)
@@ -139,6 +141,16 @@ export default function FreelancerPage() {
         setJobs(j)
         setPayments(p)
         setPositions(pos)
+        // อ่านหลัง liff.init — LIFF redirect รอบสองพา query (?claim=) มาครบแล้ว
+        const claim = new URLSearchParams(window.location.search).get('claim')
+        if (claim) {
+          const job = j.find((x) => x.id === claim)
+          const selectable = !!job && job.showInLiff !== false && !p.some((x) => x.jobId === claim && x.status !== 'rejected')
+          setSelectedJobId(selectable ? claim : '')
+          setSelectedPosition(f.position && pos.some((x) => x.name === f.position) ? f.position : '')
+          if (!selectable) setClaimNotice(job ? `งาน "${job.title}" ขอเบิกไปแล้ว หรือยังไม่เปิดให้เบิก` : 'ไม่พบงานที่ลิงก์ระบุ')
+          setRequestOpen(true)
+        }
         setPageState('ready')
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
@@ -149,6 +161,7 @@ export default function FreelancerPage() {
   }, [router])
 
   // ── Modal helpers ──────────────────────────────────────────────────────────
+
 
   // jobIds ที่ freelancer คนนี้เคยขอเบิกไปแล้ว (ไม่นับที่ admin ปฏิเสธ — ให้เบิกใหม่ได้)
   const requestedJobIds = useMemo(
@@ -176,10 +189,12 @@ export default function FreelancerPage() {
     return getDatesInRange(selectedJob.date, selectedJob.endDate)
   }, [selectedJob])
 
-  const openModal = () => {
-    setSelectedJobId('')
+  const openModal = (jobId = '') => {
+    setClaimNotice('')
+    setSelectedJobId(jobId)
     setSelectedDates([])
-    setSelectedPosition('')
+    // ตำแหน่งตั้งต้นจากโปรไฟล์ (ถ้ายังมีในรายการตำแหน่ง)
+    setSelectedPosition(freelancer?.position && positions.some((p) => p.name === freelancer.position) ? freelancer.position : '')
     setRequestAmount('')
     setRequestNotes('')
     setModalError('')
@@ -392,7 +407,7 @@ export default function FreelancerPage() {
 
         {/* ปุ่มขอเบิกจ่าย */}
         <button
-          onClick={openModal}
+          onClick={() => openModal()}
           className="w-full flex items-center justify-center gap-2 py-4 bg-brand text-white font-semibold rounded-2xl hover:bg-brand-dark transition-colors shadow-md shadow-brand-tint text-base"
         >
           <PlusIcon className="w-5 h-5" />
@@ -447,6 +462,7 @@ export default function FreelancerPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            {claimNotice && <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">{claimNotice}</p>}
             {/* เลือกงาน */}
             <div>
               <label className={labelCls}>งาน *</label>

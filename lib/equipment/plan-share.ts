@@ -1,6 +1,7 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../firebase'
+import { resolveLiffId } from '../line-config'
 import type { EquipmentPlan, PlanItem, PlanLayout } from '../types'
 
 /**
@@ -40,11 +41,20 @@ export async function setPlanShare(args: { planId: string; enabled?: boolean; pa
 
 export async function fetchSharedPlan(shareId: string, password: string): Promise<SharedPlan> {
   const call = httpsCallable<{ shareId: string; password: string }, SharedPlan>(functions, 'getSharedPlan')
-  return (await call({ shareId, password })).data
+  return (await call({ shareId, password })).data // password '' = ขอดูแบบ login แล้ว (LINE freelancer / admin)
 }
 
 export function planShareUrl(shareId: string): string {
   return `${window.location.origin}/share/plan?s=${encodeURIComponent(shareId)}`
+}
+
+/**
+ * ลิงก์เปิดใน LINE (LIFF) — endpoint ของ LIFF คือ /freelancer จึงได้หน้า /freelancer/plan
+ * freelancer ที่ลงทะเบียนแล้วดูได้เลยไม่ต้องใส่รหัส · ไม่ได้ตั้ง LIFF ID = ''
+ */
+export async function liffPlanUrl(shareId: string): Promise<string> {
+  const id = await resolveLiffId()
+  return id ? `https://liff.line.me/${id}/plan?s=${encodeURIComponent(shareId)}` : ''
 }
 
 /** error ของ callable → ข้อความภาษาคน */

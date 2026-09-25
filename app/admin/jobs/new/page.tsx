@@ -3,13 +3,14 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, CheckBadgeIcon, CheckCircleIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
 import JobForm, { type JobFormData } from '@/components/admin/JobForm'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { getJobWithBudget, createJob, updateJob } from '@/lib/firebase-utils'
 import Modal from '@/components/ui/Modal'
 import { addJobToCalendar } from '@/lib/calendar'
 import { getAccountingStatuses, type AccountingStatusDef } from '@/lib/job-accounting'
+import SendJobModal from '@/components/admin/SendJobModal'
 import GoogleCalendarButton from '@/components/admin/GoogleCalendarButton'
 import type { Job } from '@/lib/types'
 
@@ -21,6 +22,8 @@ function JobEditor() {
   const [loading, setLoading] = useState(!!editId)
   const [saving, setSaving] = useState(false)
   const [existing, setExisting] = useState<Job | null>(null)
+  const [sending, setSending] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const [acctStatuses, setAcctStatuses] = useState<AccountingStatusDef[]>([])
   useEffect(() => { getAccountingStatuses().then(setAcctStatuses).catch(() => {}) }, [])
   const [created, setCreated] = useState<(JobFormData & { id: string; googleAddedAt?: string }) | null>(null)
@@ -64,10 +67,33 @@ function JobEditor() {
           <ArrowLeftIcon className="w-4 h-4" />
           งานถ่ายทอดสด
         </Link>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-gray-900">
           {editId ? `แก้ไขข้อมูลงาน${existing?.title ? ` — ${existing.title}` : ''}` : 'เพิ่มงานถ่ายทอดสดใหม่'}
         </h1>
+        {editId && existing && (
+          <div className="flex gap-2 flex-wrap">
+          {existing.status !== 'cancelled' && (
+            <button onClick={() => setCompleting(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-green-700 bg-white border border-green-200 hover:bg-green-50">
+              <CheckBadgeIcon className="w-4 h-4" /> {existing.status === 'completed' ? 'แจ้งเบิกเงิน' : 'งานเสร็จสิ้น'}
+            </button>
+          )}
+          <button onClick={() => setSending(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50">
+            <PaperAirplaneIcon className="w-4 h-4" /> ส่งให้ Freelancer
+          </button>
+          </div>
+        )}
+        </div>
       </div>
+      {sending && existing && <SendJobModal job={existing} onClose={() => setSending(false)} />}
+      {completing && existing && (
+        <SendJobModal
+          mode="completed"
+          job={existing}
+          onClose={() => setCompleting(false)}
+          onJobChanged={(patch) => setExisting((j) => j && { ...j, ...patch })}
+        />
+      )}
 
       {loading ? (
         <div className="space-y-4">
@@ -76,6 +102,8 @@ function JobEditor() {
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
           <JobForm
+            // สถานะ/การแสดงใน LIFF ถูกเปลี่ยนจากปุ่ม "งานเสร็จสิ้น" → โหลดฟอร์มใหม่ ไม่งั้นกดบันทึกแล้วค่าเก่าทับ
+            key={`${existing?.status ?? ''}-${existing?.showInLiff ?? ''}`}
             defaultValues={existing ?? undefined}
             onSubmit={handleSubmit}
             onCancel={() => router.push('/admin/jobs')}

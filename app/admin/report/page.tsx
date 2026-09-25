@@ -1,5 +1,6 @@
 'use client'
 
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useMemo, useState } from 'react'
 import {
   EnvelopeIcon,
@@ -322,12 +323,7 @@ export default function ReportPage() {
               <div key={fid} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 {/* Freelancer header */}
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={allGroupSelected}
-                    onChange={() => toggleGroup(fid, pmts)}
-                    className="w-4 h-4 rounded accent-brand cursor-pointer"
-                  />
+                  <FormCheckbox size="sm" checked={allGroupSelected} onChange={() => toggleGroup(fid, pmts)} />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900">{freelancer.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -375,16 +371,15 @@ export default function ReportPage() {
                       const { tax, net } = calcTax(p.amount)
                       const isSelected = selected.has(p.id)
                       return (
-                        <label
+                        <div
                           key={p.id}
+                          onClick={() => togglePayment(p.id)}
                           className={`grid grid-cols-[28px_1fr_100px_120px_100px_90px_90px] gap-x-3 items-center px-5 py-3 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${isSelected ? 'bg-red-50/40' : 'hover:bg-gray-50'}`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => togglePayment(p.id)}
-                            className="w-4 h-4 rounded accent-brand cursor-pointer"
-                          />
+                          {/* แถวทั้งแถวกดเลือกได้ — กันคลิกที่ช่องติ๊กนับซ้ำ */}
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <FormCheckbox size="sm" checked={isSelected} onChange={() => togglePayment(p.id)} />
+                          </span>
                           {/* งาน */}
                           <p className="text-sm font-medium text-gray-900 truncate">{getJobTitle(p)}</p>
                           {/* ตำแหน่ง */}
@@ -411,7 +406,7 @@ export default function ReportPage() {
                           </div>
                           {/* สุทธิ */}
                           <p className="text-sm font-bold text-green-600 text-right">{formatCurrency(net)}</p>
-                        </label>
+                        </div>
                       )
                     })}
                   </div>

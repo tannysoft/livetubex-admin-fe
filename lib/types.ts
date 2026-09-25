@@ -32,6 +32,7 @@ export interface Job {
   endDate?: string
   location: string
   clientName: string
+  docNumber?: string // เลขที่เอกสารอ้างอิงของงาน (เช่น เลขใบเสนอราคา/PO) — พิมพ์เอง ไม่ auto
   accountingStatus?: string // สถานะทางบัญชี (id จาก settings/jobAccounting) — ลับ เก็บที่ jobFinance/{jobId} เหมือน budget
   budget?: number // ลับ — เก็บแยกที่ jobFinance/{jobId} (admin-only) ไม่เก็บใน jobs doc; ฝั่ง admin join ผ่าน getJobsWithBudget
   status: JobStatus
@@ -82,6 +83,7 @@ export interface Freelancer {
   totalEarned: number
   createdAt: string
   isActive: boolean
+  position?: string         // ตำแหน่งงานหลัก (ชื่อจาก positions) — เลือกตอนสมัคร LIFF / admin แก้ได้ · เป็นค่าตั้งต้นตอนขอเบิก
 }
 
 export interface JobAssignment {
@@ -149,7 +151,10 @@ export interface LineMessageLog {
   freelancerId: string
   freelancerName: string
   lineUserId: string
-  paymentCount: number   // จำนวน payment ที่โอนในครั้งนี้
+  paymentCount: number   // จำนวน payment ที่โอนในครั้งนี้ (kind 'job' = 0)
+  kind?: 'payout' | 'job' | 'job_done' // ไม่มี = payout (ข้อมูลเก่า) · job = ส่งรายละเอียดงาน · job_done = แจ้งงานเสร็จสิ้น/เบิกเงิน (sendJobDetails)
+  jobId?: string
+  jobTitle?: string
 }
 
 export interface AppSettings {

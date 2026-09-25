@@ -1,11 +1,12 @@
 'use client'
 
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useState } from 'react'
 import { ArrowTopRightOnSquareIcon, CheckIcon, ClipboardDocumentIcon, LinkIcon } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
-  getPlanShareStatus, planShareUrl, setPlanShare, shareErrorMessage, type PlanShareStatus,
+  getPlanShareStatus, liffPlanUrl, planShareUrl, setPlanShare, shareErrorMessage, type PlanShareStatus,
 } from '@/lib/equipment/plan-share'
 
 interface SharePlanModalProps {
@@ -30,12 +31,19 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
   const [notice, setNotice] = useState('')
   const [copied, setCopied] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [lineUrl, setLineUrl] = useState('')
+  const [lineCopied, setLineCopied] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
     let alive = true
     getPlanShareStatus(planId)
-      .then((s) => { if (alive) setStatus(s) })
+      .then(async (s) => {
+        if (!alive) return
+        setStatus(s)
+        const lu = s ? await liffPlanUrl(s.shareId).catch(() => '') : ''
+        if (alive) setLineUrl(lu)
+      })
       .catch((e) => { if (alive) { setStatus(null); setError(shareErrorMessage(e)) } })
     return () => { alive = false }
   }, [isOpen, planId])
@@ -49,6 +57,7 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
       await flush()
       const s = await setPlanShare({ planId, ...args })
       setStatus(s)
+      setLineUrl(await liffPlanUrl(s.shareId).catch(() => ''))
       setPassword('')
       setNotice(done)
     } catch (e) {
@@ -69,12 +78,12 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
 
   const url = status ? planShareUrl(status.shareId) : ''
 
-  const copy = async () => {
+  const copy = async (text = url, done: (v: boolean) => void = setCopied) => {
     await flush()
     try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(text)
+      done(true)
+      setTimeout(() => done(false), 2000)
     } catch {
       setError('คัดลอกไม่ได้ — กดค้างที่ลิงก์เพื่อคัดลอกเอง')
     }
@@ -104,19 +113,15 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
 
         {status && (
           <>
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 px-4 py-3 cursor-pointer">
-              <span>
-                <span className="block text-sm font-medium text-gray-900">{status.enabled ? 'เปิดลิงก์อยู่' : 'ปิดลิงก์อยู่'}</span>
-                <span className="block text-xs text-gray-500">{status.enabled ? 'คนที่มีลิงก์และรหัสผ่านเปิดดูได้' : 'เปิดลิงก์แล้วจะขึ้นว่าลิงก์ถูกปิด'}</span>
-              </span>
-              <input
-                type="checkbox"
-                className="w-5 h-5 accent-[var(--brand)]"
+            <div className="rounded-xl border border-gray-200 px-4 py-3">
+              <FormCheckbox
                 checked={status.enabled}
                 disabled={busy}
-                onChange={(e) => void run({ enabled: e.target.checked }, e.target.checked ? 'เปิดลิงก์แล้ว' : 'ปิดลิงก์แล้ว')}
+                onChange={(on) => void run({ enabled: on }, on ? 'เปิดลิงก์แล้ว' : 'ปิดลิงก์แล้ว')}
+                label={<span className="font-medium text-gray-900">{status.enabled ? 'เปิดลิงก์อยู่' : 'ปิดลิงก์อยู่'}</span>}
+                description={status.enabled ? 'คนที่มีลิงก์และรหัสผ่านเปิดดูได้' : 'เปิดลิงก์แล้วจะขึ้นว่าลิงก์ถูกปิด'}
               />
-            </label>
+            </div>
 
             <div className={status.enabled ? '' : 'opacity-50'}>
               <span className="block text-sm font-medium text-gray-700 mb-1">ลิงก์</span>
@@ -138,6 +143,23 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
                 </button>
               </div>
             </div>
+
+            {lineUrl && (
+              <div className={status.enabled ? '' : 'opacity-50'}>
+                <span className="block text-sm font-medium text-gray-700 mb-1">ลิงก์เปิดใน LINE <span className="font-normal text-gray-400">— Freelancer ที่ลงทะเบียนแล้วไม่ต้องใส่รหัส</span></span>
+                <div className="flex gap-2">
+                  <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm">
+                    <LinkIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                    <span className="truncate select-all">{lineUrl}</span>
+                  </div>
+                  <button onClick={() => void copy(lineUrl, setLineCopied)} className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium hover:bg-gray-50">
+                    {lineCopied ? <CheckIcon className="w-4 h-4 text-green-600" /> : <ClipboardDocumentIcon className="w-4 h-4" />}
+                    {lineCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">ลิงก์ปกติด้านบนถ้าเปิดในแอป LINE ก็จะพาเข้าหน้านี้ให้เอง · คนที่ไม่ได้ลงทะเบียนยังใส่รหัสได้</p>
+              </div>
+            )}
 
             <form onSubmit={(e) => { e.preventDefault(); void run({ password }, 'เปลี่ยนรหัสผ่านแล้ว — คนที่เปิดอยู่ต้องใส่รหัสใหม่ตอนโหลดใหม่') }} className="space-y-1.5">
               <span className="block text-sm font-medium text-gray-700">เปลี่ยนรหัสผ่าน</span>

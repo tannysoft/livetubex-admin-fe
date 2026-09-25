@@ -893,6 +893,147 @@ export const sendPayoutNotification = onCall(
   }
 )
 
+// ── ส่งรายละเอียดงานให้ Freelancer ทาง LINE (Admin เรียก) ─────────────────
+// ข้อมูลงานอ่านจาก jobs เอง (ไม่เชื่อข้อความงานจาก client) — client ส่งแค่ jobId, คนรับ, ข้อความเพิ่มเติม
+// ไม่มี budget/ราคา (อยู่ jobFinance) · 1 คน = 1 push = นับโควตา LINE 1 ข้อความ → log ลง lineMessageLogs (kind 'job')
+
+/** ลิงก์ template ของ Google Calendar (งานทั้งวัน — วันสิ้นสุดแบบไม่รวม จึง +1) ฝาแฝดของ googleCalendarUrl ใน lib/calendar.ts */
+function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: string; location?: string; description?: string }): string {
+  const ymd = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+  const start = new Date(job.date + 'T00:00:00Z')
+  const end = new Date((job.endDate && job.endDate > job.date ? job.endDate : job.date) + 'T00:00:00Z')
+  end.setUTCDate(end.getUTCDate() + 1)
+  const q = new URLSearchParams({ action: 'TEMPLATE', text: job.title, dates: `${ymd(start)}/${ymd(end)}` })
+  if (job.location) q.set('location', job.location)
+  if (job.description) q.set('details', job.description.slice(0, 1500))
+  return `https://calendar.google.com/calendar/render?${q.toString().replace('%2F', '/')}`
+}
+
+function thaiDateRange(date: string, endDate?: string): string {
+  const f = (d: string, opts: Intl.DateTimeFormatOptions) => new Date(d + 'T00:00:00Z').toLocaleDateString('th-TH', { timeZone: 'UTC', ...opts })
+  const full: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+  if (!endDate || endDate <= date) return f(date, full)
+  return `${f(date, { weekday: 'short', day: 'numeric', month: 'short' })} – ${f(endDate, full)}`
+}
+
+export const sendJobDetails = onCall(
+  { cors: CORS_ORIGINS, secrets: [LINE_CHANNEL_ACCESS_TOKEN] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+    const token = request.auth.token as { firebase?: { sign_in_provider?: string } }
+    if (token.firebase?.sign_in_provider !== 'password') throw new HttpsError('permission-denied', 'Admin only')
+
+    const { jobId, freelancerIds, message, includePlans, template: rawTemplate } = (request.data ?? {}) as { jobId?: string; freelancerIds?: string[]; message?: string; includePlans?: boolean; template?: string }
+    // details = รายละเอียดงาน (ก่อนงาน) · completed = งานเสร็จสิ้น ชวนเบิกเงิน (ปุ่มเปิด LIFF พร้อมเลือกงานให้ ?claim=)
+    const template: 'details' | 'completed' = rawTemplate === 'completed' ? 'completed' : 'details'
+    if (!jobId || typeof jobId !== 'string') throw new HttpsError('invalid-argument', 'Missing jobId')
+    if (!Array.isArray(freelancerIds) || freelancerIds.length === 0) throw new HttpsError('invalid-argument', 'Missing freelancerIds')
+    if (freelancerIds.length > 100) throw new HttpsError('invalid-argument', 'ส่งได้ครั้งละไม่เกิน 100 คน')
+    const extra = typeof message === 'string' ? message.trim().slice(0, 1000) : ''
+
+    const db = admin.firestore()
+    const jobSnap = await db.collection('jobs').doc(jobId).get()
+    if (!jobSnap.exists) throw new HttpsError('not-found', 'ไม่พบงาน')
+    const job = jobSnap.data() as { title: string; date: string; endDate?: string; location?: string; clientName?: string; description?: string }
+
+    const brand = await getBrandInfo()
+    const liffId = await getLiffId()
+    const color = brand.primaryColor
+    const dateText = job.date ? thaiDateRange(job.date, job.endDate) : '-'
+    const row = (label: string, value: string) => ({
+      type: 'box', layout: 'baseline', spacing: 'md',
+      contents: [
+        { type: 'text', text: label, size: 'sm', color: '#6b7280', flex: 2 },
+        { type: 'text', text: value || '-', size: 'sm', color: '#111827', flex: 5, wrap: true },
+      ],
+    })
+    const bodyContents: object[] = [
+      { type: 'text', text: job.title || 'งาน', size: 'lg', weight: 'bold', color: '#111827', wrap: true },
+      { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: [
+        row('วันที่', dateText),
+        row('สถานที่', job.location ?? ''),
+        ...(job.clientName ? [row('ลูกค้า', job.clientName)] : []),
+      ] },
+    ]
+    if (template === 'completed') {
+      bodyContents.push({ type: 'separator', margin: 'lg' })
+      bodyContents.push({ type: 'text', text: 'ขอบคุณที่ร่วมงานนี้ 🙏 งานเสร็จสิ้นแล้ว — ส่งเบิกค่าจ้างได้เลย', size: 'sm', color: '#111827', wrap: true, margin: 'lg' })
+    } else if (job.description?.trim()) {
+      bodyContents.push({ type: 'separator', margin: 'lg' })
+      bodyContents.push({ type: 'text', text: job.description.trim().slice(0, 1500), size: 'sm', color: '#374151', wrap: true, margin: 'lg' })
+    }
+    if (extra) {
+      bodyContents.push({ type: 'box', layout: 'vertical', margin: 'lg', paddingAll: '12px', cornerRadius: '8px', backgroundColor: '#fef9c3', contents: [
+        { type: 'text', text: 'ข้อความจากแอดมิน', size: 'xs', color: '#854d0e', weight: 'bold' },
+        { type: 'text', text: extra, size: 'sm', color: '#422006', wrap: true, margin: 'sm' },
+      ] })
+    }
+    const buttons: object[] = []
+    if (template === 'completed') {
+      const claimUri = liffId ? `https://liff.line.me/${liffId}?claim=${encodeURIComponent(jobId)}` : `${APP_URL}/freelancer?claim=${encodeURIComponent(jobId)}`
+      buttons.push({ type: 'button', style: 'primary', color: '#059669', height: 'sm', action: { type: 'uri', label: 'เบิกเงิน', uri: claimUri } })
+    }
+    // ปุ่ม "ดูแผนงาน" — แผนจัดอุปกรณ์ที่ผูกกับงานนี้และเปิดลิงก์แชร์อยู่ (เปิดใน LINE: freelancer ไม่ต้องใส่รหัส)
+    if (template === 'details' && includePlans !== false) {
+      const planSnaps = await db.collection('equipmentPlans').where('jobId', '==', jobId).get()
+      const plans = planSnaps.docs.sort((a, b) => String(a.data().date ?? '').localeCompare(String(b.data().date ?? ''))).slice(0, 3)
+      for (const pl of plans) {
+        const share = (await db.collection('planShares').doc(pl.id).get()).data() as { shareId?: string; enabled?: boolean } | undefined
+        if (!share?.enabled || !share.shareId) continue
+        const s = encodeURIComponent(share.shareId)
+        const uri = liffId ? `https://liff.line.me/${liffId}/plan?s=${s}` : `${APP_URL}/share/plan?s=${s}`
+        const label = plans.length > 1 ? `ดูแผน: ${String(pl.data().title ?? '')}` : 'ดูแผนงาน / ผัง'
+        buttons.push({ type: 'button', style: 'primary', color, height: 'sm', action: { type: 'uri', label: label.slice(0, 40), uri } })
+      }
+    }
+    const hasPlan = buttons.length > 0
+    if (template === 'details' && job.date) buttons.push({ type: 'button', style: hasPlan ? 'secondary' : 'primary', ...(hasPlan ? {} : { color }), height: 'sm', action: { type: 'uri', label: 'เพิ่มลงปฏิทิน', uri: jobGoogleCalendarUrl(job) } })
+    if (liffId && template === 'details') buttons.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: `เปิด ${brand.appName}`.slice(0, 40), uri: `https://liff.line.me/${liffId}` } })
+
+    const flexMessage: object = {
+      type: 'flex',
+      altText: (template === 'completed' ? `${brand.appName}: งาน ${job.title} เสร็จสิ้น — เบิกเงินได้เลย` : `${brand.appName}: รายละเอียดงาน ${job.title} (${dateText})`).slice(0, 400),
+      sender: { name: brand.appName.slice(0, 20) },
+      contents: {
+        type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: template === 'completed' ? '#059669' : color, paddingAll: '16px', contents: [
+          { type: 'text', text: brand.appName, color: '#ffffffBF', size: 'xs', weight: 'bold' },
+          { type: 'text', text: template === 'completed' ? 'งานเสร็จสิ้น ✅' : 'รายละเอียดงาน 🎬', color: '#ffffff', size: 'xl', weight: 'bold', margin: 'xs' },
+        ] },
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: bodyContents },
+        ...(buttons.length ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', contents: buttons } } : {}),
+      },
+    }
+
+    const bangkokNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+    const month = `${bangkokNow.getFullYear()}-${String(bangkokNow.getMonth() + 1).padStart(2, '0')}`
+    const sent: string[] = []
+    const failed: { id: string; name: string; reason: string }[] = []
+    const uniqueIds = [...new Set(freelancerIds.filter((x) => typeof x === 'string' && x))]
+    const snaps = await db.getAll(...uniqueIds.map((id) => db.collection('freelancers').doc(id)))
+    for (const snap of snaps) {
+      const fl = snap.data()
+      const name = (fl?.name as string | undefined) ?? snap.id
+      const lineUserId = (fl?.lineUserId as string | undefined)?.trim()
+      if (!fl) { failed.push({ id: snap.id, name, reason: 'ไม่พบ freelancer' }); continue }
+      if (!lineUserId) { failed.push({ id: snap.id, name, reason: 'ไม่มี LINE' }); continue }
+      try {
+        await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [flexMessage])
+        sent.push(snap.id)
+        await db.collection('lineMessageLogs').add({
+          sentAt: new Date().toISOString(), month, kind: template === 'completed' ? 'job_done' : 'job', jobId, jobTitle: job.title ?? '',
+          freelancerId: snap.id, freelancerName: name, lineUserId, paymentCount: 0,
+        })
+      } catch (e) {
+        console.warn('[sendJobDetails] LINE ❌', snap.id, e)
+        failed.push({ id: snap.id, name, reason: e instanceof Error ? e.message.slice(0, 200) : 'ส่งไม่สำเร็จ' })
+      }
+    }
+    console.log(`[sendJobDetails] job ${jobId} sent:${sent.length} failed:${failed.length}`)
+    return { sent, failed }
+  }
+)
+
 // ── ส่งสรุปรายได้ให้ Freelancer (Admin เรียก) ─────────────────────────────
 interface ReportPaymentRow {
   workDescription: string
@@ -1347,6 +1488,19 @@ export const equipmentAgent = onCall(
   },
 )
 
+// ผู้ช่วย AI ของทั้งระบบ (/admin/agent) — ตัวกลางเรียก Claude ทีละรอบ tool รันที่หน้าเว็บ (ดู system-agent.ts)
+export const systemAgent = onCall(
+  { cors: CORS_ORIGINS, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 300, memory: '512MiB' },
+  async (request, response) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required')
+    const provider = (request.auth.token.firebase as { sign_in_provider?: string } | undefined)?.sign_in_provider
+    if (provider !== 'password') throw new HttpsError('permission-denied', 'Admin only')
+    const { handleSystemAgent } = await import('./system-agent')
+    const onEvent = request.acceptsStreaming && response ? (e: unknown) => { void response.sendChunk(e).catch(() => {}) } : undefined
+    return handleSystemAgent(request.data, ANTHROPIC_API_KEY.value(), onEvent)
+  },
+)
+
 // ═══════════════════════════════════════════════════════════════════════════
 // แชร์แผนจัดอุปกรณ์ให้ทีมงาน (ลิงก์ + รหัสผ่าน) — ดู plan-share.ts
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1362,5 +1516,5 @@ export const setPlanShare = onCall({ cors: CORS_ORIGINS }, async (request) => {
 /** สาธารณะ (ไม่ต้อง login) — ความปลอดภัยอยู่ที่ shareId เดาไม่ได้ + รหัสผ่าน + ล็อกเมื่อใส่ผิดหลายครั้ง */
 export const getSharedPlan = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
   const { handleGetSharedPlan } = await import('./plan-share')
-  return handleGetSharedPlan(request.data)
+  return handleGetSharedPlan(request.data, request.auth)
 })

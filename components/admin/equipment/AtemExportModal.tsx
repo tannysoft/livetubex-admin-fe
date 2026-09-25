@@ -1,5 +1,7 @@
 'use client'
 
+import FormListbox from '@/components/ui/FormListbox'
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useMemo, useState } from 'react'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import Modal from '@/components/ui/Modal'
@@ -85,10 +87,13 @@ export default function AtemExportModal({ isOpen, onClose, diagram, switcher }: 
   }
 
   const sourceSelect = (value: number, onChange: (v: number) => void) => (
-    <select className={cellCls} value={value} onChange={(e) => onChange(Number(e.target.value))}>
-      <option value={ATEM_UNSET}>— ไม่แตะ —</option>
-      {sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-    </select>
+    <FormListbox
+      value={String(value)}
+      onChange={(v) => onChange(Number(v))}
+      options={[{ value: String(ATEM_UNSET), label: '— ไม่แตะ —' }, ...sources.map((s) => ({ value: String(s.id), label: s.label }))]}
+      buttonClassName="!px-2 !py-1 !rounded-lg !shadow-none"
+      optionsClassName="min-w-48"
+    />
   )
 
   const TABS: [Section, string, number][] = [
@@ -102,20 +107,17 @@ export default function AtemExportModal({ isOpen, onClose, diagram, switcher }: 
       <div className="space-y-4 text-sm">
         <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
           {TABS.map(([key, label, n]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <input
-                type="checkbox"
-                checked={include[key]}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setInclude((x) => ({ ...x, [key]: e.target.checked }))}
-                title="รวมส่วนนี้ในไฟล์"
-              />
-              {label} <span className="text-xs text-gray-400">{n}</span>
-            </button>
+            <div key={key} className={`flex items-center gap-1.5 pl-2.5 rounded-lg ${tab === key ? 'bg-white shadow-sm' : ''}`}>
+              <span title="รวมส่วนนี้ในไฟล์">
+                <FormCheckbox size="sm" checked={include[key]} onChange={(on) => setInclude((x) => ({ ...x, [key]: on }))} />
+              </span>
+              <button
+                onClick={() => setTab(key)}
+                className={`pr-3 py-1.5 text-sm font-medium ${tab === key ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {label} <span className="text-xs text-gray-400">{n}</span>
+              </button>
+            </div>
           ))}
         </div>
 

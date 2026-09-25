@@ -15,7 +15,8 @@ import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
 import Logo from '@/components/ui/Logo'
 import { initLiff, isLiffLoggedIn, liffLogin, signInFirebaseWithLiff } from '@/lib/line-liff'
-import { getFreelancerByLineId, upsertFreelancerByLineId, updateFreelancer, generateFreelancerDocId } from '@/lib/firebase-utils'
+import { getFreelancerByLineId, upsertFreelancerByLineId, updateFreelancer, generateFreelancerDocId, getPositions } from '@/lib/firebase-utils'
+import type { Position } from '@/lib/types'
 import { uploadIdCardImage, getStorageDownloadUrl } from '@/lib/firebase-storage'
 
 type FormData = {
@@ -26,6 +27,7 @@ type FormData = {
   email: string
   bankName: string
   bankAccount: string
+  position: string
 }
 
 const bankOptions = [
@@ -76,6 +78,7 @@ export default function FreelancerRegisterPage() {
   const [existingIdCardPath, setExistingIdCardPath] = useState<string>('') // storage path รูปเดิม
   const [idCardError, setIdCardError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(false)
+  const [positions, setPositions] = useState<Position[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)       // gallery
   const cameraInputRef = useRef<HTMLInputElement>(null)     // camera
 
@@ -86,7 +89,7 @@ export default function FreelancerRegisterPage() {
     reset,
     formState: { errors },
   } = useForm<FormData>({
-    defaultValues: { namePrefix: 'นาย', firstName: '', lastName: '', phone: '', email: '', bankName: '', bankAccount: '' },
+    defaultValues: { namePrefix: 'นาย', firstName: '', lastName: '', phone: '', email: '', bankName: '', bankAccount: '', position: '' },
   })
 
   useEffect(() => {
@@ -106,6 +109,7 @@ export default function FreelancerRegisterPage() {
 
         const profile = await signInFirebaseWithLiff()
         setLiffProfile(profile)
+        getPositions().then(setPositions).catch(() => {})
 
         const existing = await getFreelancerByLineId(profile.userId)
         if (existing) {
@@ -119,6 +123,7 @@ export default function FreelancerRegisterPage() {
             email: existing.email ?? '',
             bankName: existing.bankName,
             bankAccount: existing.bankAccount,
+            position: existing.position ?? '',
           })
           if (existing.idCardImagePath) {
             setExistingIdCardPath(existing.idCardImagePath)
@@ -199,6 +204,7 @@ export default function FreelancerRegisterPage() {
         email: data.email,
         bankAccount: data.bankAccount,
         bankName: data.bankName,
+        position: data.position,
         idCardImagePath: idCardFile ? (existingIdCardPath || undefined) : (existingIdCardPath || undefined),
       }, !isEdit ? freelancerDocId : undefined)
 
@@ -404,6 +410,33 @@ export default function FreelancerRegisterPage() {
                 />
                 {errors.email && <p className={errorCls}>{errors.email.message}</p>}
               </div>
+
+              {positions.length > 0 && (
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>ตำแหน่งงาน *</label>
+                  <Controller
+                    name="position"
+                    control={control}
+                    rules={{ required: 'กรุณาเลือกตำแหน่งงาน' }}
+                    render={({ field }) => (
+                      <FormListbox
+                        value={field.value}
+                        onChange={field.onChange}
+                        options={[
+                          { value: '', label: '-- เลือกตำแหน่ง --' },
+                          ...positions.map((p) => ({ value: p.name, label: p.name })),
+                          ...(field.value && !positions.some((p) => p.name === field.value) ? [{ value: field.value, label: field.value }] : []),
+                        ]}
+                        placeholder="-- เลือกตำแหน่ง --"
+                        buttonClassName={inputCls}
+                        invalid={!!errors.position}
+                      />
+                    )}
+                  />
+                  {errors.position && <p className={errorCls}>{errors.position.message}</p>}
+                  <p className="text-xs text-gray-400 mt-1">ใช้เป็นตำแหน่งตั้งต้นตอนขอเบิกเงิน (เปลี่ยนได้ทุกครั้ง)</p>
+                </div>
+              )}
             </div>
           </div>
 

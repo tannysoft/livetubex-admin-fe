@@ -1,5 +1,6 @@
 'use client'
 
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -315,15 +316,22 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
               </div>
             )}
             {!draft && (
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none" title="งานใหญ่: จัดของให้เสร็จก่อน แล้วค่อยวาดผังระบบเป็นอีกรอบ — แต่ละขั้นได้เวลาเต็ม ไม่หมดเวลากลางคัน">
-                <input type="checkbox" checked={staged} onChange={(e) => setStaged(e.target.checked)} disabled={running} className="rounded border-gray-300 text-brand focus:ring-brand/30" />
+              <div title="งานใหญ่: จัดของให้เสร็จก่อน แล้วค่อยวาดผังระบบเป็นอีกรอบ — แต่ละขั้นได้เวลาเต็ม ไม่หมดเวลากลางคัน">
+                <FormCheckbox
+                  size="sm"
+                  checked={staged}
+                  onChange={setStaged}
+                  disabled={running}
+                  label={<span className="text-xs text-gray-600">
                 แบ่งเป็น 2 ขั้น (จัดของ → โยงผัง)
                 {staged && settings && (settings.phaseModels.items || settings.phaseModels.wiring) && (
                   <span className="text-gray-400">
                     · {modelLabel(settings.phaseModels.items || model)} → {modelLabel(settings.phaseModels.wiring || model)}
                   </span>
                 )}
-              </label>
+                  </span>}
+                />
+              </div>
             )}
             <Link href="/admin/equipment/agent-settings" title="แก้ system prompt / กฎของทีม / รุ่นเริ่มต้น" className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
               <Cog6ToothIcon className="w-4 h-4" />

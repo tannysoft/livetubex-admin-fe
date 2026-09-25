@@ -14,6 +14,7 @@ type FormData = {
   endDate?: string
   location: string
   clientName: string
+  docNumber?: string
   budget: number
   status: JobStatus
   paymentCycle?: string
@@ -55,6 +56,7 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
       endDate: defaultValues?.endDate?.slice(0, 10) ?? '',
       location: defaultValues?.location ?? '',
       clientName: defaultValues?.clientName ?? '',
+      docNumber: defaultValues?.docNumber ?? '',
       budget: defaultValues?.budget ?? 0,
       status: (defaultValues?.status as JobStatus) ?? 'draft',
       paymentCycle: defaultValues?.paymentCycle ?? '',
@@ -137,6 +139,11 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
           <label className={labelCls}>ชื่อลูกค้า / Event *</label>
           <input {...register('clientName')} className={inputCls} placeholder="ชื่อผู้ว่าจ้าง" />
           {errors.clientName && <p className={errorCls}>{errors.clientName.message}</p>}
+        </div>
+
+        <div>
+          <label className={labelCls}>เลขที่เอกสาร</label>
+          <input {...register('docNumber', { setValueAs: (v: string) => v.trim() })} className={inputCls} placeholder="เช่น เลขใบเสนอราคา / PO" />
         </div>
 
         <div>

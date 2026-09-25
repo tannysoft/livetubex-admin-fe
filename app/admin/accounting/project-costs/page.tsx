@@ -1,5 +1,6 @@
 'use client'
 
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -174,10 +175,7 @@ export default function ProjectCostsPage() {
             </div>
             <h2 className="font-semibold text-gray-900">ต้นทุนรายโปรเจกต์ ({visible.length})</h2>
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="accent-brand" />
-            แสดงงานที่ยังไม่มีต้นทุน/งบ
-          </label>
+          <FormCheckbox size="sm" checked={showAll} onChange={setShowAll} label="แสดงงานที่ยังไม่มีต้นทุน/งบ" />
         </div>
 
         {loading ? (
