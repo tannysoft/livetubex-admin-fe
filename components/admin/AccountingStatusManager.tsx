@@ -6,13 +6,28 @@ import Modal from '@/components/ui/Modal'
 import { ACCOUNTING_COLOR_PRESETS, DEFAULT_ACCOUNTING_STATUSES, saveAccountingStatuses, type AccountingStatusDef } from '@/lib/job-accounting'
 import { AccountingPill } from './AccountingStatusMenu'
 
-/** แก้รายการสถานะบัญชี: ชื่อ, สี (ชุดสี + เลือกเอง), ลำดับ, เพิ่ม/ลบ — id คงเดิมตอนแก้ชื่อ งานที่ตั้งไว้จึงไม่หลุด */
+/** modal แก้สถานะบัญชี (จากหน้างานถ่ายทอดสด) — ตัวแก้เดียวกับหน้า master data /admin/accounting-statuses */
 export default function AccountingStatusManager({ statuses, usage, onClose, onSaved }: {
   statuses: AccountingStatusDef[]
   /** จำนวนงานต่อสถานะ — เตือนก่อนลบ */
   usage: Map<string, number>
   onClose: () => void
   onSaved: (list: AccountingStatusDef[]) => void
+}) {
+  return (
+    <Modal isOpen onClose={onClose} title="สถานะทางบัญชี" size="md">
+      <AccountingStatusEditor statuses={statuses} usage={usage} onSaved={onSaved} onCancel={onClose} />
+    </Modal>
+  )
+}
+
+/** แก้รายการสถานะบัญชี: ชื่อ, สี (ชุดสี + เลือกเอง), ลำดับ, เพิ่ม/ลบ — id คงเดิมตอนแก้ชื่อ งานที่ตั้งไว้จึงไม่หลุด */
+export function AccountingStatusEditor({ statuses, usage, onSaved, onCancel }: {
+  statuses: AccountingStatusDef[]
+  usage: Map<string, number>
+  onSaved: (list: AccountingStatusDef[]) => void
+  /** ไม่ส่ง = ไม่มีปุ่มยกเลิก (หน้า master data) */
+  onCancel?: () => void
 }) {
   const [list, setList] = useState(statuses)
   const [colorOpen, setColorOpen] = useState<string | null>(null)
@@ -37,16 +52,17 @@ export default function AccountingStatusManager({ statuses, usage, onClose, onSa
     setSaving(true)
     try {
       await saveAccountingStatuses(clean)
+      setList(clean)
       onSaved(clean)
     } catch (e) {
       console.error(e)
       setErr('บันทึกไม่สำเร็จ')
+    } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Modal isOpen onClose={onClose} title="สถานะทางบัญชี" size="md">
       <div className="space-y-3">
         <ul className="space-y-2">
           {list.map((s, i) => (
@@ -98,12 +114,11 @@ export default function AccountingStatusManager({ statuses, usage, onClose, onSa
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setList(DEFAULT_ACCOUNTING_STATUSES)} className="text-xs text-gray-400 hover:text-gray-700">คืนค่าเริ่มต้น</button>
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100">ยกเลิก</button>
+          {onCancel && <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100">ยกเลิก</button>}
           <button onClick={save} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-medium bg-brand text-white hover:bg-brand-dark disabled:opacity-40">
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>
       </div>
-    </Modal>
   )
 }

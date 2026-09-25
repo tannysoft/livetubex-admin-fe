@@ -1,10 +1,12 @@
 'use client'
 
+import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   ChevronLeftIcon, ChevronRightIcon, PlusIcon, VideoCameraIcon, PencilSquareIcon, TrashIcon, CheckIcon, MagnifyingGlassIcon, MapPinIcon,
 } from '@heroicons/react/24/outline'
+import SendJobModal from '@/components/admin/SendJobModal'
 import GoogleCalendarButton, { GoogleAddedBadge } from '@/components/admin/GoogleCalendarButton'
 import Modal from '@/components/ui/Modal'
 import FormDatePicker from '@/components/ui/FormDatePicker'
@@ -96,6 +98,7 @@ export default function CalendarPage() {
   const [showPicker, setShowPicker] = useState(false)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [dayOpen, setDayOpen] = useState<string | null>(null)
+  const [sendJob, setSendJob] = useState<Job | null>(null)
   const [acctStatuses, setAcctStatuses] = useState<AccountingStatusDef[]>([])
 
   useEffect(() => {
@@ -288,6 +291,7 @@ export default function CalendarPage() {
           onRemoved={(id) => { onRemoved(id); setEditing(null) }}
           statuses={acctStatuses}
           onAccounting={changeAccounting}
+          onSend={(j) => { setEditing(null); setSendJob(j) }}
           onGoogle={(e, at) => {
             const next = { ...e }
             if (at) next.googleAddedAt = at; else delete next.googleAddedAt
@@ -296,6 +300,7 @@ export default function CalendarPage() {
           }}
         />
       )}
+      {sendJob && <SendJobModal job={sendJob} onClose={() => setSendJob(null)} />}
       {dayOpen && (
         <Modal isOpen onClose={() => setDayOpen(null)} title={formatDate(dayOpen)} size="md">
           <div className="space-y-1.5">
@@ -394,8 +399,12 @@ function JobPicker({ jobs, onCalendar, month, onClose, onAdded }: {
           {list.length === 0 && <li className="px-4 py-8 text-center text-sm text-gray-400">ไม่มีงานที่ยังไม่อยู่บนปฏิทิน</li>}
           {list.map((j) => (
             <li key={j.id}>
-              <label className="flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" checked={picked.has(j.id)} onChange={() => toggle(j.id)} className="mt-1 accent-[var(--brand)]" />
+              <FormCheckbox
+                size="sm"
+                checked={picked.has(j.id)}
+                onChange={() => toggle(j.id)}
+                className="px-4 py-2.5 hover:bg-gray-50"
+                label={<span className="flex items-start gap-3">
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-medium text-gray-900">{j.title}</span>
                   <span className="block text-xs text-gray-500">
@@ -404,7 +413,7 @@ function JobPicker({ jobs, onCalendar, month, onClose, onAdded }: {
                   </span>
                 </span>
                 <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${jobStatusColor(j.status)}`}>{jobStatusLabel(j.status)}</span>
-              </label>
+              </span>} />
             </li>
           ))}
         </ul>
@@ -421,11 +430,12 @@ function JobPicker({ jobs, onCalendar, month, onClose, onAdded }: {
 }
 
 /** แก้โน้ต (ใหม่/เดิม) หรือแก้งานบนปฏิทิน (โน้ตของงาน + เอาออก) */
-function EntryModal({ editing, job, onClose, onSaved, onRemoved, onGoogle, statuses, onAccounting }: {
+function EntryModal({ editing, job, onClose, onSaved, onRemoved, onGoogle, statuses, onAccounting, onSend }: {
   editing: Editing; job?: Job; onClose: () => void; onSaved: (e: CalendarEntry) => void; onRemoved: (id: string) => void
   onGoogle: (e: CalendarEntry, at: string | undefined) => void
   statuses: AccountingStatusDef[]
   onAccounting: (job: Job, statusId: string) => void
+  onSend: (job: Job) => void
 }) {
   const entry = editing.entry
   const isJob = editing.kind === 'job'
@@ -480,6 +490,7 @@ function EntryModal({ editing, job, onClose, onSaved, onRemoved, onGoogle, statu
                 <div className="flex items-center gap-2 pt-1">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${jobStatusColor(job.status)}`}>{jobStatusLabel(job.status)}</span>
                   <Link href={`/admin/jobs/new?id=${job.id}`} className="text-xs text-brand hover:underline">แก้ไขงาน</Link>
+                  <button onClick={() => onSend(job)} className="text-xs text-brand hover:underline">ส่งให้ Freelancer</button>
                   {entry && <GoogleCalendarButton job={job} addedAt={entry.googleAddedAt} onChange={(at) => onGoogle(entry, at)} />}
                   {entry && <GoogleAddedBadge addedAt={entry.googleAddedAt} onRemove={() => setGoogleAdded(job.id, false).then(() => onGoogle(entry, undefined))} />}
                 </div>

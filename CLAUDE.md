@@ -51,6 +51,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | endDate | string? | ถ้าเป็นงานหลายวัน |
 | location | string | |
 | clientName | string | |
+| docNumber | string? | เลขที่เอกสารอ้างอิง (ใบเสนอราคา/PO) — พิมพ์เองในฟอร์มงาน ค้นหาได้ในหน้ารายการงาน · อยู่ใน jobs doc (LIFF อ่านได้ — ไม่ใช่ข้อมูลลับ) |
 | status | 'draft' \| 'published' \| 'in_progress' \| 'completed' \| 'cancelled' | |
 | createdAt / updatedAt | string | ISO datetime |
 
@@ -68,7 +69,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 ### `settings/jobAccounting` (admin-only)
 | Field | Type | หมายเหตุ |
 |---|---|---|
-| statuses | `{id, label, color}[]` | รายการสถานะบัญชี เรียงตามลำดับที่โชว์ — แก้ชื่อ/สี/ลำดับ/เพิ่ม/ลบได้ (`AccountingStatusManager`) · ไม่มี doc = `DEFAULT_ACCOUNTING_STATUSES` (`lib/job-accounting.ts`) |
+| statuses | `{id, label, color}[]` | **master data** หน้า `/admin/accounting-statuses` (เมนูหลัก) + modal จากหน้างาน ใช้ `AccountingStatusEditor` ตัวเดียวกัน — รายการสถานะบัญชี เรียงตามลำดับที่โชว์ — แก้ชื่อ/สี/ลำดับ/เพิ่ม/ลบได้ (`AccountingStatusManager`) · ไม่มี doc = `DEFAULT_ACCOUNTING_STATUSES` (`lib/job-accounting.ts`) |
 
 ### `freelancers`
 | Field | Type | หมายเหตุ |
@@ -85,6 +86,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | idCardImagePath | string? | **Storage path** (ไม่มี token) เช่น `idCards/{uid}/id_card.jpg` |
 | totalEarned | number | update ด้วย `increment()` เท่านั้น |
 | isActive | boolean | |
+| position | string? | ตำแหน่งงานหลัก (ชื่อจาก `positions`) — เลือกตอนสมัคร LIFF (บังคับเมื่อมีตำแหน่งในระบบ), admin แก้ใน FreelancerForm · เป็นค่าตั้งต้นของตำแหน่งตอนขอเบิก |
 | createdAt | string | |
 
 > ⚠️ `idCardImageUrl` (field เก่า) deprecated แล้ว — ข้อมูลเก่าที่ยังมีจะถูก handle ด้วย backward compat
@@ -174,6 +176,17 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | color | string? | type='note' — สีจาก `CALENDAR_COLORS` (`lib/calendar.ts`) · แถบ**งาน**ใช้สีของสถานะบัญชี (`jobFinance.accountingStatus`) ไม่ระบุ = สีแบรนด์ — ไม่มีสีแยกต่องาน |
 | note | string? | โน้ตของรายการ (ทั้ง 2 แบบ) |
 | googleAddedAt | string? | type='job' — ป้าย "✓ Google" จดตอนกดปุ่มเพิ่มลง Google Calendar (ลิงก์ template ของ Google ไม่ใช่ API — ไม่รู้ว่าบันทึกจริงไหม, เอาป้ายออกได้ในปฏิทินงาน) · doc id = `job-{jobId}` (`addJobToCalendar`/`setGoogleAdded`) · สร้างงานใหม่ = ลงปฏิทินงานอัตโนมัติ |
+
+### `agentChats` (ประวัติแชทผู้ช่วย AI `/admin/agent` — แอดมินเห็นเฉพาะแชทของตัวเอง)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| title / ownerUid / ownerEmail / model | string | title = ข้อความแรก (≤80) · rules เช็ก ownerUid == auth.uid (เปลี่ยนเจ้าของไม่ได้) |
+| inputTokens / outputTokens / messageCount | number | token สะสมด้วย `increment()` |
+| createdAt / updatedAt | string | รายการแชทเรียง updatedAt (เรียงฝั่ง client — ไม่ต้องมี composite index) |
+
+`agentChats/{chatId}/messages/{seq 6 หลัก}` = 1 ข้อความ API ต่อเอกสาร: `seq`, `role`, `content` (**JSON string** — content ของ Claude มี thinking+signature ต้องส่งกลับไม่เพี้ยน และ Firestore ไม่รับ array ซ้อน),
+`meta` (JSON: toolUseId → สถานะ/ลิงก์ที่หน้าเว็บโชว์) · ข้อความ AI ที่มี tool_use **บันทึกพร้อมผลของ tool ทีเดียว** (ประวัติไม่ค้าง tool_use ที่ไม่มีผล) · ผล tool ยาวถูกตัดให้เอกสาร < 1 MiB
+ไม่ใช้ LangGraph checkpointer — ตัววนรอบอยู่หน้าเว็บ (ปิดหน้าระหว่าง AI ทำงาน = รอบนั้นหยุด ประวัติถึงข้อความล่าสุดยังอยู่) · โค้ด: `lib/system-agent/history.ts`
 
 ### `settings/app`
 | Field | Type | หมายเหตุ |
@@ -287,6 +300,22 @@ sendPaymentReport(onCall)
 sendTestEmail(onCall)
 // Admin only — ส่งเมลทดสอบด้วย config ที่บันทึกไว้ (ไม่รับ from/provider จาก client)
 // รับ: { to: string, templateKey: EmailKey }
+
+sendJobDetails(onCall)
+// template: 'details' (ค่าเริ่มต้น) | 'completed' = งานเสร็จสิ้น + ปุ่ม "เบิกเงิน" → https://liff.line.me/{liffId}?claim={jobId} (หน้า /freelancer เปิดฟอร์มเบิกพร้อมเลือกงาน + ตำแหน่งของคนนั้น) log kind 'job_done'
+// UI: ปุ่ม "งานเสร็จสิ้น" (หน้างาน/หน้าแก้งาน) = SendJobModal mode completed — เปลี่ยนสถานะเป็นเสร็จสิ้น, เปิด showInLiff ถ้าซ่อน, เลือกทีม (คนที่เคยได้ log 'job') ไว้ให้ ยกเว้นคนที่ขอเบิกแล้ว
+// Admin only — ส่งรายละเอียดงานให้ freelancer ทาง LINE push (flex: ชื่องาน/วัน/สถานที่/ลูกค้า/รายละเอียด + ข้อความแอดมิน + ปุ่มเพิ่มลงปฏิทิน)
+// ปุ่ม "ดูแผนงาน" = แผน (equipmentPlans.jobId) ที่เปิดลิงก์แชร์อยู่ ≤3 แผน → ลิงก์ LIFF /plan?s= (freelancer ไม่ต้องใส่รหัส) · includePlans=false ปิดได้
+// รับ: { jobId, freelancerIds (≤100), message?, includePlans? } — อ่านงานจาก jobs เอง **ไม่ส่งราคา** · log ต่อคนลง lineMessageLogs (kind 'job', jobId, jobTitle)
+// คืน: { sent: id[], failed: {id,name,reason}[] } · UI: components/admin/SendJobModal (หน้างาน, หน้าแก้งาน, ปฏิทินงาน) โชว์ "ส่งแล้ว" จาก log
+// Secret: LINE_CHANNEL_ACCESS_TOKEN
+
+systemAgent(onCall)
+// Admin only — ผู้ช่วย AI ทั้งระบบ (/admin/agent) เป็น "ตัวกลาง" เรียก Claude ทีละ 1 รอบ (@anthropic-ai/sdk, stream thinking/text ผ่าน sendChunk)
+// รับ: { system, tools, messages, model, effort } — **tool รันที่หน้าเว็บ** ในสิทธิ์แอดมิน (lib/system-agent/tools.ts ใช้ฟังก์ชันเดิมของแอป:
+// createJob, addJobToCalendar, setJobAccountingStatus, createEquipmentPlan, runEquipmentAgent + createRevision ฯลฯ) กฎธุรกิจจึงไม่ซ้ำ
+// tool เขียนข้อมูล (WRITE_TOOLS) = การ์ดอนุมัติ · send_job_details อนุมัติเสมอ · content ของ assistant (thinking+signature) ต้องส่งกลับครบทุกรอบ
+// เพิ่ม tool = เพิ่มนิยามใน AGENT_TOOLS + case ใน executeTool (+ WRITE_TOOLS ถ้าเขียน) · Secret: ANTHROPIC_API_KEY
 
 setPlanShare(onCall)   // Admin — { planId, enabled?, password?, regenerate? } → { shareId, enabled } (hash รหัสด้วย scrypt)
 getSharedPlan(onCall)  // สาธารณะ — { shareId, password } → แผนที่ตัดข้อมูลการเงิน (ดู planShares)
@@ -846,6 +875,10 @@ snapshot ของแผน: `number` (Rev 1,2,3… ต่อแผน), `label`
 `shareId` (สุ่ม 22 ตัว เปลี่ยนได้ = ลิงก์เก่าใช้ไม่ได้), `enabled`, `salt`/`hash` (scrypt ฝั่ง server), `failCount`/`lockedUntil`
 (ผิด 8 ครั้ง → ล็อก 10 นาที) · หน้าแชร์เรียก `getSharedPlan` (สาธารณะ) ได้แผน **ปัจจุบัน** ที่ผ่าน `sanitizePlan()` —
 allowlist field ของ item (ไม่มีต้นทุน/ผู้ให้เช่า/expenseId), ไม่มี extraCosts/jobId, ผังวางไม่มีรูป floor plan
+**เปิดใน LINE ไม่ต้องใส่รหัส**: `/freelancer/plan?s=` (ลิงก์ `https://liff.line.me/{liffId}/plan?s=` — `liffPlanUrl()`, LIFF endpoint = /freelancer) login LINE → `getSharedPlan` รหัสว่าง
+server เช็ก `trustedCaller()` = freelancer (custom token `lineUser`) ที่มีโปรไฟล์และ isActive หรือ admin (password) → ข้ามรหัส (ยังต้องมี shareId + ลิงก์เปิดอยู่) · ไม่ผ่าน = ฟอร์มรหัสตามเดิม
+ปุ่ม **PDF** บนหัวหน้าแชร์ = `SharePrintView` ใช้ `PlanPrintDocument` ตัวเดียวกับหน้าพิมพ์แอดมิน (showCosts ปิดเสมอ, `window.print()`) · ในแอป LINE พิมพ์ไม่ได้ → เปิดเบราว์เซอร์ภายนอก (`openExternal`) ที่ `/share/plan?s=&print=1`
+`/share/plan` เปิดในแอป LINE (UA `Line/`) → redirect ไป LIFF ให้เอง · admin ที่ login อยู่ในเบราว์เซอร์เปิดได้เลย · ตัวหน้าอยู่ที่ `components/share/SharedPlanScreen.tsx` (`via: 'link' | 'liff'`) ใช้ร่วม 2 route
 ⚠️ เพิ่ม field ที่ทีมหน้างานต้องเห็น → เพิ่มใน allowlist ของ `functions/src/plan-share.ts` + type `SharedPlan` (`lib/equipment/plan-share.ts`)
 
 #### `equipmentPlanAssets` (admin-only)
@@ -1062,6 +1095,11 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
 6. **Payment flow**: Freelancer ไม่ต้องมี JobAssignment — เลือก Job จาก dropdown แล้วขอเบิกได้เลย ชื่องานดึงจาก `jobId` → `jobs` collection
 
 7. **Logo white mode**: บนพื้นสีแบรนด์ ต้องส่ง `white` prop → ระบบแทน `fill` ทุกตัวด้วย `currentColor` ให้เอง ไม่ต้องทำโลโก้เวอร์ชันขาวแยก
+
+7.1 **ฟอร์มใช้ HeadlessUI เท่านั้น** — ห้าม `<select>` / `<input type="checkbox|radio">` ของเบราว์เซอร์
+    dropdown = `FormListbox` (`optionsClassName` ขยายรายการเมื่อปุ่มแคบ) · checkbox = `FormCheckbox` (แถวรายการ: ส่งเนื้อหาทั้งแถวเป็น `label` ทั้งแถวกดติ๊กได้;
+    แถวที่มี onClick ของตัวเอง ให้ห่อ checkbox ด้วย `<span onClick={e => e.stopPropagation()}>`) · radio = `RadioGroup` + `Radio` (ดู `RadioCard` ใน agent-settings)
+    ข้อยกเว้น: `<input type="range">` (HeadlessUI ไม่มี slider)
 
 8. **Skeleton**: ใช้ class `.skeleton` จาก `globals.css` (shimmer animation) — อย่าใช้ `animate-pulse` ของ Tailwind. ใช้ `SkeletonImage` สำหรับรูปภาพที่โหลดจาก Storage
 

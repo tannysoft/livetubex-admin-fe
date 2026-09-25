@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, getDoc, getDocs, query, orderBy, updateDoc, deleteDoc, writeBatch,
+  collection, doc, addDoc, getDoc, getDocs, query, orderBy, updateDoc, deleteDoc, writeBatch, where,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import type { EquipmentPlan } from '../types'
@@ -26,6 +26,12 @@ function normalize(id: string, data: Record<string, unknown>): EquipmentPlan {
 export async function getEquipmentPlans(): Promise<EquipmentPlan[]> {
   const q = query(collection(db, COL), orderBy('createdAt', 'desc'))
   const snap = await getDocs(q)
+  return snap.docs.map((d) => normalize(d.id, d.data()))
+}
+
+/** แผนที่ผูกกับงาน (jobId) */
+export async function getPlansByJob(jobId: string): Promise<EquipmentPlan[]> {
+  const snap = await getDocs(query(collection(db, COL), where('jobId', '==', jobId)))
   return snap.docs.map((d) => normalize(d.id, d.data()))
 }
 

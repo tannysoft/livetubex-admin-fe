@@ -1,5 +1,7 @@
 'use client'
 
+import FormListbox from '@/components/ui/FormListbox'
+import { Radio, RadioGroup } from '@headlessui/react'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeftIcon, ArrowUturnLeftIcon, CheckCircleIcon, SparklesIcon } from '@heroicons/react/24/outline'
@@ -117,18 +119,11 @@ export default function AgentSettingsPage() {
           <h2 className="font-semibold text-gray-900">รุ่นเริ่มต้น</h2>
           <p className="text-xs text-gray-500 mt-0.5">ใช้ทุกครั้งที่เปิดผู้ช่วย — เปลี่ยนเฉพาะครั้งได้จาก dropdown ในหน้าต่างผู้ช่วย</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <RadioGroup value={model} onChange={setModel} aria-label="รุ่นเริ่มต้น" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {[...AGENT_MODELS.map((m) => ({ id: m.id, label: m.label, hint: m.hint })), { id: 'custom', label: 'รุ่นอื่น (ใส่ model ID เอง)', hint: 'สำหรับรุ่นใหม่ที่ยังไม่อยู่ในรายการ' }].map((m) => (
-            <label key={m.id} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${model === m.id ? 'border-brand bg-brand-soft' : 'border-gray-200 hover:border-gray-300'}`}>
-              <input type="radio" name="model" className="mt-1 accent-[var(--brand)]" checked={model === m.id} onChange={() => setModel(m.id)} />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-gray-900">{m.label}</span>
-                <span className="block text-xs text-gray-500">{m.hint}</span>
-                {m.id !== 'custom' && <span className="block text-[11px] text-gray-400 font-mono mt-0.5">{m.id}</span>}
-              </span>
-            </label>
+            <RadioCard key={m.id} value={m.id} label={m.label} hint={m.hint} mono={m.id !== 'custom' ? m.id : undefined} />
           ))}
-        </div>
+        </RadioGroup>
         {model === 'custom' && (
           <input className={`${inputCls} font-mono`} value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="เช่น claude-sonnet-5" />
         )}
@@ -144,17 +139,19 @@ export default function AgentSettingsPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {([['items', 'ขั้น 1 — จัดของ + วางผัง 3D'], ['wiring', 'ขั้น 2 — โยงผัง']] as const).map(([key, label]) => (
-            <label key={key} className="block">
+            <div key={key}>
               <span className="block text-sm font-medium text-gray-700 mb-1">{label}</span>
-              <select
-                className={inputCls}
+              <FormListbox
                 value={phaseModels[key]}
-                onChange={(e) => setPhaseModels((p) => ({ ...p, [key]: e.target.value }))}
-              >
-                <option value="">ตามที่เลือกในหน้าต่างผู้ช่วย</option>
-                {AGENT_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </label>
+                onChange={(v) => setPhaseModels((p) => ({ ...p, [key]: v }))}
+                options={[
+                  { value: '', label: 'ตามที่เลือกในหน้าต่างผู้ช่วย' },
+                  ...AGENT_MODELS.map((m) => ({ value: m.id, label: m.label })),
+                  // model ID ที่ไม่อยู่ในรายการ (ตั้งไว้ก่อน) — ยังโชว์ค่าเดิม
+                  ...(phaseModels[key] && !AGENT_MODELS.some((m) => m.id === phaseModels[key]) ? [{ value: phaseModels[key], label: phaseModels[key] }] : []),
+                ]}
+              />
+            </div>
           ))}
         </div>
       </section>
@@ -165,17 +162,9 @@ export default function AgentSettingsPage() {
           <h2 className="font-semibold text-gray-900">ระดับความคิดเริ่มต้น</h2>
           <p className="text-xs text-gray-500 mt-0.5">ยิ่งคิดละเอียดยิ่งช้า — ส่วนใหญ่ “สมดุล” พอ ใช้ “ละเอียด” เมื่อผลออกมาพลาด · Haiku 4.5 ไม่มีตัวเลือกนี้</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {AGENT_EFFORTS.map((e) => (
-            <label key={e.id} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${effort === e.id ? 'border-brand bg-brand-soft' : 'border-gray-200 hover:border-gray-300'}`}>
-              <input type="radio" name="effort" className="mt-1 accent-[var(--brand)]" checked={effort === e.id} onChange={() => setEffort(e.id)} />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-gray-900">{e.label}</span>
-                <span className="block text-xs text-gray-500">{e.hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
+        <RadioGroup value={effort} onChange={setEffort} aria-label="ระดับความคิดเริ่มต้น" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {AGENT_EFFORTS.map((e) => <RadioCard key={e.id} value={e.id} label={e.label} hint={e.hint} />)}
+        </RadioGroup>
       </section>
 
       {/* กฎของทีม */}
@@ -242,5 +231,24 @@ export default function AgentSettingsPage() {
         onClose={() => setConfirmReset(null)}
       />
     </div>
+  )
+}
+
+/** ตัวเลือกแบบการ์ด (HeadlessUI Radio) — วงกลมซ้าย + ชื่อ + คำอธิบาย */
+function RadioCard({ value, label, hint, mono }: { value: string; label: string; hint: string; mono?: string }) {
+  return (
+    <Radio
+      value={value}
+      className="group flex items-start gap-3 rounded-xl border border-gray-200 p-3 cursor-pointer transition-colors hover:border-gray-300 data-checked:border-brand data-checked:bg-brand-soft focus:outline-none data-focus:ring-2 data-focus:ring-brand/30"
+    >
+      <span className="mt-0.5 flex w-4 h-4 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white group-data-checked:border-brand">
+        <span className="w-2 h-2 rounded-full bg-brand opacity-0 group-data-checked:opacity-100" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-gray-900">{label}</span>
+        <span className="block text-xs text-gray-500">{hint}</span>
+        {mono && <span className="block text-[11px] text-gray-400 font-mono mt-0.5">{mono}</span>}
+      </span>
+    </Radio>
   )
 }

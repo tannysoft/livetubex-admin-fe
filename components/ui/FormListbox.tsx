@@ -14,6 +14,8 @@ type FormListboxProps = {
   buttonClassName?: string
   disabled?: boolean
   invalid?: boolean
+  /** ต่อท้าย class ของรายการตัวเลือก เช่น `min-w-48` เมื่อปุ่มแคบ */
+  optionsClassName?: string
 }
 
 export default function FormListbox({
@@ -24,6 +26,7 @@ export default function FormListbox({
   buttonClassName = '',
   disabled = false,
   invalid = false,
+  optionsClassName = '',
 }: FormListboxProps) {
   const selected = options.find((o) => o.value === value)
   const display = selected?.label ?? placeholder
@@ -48,7 +51,7 @@ export default function FormListbox({
         <ListboxOptions
           anchor="bottom start"
           transition
-          className="z-[200] max-h-60 w-[var(--button-width)] overflow-auto rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-lg outline-1 -outline-offset-1 outline-black/5 [--anchor-gap:4px] origin-top transition duration-150 ease-out data-closed:scale-95 data-closed:opacity-0"
+          className={`z-[200] max-h-60 w-[var(--button-width)] overflow-auto rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-lg outline-1 -outline-offset-1 outline-black/5 [--anchor-gap:4px] origin-top transition duration-150 ease-out data-closed:scale-95 data-closed:opacity-0 ${optionsClassName}`}
         >
           {options.map((opt) => (
             <ListboxOption

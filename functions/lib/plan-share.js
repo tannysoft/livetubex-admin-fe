@@ -44,6 +44,7 @@ const util_1 = require("util");
  *
  * `planShares/{planId}` — client อ่านได้เฉพาะ admin, เขียนผ่าน function นี้เท่านั้น (hash รหัสผ่านฝั่ง server)
  * หน้า /share/plan เรียก getSharedPlan → ตรวจรหัสผ่าน → คืนแผนที่ตัดข้อมูลการเงินออกแล้ว
+ * ไม่ต้องใช้รหัส: freelancer ที่ login ผ่าน LINE LIFF และลงทะเบียนแล้ว (หน้า /freelancer/plan) หรือ admin — ยังต้องมี shareId และลิงก์ต้องเปิดอยู่
  * ⚠️ type ที่คืนเป็นฝาแฝดของ SharedPlan ใน lib/equipment/plan-share.ts
  */
 const scrypt = (0, util_1.promisify)(crypto_1.scrypt);
@@ -99,8 +100,20 @@ async function handleSetPlanShare(data, adminEmail) {
     await ref.set(next);
     return { shareId: next.shareId, enabled: next.enabled };
 }
-/** สาธารณะ: ตรวจรหัสผ่านแล้วคืนแผนแบบตัดข้อมูลการเงิน */
-async function handleGetSharedPlan(data) {
+/** คนที่เข้าได้โดยไม่ต้องใส่รหัส: admin (password) หรือ freelancer จาก LINE ที่มีโปรไฟล์และยังใช้งานอยู่ */
+async function trustedCaller(auth) {
+    if (!auth)
+        return false;
+    const provider = auth.token.firebase?.sign_in_provider;
+    if (provider === 'password')
+        return true;
+    if (provider !== 'custom' || auth.token.lineUser !== true)
+        return false;
+    const snap = await admin.firestore().collection('freelancers').where('lineUserId', '==', auth.uid).limit(1).get();
+    return !snap.empty && snap.docs[0].data().isActive !== false;
+}
+/** สาธารณะ: ตรวจรหัสผ่าน (หรือคนที่ login แล้ว) แล้วคืนแผนแบบตัดข้อมูลการเงิน */
+async function handleGetSharedPlan(data, auth) {
     const d = (data ?? {});
     const shareId = typeof d.shareId === 'string' ? d.shareId.trim() : '';
     const password = typeof d.password === 'string' ? d.password : '';
@@ -108,7 +121,8 @@ async function handleGetSharedPlan(data) {
     const notFound = () => new https_1.HttpsError('not-found', 'ลิงก์นี้ไม่ถูกต้องหรือถูกปิดแล้ว');
     if (!/^[A-Za-z0-9_-]{10,64}$/.test(shareId))
         throw notFound();
-    if (!password || password.length > MAX_PASSWORD)
+    const trusted = await trustedCaller(auth);
+    if (!trusted && (!password || password.length > MAX_PASSWORD))
         throw new https_1.HttpsError('permission-denied', 'รหัสผ่านไม่ถูกต้อง');
     const db = admin.firestore();
     const snap = await db.collection('planShares').where('shareId', '==', shareId).limit(1).get();
@@ -119,6 +133,12 @@ async function handleGetSharedPlan(data) {
     if (!share.enabled)
         throw notFound();
     const now = Date.now();
+    if (trusted) {
+        const planSnap = await db.collection('equipmentPlans').doc(share.planId).get();
+        if (!planSnap.exists)
+            throw notFound();
+        return sanitizePlan(planSnap.data());
+    }
     if ((share.lockedUntil ?? 0) > now) {
         const min = Math.ceil(((share.lockedUntil ?? 0) - now) / 60000);
         throw new https_1.HttpsError('resource-exhausted', `ใส่รหัสผิดหลายครั้ง — ลองใหม่ในอีก ${min} นาที`);

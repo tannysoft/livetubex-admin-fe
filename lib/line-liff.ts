@@ -168,6 +168,15 @@ export async function signInFirebaseWithLiff(): Promise<LiffUserProfile> {
   return { userId: lineUserId, displayName, pictureUrl }
 }
 
+/** เปิดลิงก์ในเบราว์เซอร์ภายนอก (ออกจากแอป LINE) — LIFF ยังไม่ init = เปิดแท็บใหม่ธรรมดา */
+export async function openExternal(url: string): Promise<void> {
+  if (liffInitialized) {
+    const liff = await getLiff()
+    if (liff.isInClient()) { liff.openWindow({ url, external: true }); return }
+  }
+  window.open(url, '_blank', 'noopener')
+}
+
 // ── Get current LINE profile (ไม่ต้อง call API ซ้ำ ใช้ cache จาก auth) ────────
 export async function getLiffProfile(): Promise<LiffUserProfile | null> {
   if (!liffInitialized) return null

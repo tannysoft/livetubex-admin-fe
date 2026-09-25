@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   PlusIcon,
+  PaperAirplaneIcon,
+  CheckBadgeIcon,
   PencilIcon,
   TrashIcon,
   MagnifyingGlassIcon,
@@ -24,6 +26,7 @@ import { getCalendarEntries } from '@/lib/calendar'
 import { getAccountingStatuses, setJobAccountingStatus, type AccountingStatusDef } from '@/lib/job-accounting'
 import AccountingStatusMenu from '@/components/admin/AccountingStatusMenu'
 import AccountingStatusManager from '@/components/admin/AccountingStatusManager'
+import SendJobModal from '@/components/admin/SendJobModal'
 import GoogleCalendarButton, { GoogleAddedBadge } from '@/components/admin/GoogleCalendarButton'
 
 export default function JobsPage() {
@@ -32,6 +35,8 @@ export default function JobsPage() {
   const [search, setSearch] = useState('')
 
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
+  const [sendJob, setSendJob] = useState<Job | null>(null)
+  const [doneJob, setDoneJob] = useState<Job | null>(null)
   // jobId → เวลาที่กดลง Google Calendar (ป้าย) — อ่านจากปฏิทินงาน โหลดไม่ได้ก็แค่ไม่มีป้าย
   const [googleAdded, setGoogleAddedMap] = useState<Map<string, string>>(new Map())
   const markGoogle = (jobId: string, at: string | undefined) => setGoogleAddedMap((m) => {
@@ -106,7 +111,8 @@ export default function JobsPage() {
       (acctFilter === null || acctOf(j) === acctFilter) &&
       (j.title.toLowerCase().includes(search.toLowerCase()) ||
         j.location.toLowerCase().includes(search.toLowerCase()) ||
-        j.clientName.toLowerCase().includes(search.toLowerCase()))
+        j.clientName.toLowerCase().includes(search.toLowerCase()) ||
+        (j.docNumber ?? '').toLowerCase().includes(search.toLowerCase()))
   )
   const chipCls = (on: boolean) => `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${on ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`
 
@@ -212,6 +218,7 @@ export default function JobsPage() {
                         {/* ลูกค้าใต้ชื่องาน (จอเล็กพ่วงสถานที่ด้วย) */}
                         <p className="text-xs text-gray-500 mt-1 truncate">
                           {job.clientName || '—'}
+                          {job.docNumber && <span className="text-gray-400"> · {job.docNumber}</span>}
                           <span className="md:hidden">{job.location ? ` · ${job.location}` : ''}</span>
                         </p>
                       </td>
@@ -259,6 +266,22 @@ export default function JobsPage() {
                           >
                             {showing ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
                           </button>
+                          {job.status !== 'cancelled' && (
+                            <button
+                              onClick={() => setDoneJob(job)}
+                              className={`p-1.5 rounded-lg transition-colors ${job.status === 'completed' ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
+                              title={job.status === 'completed' ? 'แจ้ง Freelancer เบิกเงินทาง LINE' : 'งานเสร็จสิ้น — แจ้ง Freelancer เบิกเงินทาง LINE'}
+                            >
+                              <CheckBadgeIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSendJob(job)}
+                            className="p-1.5 text-gray-400 hover:text-brand hover:bg-brand-soft rounded-lg transition-colors"
+                            title="ส่งรายละเอียดงานให้ Freelancer ทาง LINE"
+                          >
+                            <PaperAirplaneIcon className="w-4 h-4" />
+                          </button>
                           <GoogleCalendarButton variant="icon" job={job} addedAt={googleAdded.get(job.id)} onChange={(at) => markGoogle(job.id, at)} />
                           <Link
                             href={`/admin/jobs/new?id=${job.id}`}
@@ -293,6 +316,16 @@ export default function JobsPage() {
             if (acctFilter && !list.some((x) => x.id === acctFilter)) setAcctFilter(null)
             setManaging(false)
           }}
+        />
+      )}
+
+      {sendJob && <SendJobModal job={sendJob} onClose={() => setSendJob(null)} />}
+      {doneJob && (
+        <SendJobModal
+          mode="completed"
+          job={doneJob}
+          onClose={() => setDoneJob(null)}
+          onJobChanged={(patch) => setJobs((list) => list.map((j) => (j.id === doneJob.id ? { ...j, ...patch } : j)))}
         />
       )}
 

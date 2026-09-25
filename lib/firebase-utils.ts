@@ -144,6 +144,7 @@ export async function upsertFreelancerByLineId(
     bankAccount: string
     bankName: string
     idCardImagePath?: string  // storage path (ไม่ใช่ URL)
+    position?: string
   },
   predefinedId?: string  // ส่งมาเฉพาะกรณีสร้างใหม่ (pre-generated ก่อน upload)
 ): Promise<string> {
@@ -164,6 +165,7 @@ export async function upsertFreelancerByLineId(
       email: data.email ?? '',
       bankAccount: data.bankAccount,
       bankName: data.bankName,
+      ...(data.position !== undefined ? { position: data.position } : {}),
     }
     if (data.idCardImagePath) {
       updateData.idCardImagePath = data.idCardImagePath
@@ -189,6 +191,7 @@ export async function upsertFreelancerByLineId(
     bankAccount: data.bankAccount,
     bankName: data.bankName,
     idCardImagePath: data.idCardImagePath ?? '',
+    ...(data.position ? { position: data.position } : {}),
     totalEarned: 0,
     isActive: true,
     createdAt: new Date().toISOString(),
@@ -338,6 +341,31 @@ export async function sendPaymentReport(reports: FreelancerReportPayload[]): Pro
 
 export async function sendPayoutNotification(freelancerId: string, paymentIds: string[], payoutSlipPath?: string): Promise<void> {
   await httpsCallable(functions, 'sendPayoutNotification')({ freelancerId, paymentIds, payoutSlipPath })
+}
+
+// ส่งรายละเอียดงานให้ freelancer ทาง LINE — server อ่านข้อมูลงานเอง (ไม่มีราคา)
+export interface SendJobDetailsResult {
+  sent: string[]
+  failed: { id: string; name: string; reason: string }[]
+}
+export async function sendJobDetails(
+  jobId: string, freelancerIds: string[], message?: string,
+  opts: { includePlans?: boolean; template?: 'details' | 'completed' } = {},
+): Promise<SendJobDetailsResult> {
+  const r = await httpsCallable<unknown, SendJobDetailsResult>(functions, 'sendJobDetails')({ jobId, freelancerIds, message, includePlans: opts.includePlans ?? true, template: opts.template ?? 'details' })
+  return r.data
+}
+
+/** คำขอเบิกของงานนี้ (admin) — ใช้ดูว่าใครเบิกไปแล้ว */
+export async function getPaymentsByJob(jobId: string): Promise<Payment[]> {
+  const snap = await getDocs(query(collection(db, 'payments'), where('jobId', '==', jobId)))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Payment))
+}
+
+/** ใครเคยได้รายละเอียดงานนี้ไปแล้ว (จาก lineMessageLogs) */
+export async function getJobSendLogs(jobId: string): Promise<LineMessageLog[]> {
+  const snap = await getDocs(query(collection(db, 'lineMessageLogs'), where('jobId', '==', jobId)))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as LineMessageLog))
 }
 
 export interface MigrateProfilePicturesResult {
