@@ -3,7 +3,7 @@ import type { CatalogProduct } from './blackmagic'
 /**
  * DJI — Ronin (gimbal, หมวดขาตั้ง/Grip) + กล้อง (Osmo Pocket / Action / 360, โดรน, Ronin 4D) + ส่งภาพไร้สาย
  * ⚠️ port ต่อรุ่นมาจากความรู้ทั่วไป — ตรวจกับตัวเครื่องอีกครั้ง
- * gimbal ในผังโยงมักไม่ต่อสัญญาณ ใส่แค่ port คุมกล้อง (RSS/USB-C) ไว้เผื่อโยง
+ * gimbal ในผังระบบมักไม่ต่อสัญญาณ ใส่แค่ port คุมกล้อง (RSS/USB-C) ไว้เผื่อโยง
  */
 const D = 'DJI'
 const A = ['dji', 'ronin', 'โรนิน', 'gimbal', 'กิมบอล', 'stabilizer']

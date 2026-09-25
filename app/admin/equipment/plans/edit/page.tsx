@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeftIcon, PlusIcon, PrinterIcon, TrashIcon, CheckCircleIcon, ArrowPathIcon, ExclamationCircleIcon, SparklesIcon, ClockIcon, ShareIcon, PencilSquareIcon,
+  ArrowLeftIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, PlusIcon, PrinterIcon, TrashIcon, CheckCircleIcon, ArrowPathIcon, ExclamationCircleIcon, SparklesIcon, ClockIcon, ShareIcon, PencilSquareIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -27,7 +27,7 @@ import { createRevision, isModifiedSinceRevision } from '@/lib/equipment/revisio
 import { getEquipmentPlan, getEquipmentPlans, updateEquipmentPlan, newId } from '@/lib/equipment/plans'
 import { overlappingPlans, planConflicts, planRange, usageByEquipment } from '@/lib/equipment/availability'
 import { FOH_DIAGRAM_NAME, buildFohDiagram, mergeDiagrams } from '@/lib/equipment/foh-diagram'
-import { newLayout } from '@/lib/equipment/layout-zones'
+import { ensureRoomRacks, newLayout } from '@/lib/equipment/layout-zones'
 import { itemOwner, ownerCounts } from '@/lib/equipment/owners'
 import { ArrowDownTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { getEquipmentList } from '@/lib/equipment/equipment'
@@ -77,7 +77,7 @@ function PlanEditor() {
   const [confirmMerge, setConfirmMerge] = useState(false)
   // กรองตารางรายการตามเจ้าของ (บริษัทเรา / พาร์ทเนอร์ / ผู้ให้เช่า) — null = ทั้งหมด
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null)
-  // Export ตั้งค่า ATEM — ปุ่มเด่นบนแถบแท็บผังโยง (หลายสวิตเชอร์ = เลือกก่อน)
+  // Export ตั้งค่า ATEM — ปุ่มเด่นบนแถบแท็บผังระบบ (หลายสวิตเชอร์ = เลือกก่อน)
   const [atemMenu, setAtemMenu] = useState(false)
   const [atemFor, setAtemFor] = useState<string | null>(null)
   const [activeLayoutId, setActiveLayoutId] = useState<string | null>(null)
@@ -97,15 +97,29 @@ function PlanEditor() {
   const latest = useRef<EquipmentPlan | null>(null)
   const version = useRef(0)
   const savedVersion = useRef(0)
+  // undo/redo: เก็บทั้งแผนก่อนแต่ละการแก้ (autosave บันทึกทุกอย่างทันที จึงต้องย้อนได้) — การแก้ต่อเนื่องใกล้กัน (พิมพ์/ลาก) รวมเป็นขั้นเดียว
+  const undoStack = useRef<EquipmentPlan[]>([])
+  const redoStack = useRef<EquipmentPlan[]>([])
+  const lastEditAt = useRef(0)
+  const [history, setHistory] = useState({ undo: 0, redo: 0 }) // จำนวนขั้น — ไว้เปิด/ปิดปุ่ม (อ่าน ref ตอน render ไม่ได้)
+  const syncHistory = () => setHistory({ undo: undoStack.current.length, redo: redoStack.current.length })
 
   useEffect(() => {
     if (!planId) return
     let alive = true
     Promise.all([getEquipmentPlan(planId), getEquipmentList(), getJobs(), getEquipmentPlans()]).then(([p, eq, j, all]) => {
       if (!alive) return
-      setPlan(p)
+      // ห้องคอนโทรลที่วางไว้ก่อนมีระบบตู้ Rack → ใส่ตู้ให้เลย แล้วให้ autosave เก็บ (ไม่นับเป็นขั้น undo)
+      let loaded = p
+      const layouts = p?.layouts?.map(ensureRoomRacks)
+      if (p && layouts && layouts.some((l, i) => l !== p.layouts![i])) {
+        loaded = { ...p, layouts }
+        version.current += 1
+        setSaveState('dirty')
+      }
+      setPlan(loaded)
       setOtherPlans(all.filter((x) => x.id !== planId))
-      latest.current = p
+      latest.current = loaded
       setEquipment(eq)
       setJobs(j)
       setActiveDiagramId(p?.diagrams[0]?.id ?? null)
@@ -135,12 +149,50 @@ function PlanEditor() {
 
   const change = (patch: Partial<EquipmentPlan>) => {
     if (!latest.current) return
+    const now = nowMs()
+    if (now - lastEditAt.current > HISTORY_MERGE_MS) {
+      undoStack.current.push(latest.current)
+      if (undoStack.current.length > HISTORY_LIMIT) undoStack.current.shift()
+    }
+    lastEditAt.current = now
+    redoStack.current = []
+    syncHistory()
     const next = { ...latest.current, ...patch }
     latest.current = next
     version.current += 1
     setPlan(next)
     setSaveState('dirty')
   }
+
+  /** ย้อน/ทำซ้ำ — แถวที่ลงบัญชีแล้ว (expenseId) ใช้สถานะปัจจุบันเสมอ ไม่งั้นยอดถูกนับซ้ำทั้งในแผนและในบัญชี */
+  const travel = (from: typeof undoStack, to: typeof redoStack) => {
+    const cur = latest.current
+    const target = from.current.pop()
+    if (!cur || !target) return
+    to.current.push(cur)
+    const next = { ...keepRecorded(target, cur), revision: cur.revision }
+    latest.current = next
+    version.current += 1
+    lastEditAt.current = 0
+    setPlan(next)
+    setSaveState('dirty')
+    syncHistory()
+  }
+  const undo = () => travel(undoStack, redoStack)
+  const redo = () => travel(redoStack, undoStack)
+  // ⌘Z / ⌘⇧Z / Ctrl+Y — ในช่องพิมพ์ปล่อยให้เบราว์เซอร์ undo ตัวอักษรเอง
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   const save = async () => {
     const p = latest.current
@@ -233,7 +285,7 @@ function PlanEditor() {
 
   /**
    * แถวนอกสต็อก (พิมพ์เอง) → แทนด้วยของในสต็อก คง id/จำนวน/ปลายทาง/การจับคู่/หมายเหตุ/วันที่/สถานะจัดของ
-   * กล่องในผังโยงที่มาจากแถวนี้ผูกกับอุปกรณ์ใหม่ (port ว่าง = เติมจากสต็อก)
+   * กล่องในผังระบบที่มาจากแถวนี้ผูกกับอุปกรณ์ใหม่ (port ว่าง = เติมจากสต็อก)
    */
   const replaceWithStock = (row: PlanItem, e: Equipment) => {
     const origin = e.ownership ?? 'owned'
@@ -276,7 +328,7 @@ function PlanEditor() {
     change({ items: [...plan.items, { id: newId(), name: '', category: 'other', quantity: 1, packed: false, returned: false, origin: 'rental' }] })
   }
 
-  // ── สายส่ง FOH จาก feed → วาดลงผังหลัก (1 แผน = 1 ผังโยง) ─────────────────
+  // ── สายส่ง FOH จาก feed → วาดลงผังหลัก (1 แผน = 1 ผังระบบ) ─────────────────
   // วาดซ้ำ = ลบกล่อง FOH ชุดเดิม (generated) แล้ววาดใหม่ · ผังแยกแบบเก่า (FOH_DIAGRAM_NAME) ถูกแทนด้วยชุดใหม่ในผังหลัก
   const legacyFoh = plan.diagrams.find((d) => d.name === FOH_DIAGRAM_NAME)
   const mainDiagram = plan.diagrams.find((d) => d.name !== FOH_DIAGRAM_NAME)
@@ -366,6 +418,15 @@ function PlanEditor() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="flex-1 min-w-[240px] text-2xl font-bold text-gray-900">{plan.title}</h1>
           <div className="flex items-center gap-3">
+            <div className="flex items-center rounded-xl border border-gray-200 bg-white">
+              <button onClick={undo} disabled={history.undo === 0} title="ย้อนกลับ (⌘Z)" className="p-2.5 text-gray-600 hover:bg-gray-50 rounded-l-xl disabled:opacity-30 disabled:hover:bg-transparent">
+                <ArrowUturnLeftIcon className="w-4 h-4" />
+              </button>
+              <span className="w-px h-5 bg-gray-200" aria-hidden />
+              <button onClick={redo} disabled={history.redo === 0} title="ทำซ้ำ (⌘⇧Z)" className="p-2.5 text-gray-600 hover:bg-gray-50 rounded-r-xl disabled:opacity-30 disabled:hover:bg-transparent">
+                <ArrowUturnRightIcon className="w-4 h-4" />
+              </button>
+            </div>
             <SaveIndicator state={saveState} onRetry={save} />
             <button
               onClick={() => setShowRevisions(true)}
@@ -463,7 +524,7 @@ function PlanEditor() {
             <InfoField label="ส่งภาพให้ทีม Visual (FOH)" wide>
               {fohSummary(plan.fohFeeds) || <span className="text-gray-400">ไม่มี</span>}
               {(plan.fohFeeds?.length ?? 0) > 0 && (
-                <button onClick={requestFohDiagram} className="ml-2 text-xs font-medium text-brand hover:underline">วาดลงผังโยง</button>
+                <button onClick={requestFohDiagram} className="ml-2 text-xs font-medium text-brand hover:underline">วาดลงผังระบบ</button>
               )}
             </InfoField>
             {plan.notes && <InfoField label="หมายเหตุของแผน" full><span className="whitespace-pre-wrap">{plan.notes}</span></InfoField>}
@@ -479,10 +540,10 @@ function PlanEditor() {
 
       <PlanInfoModal key={infoKey} isOpen={showInfo} onClose={() => setShowInfo(false)} plan={plan} jobs={jobs} onSave={(patch) => change(patch)} />
 
-      {/* Tabs + ตัวเลือกผัง (ผังโยง/ผังวาง) อยู่แถวเดียวกัน ประหยัดที่ */}
+      {/* Tabs + ตัวเลือกผัง (ผังระบบ/ผังวาง) อยู่แถวเดียวกัน ประหยัดที่ */}
       <div className="flex items-center gap-3 flex-wrap">
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-        {([['items', `รายการอุปกรณ์ (${plan.items.length})`], ['diagrams', `ผังโยง (${plan.diagrams.length})`], ['layouts', `ผังวาง 3D (${layouts.length})`]] as const).map(([key, label]) => (
+        {([['items', `รายการอุปกรณ์ (${plan.items.length})`], ['diagrams', `ผังระบบ (${plan.diagrams.length})`], ['layouts', `ผังวาง 3D (${layouts.length})`]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -693,9 +754,9 @@ function PlanEditor() {
             </>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
-              <p className="text-gray-400 text-sm">ยังไม่มีผังโยง — ภาพ เสียง ส่งจอ FOH และ Intercom อยู่ในผังเดียวกัน</p>
+              <p className="text-gray-400 text-sm">ยังไม่มีผังระบบ — ภาพ เสียง ส่งจอ FOH และ Intercom อยู่ในผังเดียวกัน</p>
               <button onClick={addDiagram} className="mt-3 inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-brand hover:text-brand transition-colors">
-                <PlusIcon className="w-4 h-4" /> เริ่มวาดผังโยง
+                <PlusIcon className="w-4 h-4" /> เริ่มวาดผังระบบ
               </button>
             </div>
           )}
@@ -797,7 +858,7 @@ function PlanEditor() {
 
       <ConfirmDialog
         isOpen={!!deleteDiagram}
-        title="ลบผังโยง"
+        title="ลบผังระบบ"
         message={`ต้องการลบผัง "${deleteDiagram?.name}" ใช่หรือไม่?`}
         confirmLabel="ลบ"
         onConfirm={() => {
@@ -811,6 +872,30 @@ function PlanEditor() {
       />
     </div>
   )
+}
+
+const HISTORY_MERGE_MS = 800
+const HISTORY_LIMIT = 100
+
+const nowMs = () => Date.now()
+
+/** แผนที่ย้อนกลับไป แต่คงแถวที่ลงบัญชีแล้วตามปัจจุบัน (ไม่มีในแผนเก่า = ต่อท้ายไว้) · แถวที่ตอนนี้ยังไม่ลงบัญชี = ถอดสถานะลงบัญชีเก่าออก */
+function keepRecorded(target: EquipmentPlan, cur: EquipmentPlan): EquipmentPlan {
+  const merge = <T extends { id: string; expenseId?: string; expenseCode?: string }>(old: T[], now: T[]): T[] => {
+    const recorded = new Map(now.filter((x) => x.expenseId).map((x) => [x.id, x]))
+    const out = old.map((x) => {
+      const r = recorded.get(x.id)
+      if (r) return r
+      if (!x.expenseId) return x
+      const copy = { ...x }
+      delete copy.expenseId
+      delete copy.expenseCode
+      return copy
+    })
+    for (const r of recorded.values()) if (!old.some((x) => x.id === r.id)) out.push(r)
+    return out
+  }
+  return { ...target, items: merge(target.items, cur.items), extraCosts: merge(target.extraCosts ?? [], cur.extraCosts ?? []) }
 }
 
 function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {

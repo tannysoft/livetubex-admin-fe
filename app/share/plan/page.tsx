@@ -136,7 +136,7 @@ function SharedPlanPage() {
   const layouts = plan.layouts.filter((l) => l.objects.length > 0)
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'items', label: 'อุปกรณ์', count: plan.items.length },
-    { id: 'diagrams', label: 'ผังโยง', count: diagrams.length },
+    { id: 'diagrams', label: 'ผังระบบ', count: diagrams.length },
     ...(layouts.length ? [{ id: 'layouts' as const, label: 'ผังวาง', count: layouts.length }] : []),
   ]
 
@@ -384,7 +384,7 @@ function Badge({ children, className }: { children: React.ReactNode; className: 
   return <span className={`ml-1.5 align-middle px-1.5 py-0.5 rounded text-[10px] font-medium ${className}`}>{children}</span>
 }
 
-// ── แท็บผังโยง ───────────────────────────────────────────────────────────────
+// ── แท็บผังระบบ ───────────────────────────────────────────────────────────────
 
 function Chips<T extends { id: string; name: string }>({ list, active, onPick }: { list: T[]; active: string; onPick: (id: string) => void }) {
   if (list.length < 2) return null
@@ -407,7 +407,7 @@ function DiagramsTab({ diagrams }: { diagrams: PlanDiagram[] }) {
   const [activeId, setActiveId] = useState(diagrams[0]?.id ?? '')
   const [atemFor, setAtemFor] = useState<string | null>(null)
   const diagram = diagrams.find((d) => d.id === activeId) ?? diagrams[0]
-  if (!diagram) return <p className="py-16 text-center text-sm text-gray-400">ยังไม่มีผังโยง</p>
+  if (!diagram) return <p className="py-16 text-center text-sm text-gray-400">ยังไม่มีผังระบบ</p>
   // ทีมหน้างานโหลดไฟล์ตั้งค่า ATEM ไป Restore ที่เครื่องเองได้ (ชื่อ input / AUX / Multiview จากผัง)
   const switchers = diagram.nodes.filter((n) => n.category === 'switcher' && n.inputs.length > 0)
   const atemNode = switchers.find((n) => n.id === atemFor)

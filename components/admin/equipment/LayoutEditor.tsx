@@ -1,19 +1,21 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import {
-  PlusIcon, TrashIcon, XMarkIcon, EyeIcon, EyeSlashIcon, CubeTransparentIcon, MapIcon, ArrowUpTrayIcon, DocumentDuplicateIcon,
+  PlusIcon, TrashIcon, XMarkIcon, EyeIcon, EyeSlashIcon, CubeTransparentIcon, MapIcon, ArrowUpTrayIcon, DocumentDuplicateIcon, BoltIcon,
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import FormCheckbox from '@/components/ui/FormCheckbox'
-import type { LayoutObject, LayoutObjectKind, PlanItem, PlanLayout, VenueConfig } from '@/lib/types'
+import type { LayoutCable, LayoutObject, LayoutObjectKind, PlanItem, PlanLayout, SignalType, VenueConfig } from '@/lib/types'
+import { SIGNAL_TYPES, signalMeta } from '@/lib/equipment/constants'
 import {
-  KIND_DEFAULTS, OBJECT_KINDS, isCameraKind, VENUE_PRESETS, cloneVenue, kindForCategory, kindMeta,
+  KIND_DEFAULTS, OBJECT_KINDS, isCameraKind, VENUE_PRESETS, cloneVenue, kindForCategory, kindMeta, insideFootprint, rackInRoom,
 } from '@/lib/equipment/venues'
 import {
-  addLights, buildObject, buildVenue, cameraPose, declutterLabels, disposeGroup, labelSizeFor, loadImage, objectDims, ridersOf, venueExtent,
+  addLights, buildCableDraft, buildCables, buildObject, buildVenue, cableOrderLength, cableRuns, cameraPose, declutterLabels, disposeGroup, groundsOf,
+  labelSizeFor, loadImage, objectDims, ridersOf, venueExtent, CABLE_SLACK, focusAt, tuneOrbit,
 } from '@/lib/equipment/layout-scene'
 import { getPlanAsset, uploadPlanAsset } from '@/lib/equipment/plan-assets'
 import { newId } from '@/lib/equipment/plans'
@@ -36,8 +38,15 @@ type Three = {
   controls: OrbitControls
   venue: THREE.Group | null
   objects: THREE.Group
+  cables: THREE.Group
+  draft: THREE.Group
   render: () => void
+  /** วาดเส้นร่างสายที่กำลังลากใหม่ (cursor = ปลายที่ตามเมาส์) */
+  drawDraft: (cursor?: THREE.Vector3 | null) => void
 }
+
+/** สายที่กำลังลาก: เริ่มจากวัตถุ from แล้วเก็บจุดหักเลี้ยวที่คลิกบนพื้น */
+type CableDraft = { from: string; points: { x: number; z: number }[] }
 
 const inputCls = 'w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
@@ -55,9 +64,17 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   const [floorImg, setFloorImg] = useState<HTMLImageElement | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  // ลากสาย: โหมดคลิกวัตถุต้นทาง → คลิกพื้น (จุดหักเลี้ยว) → คลิกวัตถุปลายทาง
+  const [cableMode, setCableMode] = useState(false)
+  const [selectedCableId, setSelectedCableId] = useState<string | null>(null)
+  const [draftFrom, setDraftFrom] = useState<string | null>(null) // ไว้โชว์ข้อความแนะนำ (ตัวจริงอยู่ใน draftRef)
+  const cableModeRef = useRef(false)
+  const draftRef = useRef<CableDraft | null>(null)
+  useEffect(() => { cableModeRef.current = cableMode })
 
   const venue = layout.venue
   const selected = layout.objects.find((o) => o.id === selectedId)
+  const selectedCable = layout.cables?.find((c) => c.id === selectedCableId)
   const povObject = layout.objects.find((o) => o.id === povId)
 
   // pointer handler ถูกผูกครั้งเดียวตอน mount → ต้องอ่าน layout/onChange ล่าสุดผ่าน ref
@@ -68,6 +85,14 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     emit({ ...l, objects: l.objects.map((o) => (o.id === id ? { ...o, ...patch } : o)) })
   }
   const patchVenue = (patch: Partial<VenueConfig>) => onChange({ ...layout, venue: { ...venue, ...patch } })
+  const patchCable = (id: string, patch: Partial<LayoutCable>) => {
+    const { layout: l, onChange: emit } = latest.current
+    emit({ ...l, cables: (l.cables ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)) })
+  }
+  const removeCable = (id: string) => {
+    onChange({ ...layout, cables: (layout.cables ?? []).filter((c) => c.id !== id) })
+    setSelectedCableId(null)
+  }
 
   // ── three.js lifecycle ───────────────────────────────────────────────────
   useEffect(() => {
@@ -82,9 +107,11 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0xf3f4f6)
     addLights(scene)
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 5000)
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000)
     const objects = new THREE.Group()
-    scene.add(objects)
+    const cables = new THREE.Group()
+    const draft = new THREE.Group()
+    scene.add(objects, cables, draft)
 
     let frame = 0
     const render = () => {
@@ -133,18 +160,92 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       return p
     }
     let riders: string[] = []
-    const onDown = (e: PointerEvent) => {
-      if (!controls.enabled && !dragId) return // อยู่ในมุมมองจากกล้อง
-      downAt = { x: e.clientX, y: e.clientY }
-      setRay(e)
+    let dragPoint: { cableId: string; index: number } | null = null
+    let pickedCable = false
+    const r1 = (n: number) => Math.round(n * 10) / 10
+    const objectUnderRay = (): string | null => {
       const hit = raycaster.intersectObjects(objects.children, true)[0]
       let node: THREE.Object3D | null = hit?.object ?? null
       while (node && !node.userData.objectId) node = node.parent
-      if (node) {
-        dragId = node.userData.objectId as string
+      return (node?.userData.objectId as string | undefined) ?? null
+    }
+    const drawDraft = (cursor?: THREE.Vector3 | null) => {
+      const t = three.current
+      if (!t) return
+      t.draft.children.slice().forEach((c) => { t.draft.remove(c); disposeGroup(c) })
+      const d = draftRef.current
+      const from = d && latest.current.layout.objects.find((o) => o.id === d.from)
+      if (d && from) {
+        const grounds = groundsExcept(null)
+        const at = (x: number, z: number) => {
+          const hit = new THREE.Raycaster(new THREE.Vector3(x, 500, z), down).intersectObjects(grounds, false)[0]
+          return new THREE.Vector3(x, hit ? hit.point.y : 0, z)
+        }
+        const pts = [new THREE.Vector3(from.x, from.y, from.z), ...d.points.map((p) => at(p.x, p.z)), ...(cursor ? [cursor] : [])]
+        t.draft.add(buildCableDraft(pts))
+      }
+      render()
+    }
+    /** คลิกในโหมดลากสาย: วัตถุ = เริ่ม/จบสาย · พื้น = เพิ่มจุดหักเลี้ยว */
+    const cableClick = () => {
+      const id = objectUnderRay()
+      const d = draftRef.current
+      if (id) {
+        if (!d) {
+          draftRef.current = { from: id, points: [] }
+          setDraftFrom(id)
+        } else if (id !== d.from) {
+          const { layout: l, onChange: emit } = latest.current
+          const a = l.objects.find((o) => o.id === d.from)!
+          const b = l.objects.find((o) => o.id === id)!
+          // ไกลเกิน ~90 ม. SDI ธรรมดาไม่ถึง → ตั้งเป็น fiber ไว้ก่อน แก้ได้
+          const signal: SignalType = Math.hypot(a.x - b.x, a.z - b.z) > 90 ? 'fiber' : 'sdi'
+          const cable: LayoutCable = { id: newId(), from: d.from, to: id, points: d.points, signal }
+          emit({ ...l, cables: [...(l.cables ?? []), cable] })
+          draftRef.current = null
+          setDraftFrom(null)
+          setSelectedId(null)
+          setSelectedCableId(cable.id)
+        }
+      } else if (d) {
+        const p = groundPoint(null)
+        if (p) d.points.push({ x: r1(p.x), z: r1(p.z) })
+      }
+      drawDraft(null)
+    }
+    const onDown = (e: PointerEvent) => {
+      if (!controls.enabled && !dragId) return // อยู่ในมุมมองจากกล้อง
+      downAt = { x: e.clientX, y: e.clientY }
+      pickedCable = false
+      setRay(e)
+      if (cableModeRef.current) return // โหมดลากสาย — ตัดสินตอนปล่อย (ลากพื้น = หมุนมุมมองได้ตามปกติ)
+      // จุดหักเลี้ยวของสายที่เลือกอยู่ (ลูกกลมสีส้ม) → ลากย้าย
+      const knob = raycaster.intersectObjects(cables.children, true).find((h) => h.object.userData.cablePoint)
+      if (knob) {
+        dragPoint = knob.object.userData.cablePoint as { cableId: string; index: number }
+        controls.enabled = false
+        renderer.domElement.setPointerCapture(e.pointerId)
+        return
+      }
+      const objId = objectUnderRay()
+      if (!objId) {
+        // โดนเส้นสาย → เลือกสาย (ยังหมุนมุมมองต่อได้ถ้าลาก)
+        const tube = raycaster.intersectObjects(cables.children, true).find((h) => h.object.userData.cableId)
+        if (tube) {
+          pickedCable = true
+          setSelectedCableId(tube.object.userData.cableId as string)
+          setSelectedId(null)
+        }
+      }
+      if (objId) {
+        setSelectedCableId(null)
+        dragId = objId
         const all = latest.current.layout.objects
         const dragged = all.find((o) => o.id === dragId)
-        riders = dragged?.kind === 'riser' ? ridersOf(dragged, all).map((o) => o.id) : []
+        // ย้าย riser / ห้องคอนโทรล → ของที่อยู่บน/ในนั้น (เช่น ตู้ Rack) ตามไปด้วย
+        riders = dragged?.kind === 'riser' ? ridersOf(dragged, all).map((o) => o.id)
+          : dragged?.kind === 'control_room' ? all.filter((o) => o.id !== dragged.id && insideFootprint(dragged, o.x, o.z)).map((o) => o.id)
+          : []
         setSelectedId(dragId)
         setPanel('objects')
         controls.enabled = false
@@ -152,6 +253,19 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       }
     }
     const onMove = (e: PointerEvent) => {
+      if (cableModeRef.current && draftRef.current) {
+        setRay(e)
+        drawDraft(groundPoint(null))
+        return
+      }
+      if (dragPoint) {
+        setRay(e)
+        const p = groundPoint(null)
+        const { layout: l, onChange: emit } = latest.current
+        const dp = dragPoint
+        if (p) emit({ ...l, cables: (l.cables ?? []).map((c) => (c.id !== dp.cableId ? c : { ...c, points: c.points.map((q, i) => (i === dp.index ? { x: r1(p.x), z: r1(p.z) } : q)) })) })
+        return
+      }
       if (!dragId) return
       setRay(e)
       const p = groundPoint(dragId)
@@ -162,7 +276,14 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
         patchObject(dragId, { rotation: Math.round(((deg % 360) + 360) % 360) })
       } else {
         const r = (n: number) => Math.round(n * 10) / 10
-        const next = { x: r(p.x), z: r(p.z), y: r(Math.max(0, p.y)) }
+        // ใต้อัฒจันทร์ = ตั้งบนพื้นจริงเสมอ ไม่ปีนขึ้นไปบนขั้น
+        const next: Partial<LayoutObject> & { x: number; z: number; y: number } = { x: r(p.x), z: r(p.z), y: obj.underTier ? 0 : r(Math.max(0, p.y)) }
+        // ตู้ Rack ลากเข้าห้องคอนโทรล → วางบนพื้นห้อง (ห้องไม่ใช่ผิวที่ ray ชน — ใต้อัฒจันทร์ ray จะไปชนขั้นที่นั่งแทน) และมองทะลุตามห้อง
+        if (obj.kind === 'rack') {
+          const room = latest.current.layout.objects.find((o) => o.kind === 'control_room' && insideFootprint(o, next.x, next.z))
+          if (room) { next.y = r(room.y + 0.08); next.underTier = room.underTier || undefined }
+          else if (obj.underTier) { next.underTier = undefined; next.y = r(Math.max(0, p.y)) }
+        }
         const [dx, dz, dy] = [next.x - obj.x, next.z - obj.z, next.y - obj.y]
         // ย้าย riser → ของที่ยืนอยู่บนแท่นตามไปด้วย
         const { layout: l, onChange: emit } = latest.current
@@ -177,13 +298,27 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       }
     }
     const onUp = (e: PointerEvent) => {
+      const click = !!downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 4
+      if (cableModeRef.current) {
+        if (click) { setRay(e); cableClick() }
+        downAt = null
+        return
+      }
+      if (dragPoint) {
+        dragPoint = null
+        controls.enabled = true
+        if (renderer.domElement.hasPointerCapture(e.pointerId)) renderer.domElement.releasePointerCapture(e.pointerId)
+        downAt = null
+        return
+      }
       if (dragId) {
         dragId = null
         riders = []
         controls.enabled = true
         if (renderer.domElement.hasPointerCapture(e.pointerId)) renderer.domElement.releasePointerCapture(e.pointerId)
-      } else if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 4) {
+      } else if (click && !pickedCable) {
         setSelectedId(null) // คลิกที่ว่าง (ไม่ใช่ลากหมุนมุมมอง)
+        setSelectedCableId(null)
       }
       downAt = null
     }
@@ -194,7 +329,16 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
 
     const controls = new OrbitControls(camera, el)
     controls.maxPolarAngle = Math.PI / 2 - 0.02
+    tuneOrbit(controls)
     controls.addEventListener('change', render)
+    // ดับเบิลคลิกพื้น/วัตถุ → ซูมเข้าไปที่จุดนั้น (ซูมลึกแล้วหาทางไปจุดอื่นง่าย)
+    const onDbl = (e: MouseEvent) => {
+      if (!controls.enabled || cableModeRef.current) return
+      setRay(e as PointerEvent)
+      const p = groundPoint(null)
+      if (p) { focusAt(camera, controls, p); render() }
+    }
+    el.addEventListener('dblclick', onDbl)
 
     const resize = () => {
       const w = mount.clientWidth
@@ -207,7 +351,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const observer = new ResizeObserver(resize)
     observer.observe(mount)
 
-    three.current = { renderer, scene, camera, controls, venue: null, objects, render }
+    three.current = { renderer, scene, camera, controls, venue: null, objects, cables, draft, render, drawDraft }
     resize()
 
     return () => {
@@ -216,6 +360,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       el.removeEventListener('pointerdown', onDown, { capture: true })
       el.removeEventListener('pointermove', onMove)
       el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('dblclick', onDbl)
       controls.dispose()
       disposeGroup(scene)
       renderer.dispose()
@@ -264,6 +409,55 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     t.render()
   }, [layout.objects, selectedId, povId, labelSize, lensLines])
 
+  // ── แนวสาย: คิดแนวแนบผิวจากสถานที่ชุดแยก (ไม่ต้องพึ่ง scene ที่ render) → ใช้ทั้งวาดและโชว์ความยาวในแผง ──
+  const groundModel = useMemo(() => {
+    const g = buildVenue(venue)
+    g.updateMatrixWorld(true)
+    return g
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venueKey])
+  useEffect(() => () => disposeGroup(groundModel), [groundModel])
+  const runs = useMemo(() => cableRuns(layout, groundsOf(groundModel)), [layout, groundModel])
+  const runById = new Map(runs.map((r) => [r.cable.id, r]))
+
+  useEffect(() => {
+    const t = three.current
+    if (!t) return
+    t.cables.children.slice().forEach((c) => { t.cables.remove(c); disposeGroup(c) })
+    t.cables.add(buildCables(runs, labelSize, selectedCableId))
+    t.cables.updateMatrixWorld(true)
+    t.render()
+  }, [runs, labelSize, selectedCableId])
+
+  // ออกจากโหมดลากสาย → ทิ้งเส้นร่าง
+  useEffect(() => {
+    if (cableMode) return
+    draftRef.current = null
+    three.current?.drawDraft(null)
+  }, [cableMode])
+
+  // คีย์ลัด: Esc ยกเลิกเส้นร่าง/ออกจากโหมด · Backspace ลบจุดหักเลี้ยวล่าสุด · Delete ลบสายที่เลือก
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      const d = draftRef.current
+      if (e.key === 'Escape') {
+        if (d) { draftRef.current = null; setDraftFrom(null); three.current?.drawDraft(null) } else if (cableMode) setCableMode(false)
+      } else if (e.key === 'Backspace' && d) {
+        e.preventDefault()
+        if (d.points.length) d.points.pop()
+        else { draftRef.current = null; setDraftFrom(null) }
+        three.current?.drawDraft(null)
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCableId && !d) {
+        e.preventDefault()
+        removeCable(selectedCableId)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   // มุมมอง: 3D / Top / จากกล้อง
   const frameKey = `${venue.width}|${venue.depth}|${venue.tiers?.steps ?? 0}|${venue.shape}|${venue.tiers?.curved}|${venue.tiers?.front}`
   useEffect(() => {
@@ -287,10 +481,16 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       if (viewMode === 'top') {
         t.camera.position.set(cx, span * 1.35, cz + 0.01)
         t.controls.enableRotate = false
+        // มุมบนหมุนไม่ได้ → ลากพื้นว่าง = เลื่อนแผนที่ (เหมือนแผนที่ทั่วไป)
+        t.controls.mouseButtons.LEFT = THREE.MOUSE.PAN
+        t.controls.touches.ONE = THREE.TOUCH.PAN
       } else {
         t.camera.position.set(cx + span * 0.5, span * 0.55, e.maxZ + span * 0.4)
         t.controls.enableRotate = true
+        t.controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE
+        t.controls.touches.ONE = THREE.TOUCH.ROTATE
       }
+      t.controls.maxDistance = span * 3
       t.controls.update()
     }
     t.camera.updateProjectionMatrix()
@@ -315,13 +515,16 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const x = Math.round(((t?.controls.target.x ?? 0) + (n % 5) * 2) * 10) / 10
     const z = Math.round(((t?.controls.target.z ?? 0) + (n % 5) * 2) * 10) / 10
     const obj: LayoutObject = { id: newId(), planItemId, kind, label, x, z, y: surfaceY(x, z), rotation: 0, ...KIND_DEFAULTS[kind] }
-    onChange({ ...layout, objects: [...layout.objects, obj] })
+    // ห้องคอนโทรลมาพร้อมตู้ Rack ในห้อง — จุดให้โยงสายเข้า
+    onChange({ ...layout, objects: [...layout.objects, obj, ...(kind === 'control_room' ? [rackIn(obj)] : [])] })
     setSelectedId(obj.id)
   }
 
+  const rackIn = (room: LayoutObject) => rackInRoom(room, newId(), `RACK ${layout.objects.filter((o) => o.kind === 'rack').length + 1}`)
+
   const nextLabel = (kind: LayoutObjectKind) => {
     const count = layout.objects.filter((o) => o.kind === kind).length + 1
-    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : kind === 'micro_stand' ? `MICRO ${count}` : kind === 'action_cam' ? `ACTION ${count}` : kind === 'ptz' ? `PTZ ${count}` : kind === 'tele_lens' ? `TELE ${count}` : kind === 'box_lens' ? `BOX ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
+    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : kind === 'micro_stand' ? `MICRO ${count}` : kind === 'action_cam' ? `ACTION ${count}` : kind === 'ptz' ? `PTZ ${count}` : kind === 'tele_lens' ? `TELE ${count}` : kind === 'box_lens' ? `BOX ${count}` : kind === 'control_room' ? (count > 1 ? `CONTROL ${count}` : 'CONTROL ROOM') : kind === 'rack' ? `RACK ${count}` : kind === 'mirrorless' ? `ML ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
   }
 
   /** ปรับความสูง riser → ของที่ยืนอยู่บนแท่นต้องขึ้น/ลงตาม ไม่งั้นลอยหรือจมแท่น */
@@ -340,7 +543,12 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
 
   const removeSelected = () => {
     if (!selected) return
-    onChange({ ...layout, objects: layout.objects.filter((o) => o.id !== selected.id) })
+    // สายที่ต่อกับวัตถุนี้หายตาม
+    onChange({
+      ...layout,
+      objects: layout.objects.filter((o) => o.id !== selected.id),
+      cables: (layout.cables ?? []).filter((c) => c.from !== selected.id && c.to !== selected.id),
+    })
     setSelectedId(null)
     if (povId === selected.id) setPovId(null)
   }
@@ -351,6 +559,22 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     onChange({ ...layout, objects: [...layout.objects, copy] })
     setSelectedId(copy.id)
   }
+
+  /** ลากสายกล้องทุกตัวที่ยังไม่มีสาย → ปลายทาง (ตู้ Rack → ห้องคอนโทรล → รถ OB → โต๊ะ FOH) เป็นรูปตัว L ให้ปรับจุดหักต่อเอง */
+  const cableTarget = layout.objects.find((o) => o.kind === 'rack') ?? layout.objects.find((o) => o.kind === 'control_room') ?? layout.objects.find((o) => o.kind === 'ob_truck') ?? layout.objects.find((o) => o.kind === 'desk')
+  const autoCables = () => {
+    if (!cableTarget) return
+    const has = new Set((layout.cables ?? []).flatMap((c) => [c.from, c.to]))
+    const add: LayoutCable[] = layout.objects
+      .filter((o) => isCameraKind(o.kind) && !has.has(o.id))
+      .map((o) => ({
+        id: newId(), from: o.id, to: cableTarget.id,
+        points: Math.abs(o.x - cableTarget.x) > 1 && Math.abs(o.z - cableTarget.z) > 1 ? [{ x: o.x, z: cableTarget.z }] : [],
+        signal: Math.hypot(o.x - cableTarget.x, o.z - cableTarget.z) > 90 ? 'fiber' : 'sdi',
+      }))
+    if (add.length) onChange({ ...layout, cables: [...(layout.cables ?? []), ...add] })
+  }
+  const objLabel = (id: string) => layout.objects.find((o) => o.id === id)?.label ?? '?'
 
   const applyPreset = (presetId: string) => {
     const preset = VENUE_PRESETS.find((p) => p.presetId === presetId)
@@ -413,7 +637,24 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
             {lensLines ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />} แนวเลนส์
           </button>
           <LabelSizePicker className="!border-0 !p-0" />
+          <span className="w-px h-5 bg-gray-200 mx-0.5" aria-hidden />
+          <button
+            onClick={() => { setCableMode(!cableMode); setPovId(null) }}
+            aria-pressed={cableMode}
+            title="ลากสาย: คลิกวัตถุต้นทาง → คลิกพื้นเพื่อหักเลี้ยว → คลิกวัตถุปลายทาง"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${cableMode ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+          >
+            <BoltIcon className="w-4 h-4" /> ลากสาย
+          </button>
         </div>
+
+        {cableMode && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-amber-500/95 text-white text-xs px-3 py-1.5 rounded-full shadow-sm whitespace-nowrap">
+            {draftFrom
+              ? <>จาก <b>{objLabel(draftFrom)}</b> — คลิกพื้นเพื่อหักเลี้ยว · คลิกวัตถุปลายทางเพื่อจบ · Backspace ลบจุด · Esc ยกเลิก</>
+              : <>คลิกวัตถุต้นทาง (เช่น กล้อง) เพื่อเริ่มลากสาย · Esc ออก</>}
+          </div>
+        )}
 
         {povObject && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-gray-900/90 text-white text-xs pl-3 pr-1.5 py-1.5 rounded-full">
@@ -423,12 +664,53 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
         )}
 
         <p className="absolute bottom-3 left-3 text-[11px] text-gray-500 bg-white/90 rounded-lg px-2.5 py-1.5">
-          ลากวัตถุเพื่อย้าย · <b>Shift+ลาก</b> เพื่อหันหน้า · ลากพื้นที่ว่างเพื่อหมุนมุมมอง · scroll เพื่อซูม · 1 ช่อง = 5 ม.
+          ลากวัตถุเพื่อย้าย · <b>Shift+ลาก</b> หันหน้า · ลากพื้นว่าง {viewMode === 'top' && !povId ? 'เลื่อน' : 'หมุน'} · คลิกขวา/2 นิ้ว เลื่อน · scroll ซูมไปที่เมาส์ · <b>ดับเบิลคลิก</b> ซูมไปจุดนั้น · 1 ช่อง = 5 ม.
         </p>
       </div>
 
       <div className="w-full lg:w-80 shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:h-[68vh] lg:min-h-[420px] overflow-y-auto">
-        {selected && dims ? (
+        {selectedCable && !selected ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-800">แนวสาย</p>
+              <button onClick={() => setSelectedCableId(null)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"><XMarkIcon className="w-4 h-4" /></button>
+            </div>
+            <p className="text-sm text-gray-800"><b>{objLabel(selectedCable.from)}</b> → <b>{objLabel(selectedCable.to)}</b></p>
+            {runById.get(selectedCable.id) && (
+              <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                <p>เบิกสาย <b className="text-lg">{cableOrderLength(runById.get(selectedCable.id)!.length)} ม.</b></p>
+                <p className="text-[11px] text-gray-500">แนวจริง ≈ {runById.get(selectedCable.id)!.length.toFixed(1)} ม. (รวมขึ้นลงขั้น) + เผื่อ {Math.round(CABLE_SLACK * 100)}% ปัดขึ้นทีละ 5 ม.</p>
+              </div>
+            )}
+            <Field label="ชนิดสาย">
+              <div className="grid grid-cols-3 gap-1">
+                {SIGNAL_TYPES.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => patchCable(selectedCable.id, { signal: t.value })}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs ${selectedCable.signal === t.value ? 'border-gray-900 bg-gray-50 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="ป้ายสาย">
+              <input className={inputCls} placeholder={`เช่น ${signalMeta(selectedCable.signal).label} #12`} value={selectedCable.label ?? ''} onChange={(e) => patchCable(selectedCable.id, { label: e.target.value })} />
+            </Field>
+            <Field label="หมายเหตุ">
+              <textarea className={inputCls} rows={2} value={selectedCable.note ?? ''} onChange={(e) => patchCable(selectedCable.id, { note: e.target.value })} />
+            </Field>
+            <p className="text-[11px] text-gray-500">
+              จุดหักเลี้ยว {selectedCable.points.length} จุด — ลากลูกกลมสีส้มเพื่อย้าย
+              {selectedCable.points.length > 0 && <button onClick={() => patchCable(selectedCable.id, { points: [] })} className="ml-2 text-brand hover:underline">ล้างจุด (ลากตรง)</button>}
+            </p>
+            <button onClick={() => removeCable(selectedCable.id)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50 transition-colors">
+              <TrashIcon className="w-4 h-4" /> ลบสายนี้
+            </button>
+          </div>
+        ) : selected && dims ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-gray-800">{kindMeta(selected.kind).label}</p>
@@ -440,7 +722,12 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
             <Field label="ชนิด">
               <FormListbox
                 value={selected.kind}
-                onChange={(v) => patchObject(selected.id, { kind: v as LayoutObjectKind, w: undefined, d: undefined, h: undefined })}
+                onChange={(v) => {
+                  const kind = v as LayoutObjectKind
+                  const next = { ...selected, kind, w: undefined, d: undefined, h: undefined }
+                  // เปลี่ยนเป็นห้องคอนโทรล → มาพร้อมตู้ Rack เหมือนเพิ่มใหม่
+                  onChange({ ...layout, objects: [...layout.objects.map((o) => (o.id === selected.id ? next : o)), ...(kind === 'control_room' && selected.kind !== 'control_room' ? [rackIn(next)] : [])] })
+                }}
                 options={OBJECT_KINDS}
               />
             </Field>
@@ -475,6 +762,24 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
                 <Num label="ลึก" value={dims.d} step={0.1} onChange={(v) => patchObject(selected.id, { d: Math.max(0.1, v) })} />
                 <Num label="สูง" value={dims.h} step={0.1} onChange={(v) => changeHeight(selected, Math.max(0.1, v))} />
               </div>
+            )}
+            {!isCam && (
+              <FormCheckbox
+                size="sm"
+                checked={!!selected.underTier}
+                onChange={(v) => {
+                  const y = v ? 0 : surfaceY(selected.x, selected.z)
+                  // ห้องคอนโทรล → ตู้ Rack ในห้องเปลี่ยนตาม (ระดับพื้นห้อง + มองทะลุ)
+                  const inside = selected.kind === 'control_room' ? new Set(layout.objects.filter((o) => o.kind === 'rack' && insideFootprint(selected, o.x, o.z)).map((o) => o.id)) : new Set<string>()
+                  onChange({
+                    ...layout,
+                    objects: layout.objects.map((o) => o.id === selected.id ? { ...o, underTier: v || undefined, y }
+                      : inside.has(o.id) ? { ...o, underTier: v || undefined, y: Math.round((y + 0.08) * 100) / 100 } : o),
+                  })
+                }}
+                label="อยู่ใต้อัฒจันทร์"
+                description="ตั้งบนพื้นจริง แล้ววาดแบบมองทะลุที่นั่ง — ลากไปไว้ใต้ขั้นอัฒจันทร์ได้เลย"
+              />
             )}
             <Field label="หมายเหตุ (เลนส์, ผู้ควบคุม, ฯลฯ)">
               <textarea className={inputCls} rows={2} value={selected.note ?? ''} onChange={(e) => patchObject(selected.id, { note: e.target.value })} />
@@ -543,6 +848,31 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
                     </ul>
                   </div>
                 )}
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs font-semibold text-gray-500">แนวสาย ({runs.length})</p>
+                    {cableTarget && (
+                      <button onClick={autoCables} className="text-xs text-brand hover:underline font-medium" title="กล้องที่ยังไม่มีสาย → ลากไปหาจุดนี้เป็นรูปตัว L แล้วปรับจุดหักเลี้ยวเอง">
+                        สายกล้องทุกตัว → {cableTarget.label}
+                      </button>
+                    )}
+                  </div>
+                  {runs.length === 0 ? (
+                    <p className="text-[11px] text-gray-400">กด “ลากสาย” บนแถบด้านบน แล้วคลิกกล้อง → คลิกพื้นเพื่อหักเลี้ยว → คลิกรถ OB / FOH</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {runs.map(({ cable, length }) => (
+                        <li key={cable.id}>
+                          <button onClick={() => { setSelectedId(null); setSelectedCableId(cable.id) }} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs hover:bg-gray-50">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: signalMeta(cable.signal).color }} />
+                            <span className="flex-1 min-w-0 truncate text-gray-800">{objLabel(cable.from)} → {objLabel(cable.to)}</span>
+                            <span className="text-gray-500 tabular-nums shrink-0">{cableOrderLength(length)} ม.</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </>
             ) : (
               <div className="space-y-3">

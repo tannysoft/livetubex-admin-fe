@@ -111,7 +111,7 @@ body {
 .badge-pop      { animation: badge-pop 0.6s cubic-bezier(0.34, 1.6, 0.64, 1) 0.5s both; }
 .celebration-out { animation: celebration-fade-out 0.6s ease forwards; }
 
-/* ── Print (แผนจัดอุปกรณ์ / ผังโยง) ──────────────────────────────────────────
+/* ── Print (แผนจัดอุปกรณ์ / ผังระบบ) ──────────────────────────────────────────
  * ทุกหน้าเป็น A4 แนวนอน (รายการ/ตารางสายก็อ่านง่ายกว่าเมื่อกว้าง ไม่สลับแนวไปมา)
  * section ที่ติด class .print-landscape / .print-portrait = ขึ้นหน้าใหม่ (ชื่อ class เก่า ตอนยังสลับแนว) */
 @page { size: A4 landscape; margin: 10mm; }

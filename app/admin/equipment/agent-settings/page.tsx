@@ -99,7 +99,7 @@ export default function AgentSettingsPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-brand" /> ตั้งค่าผู้ช่วย AI</h1>
-            <p className="text-gray-500 mt-1">รุ่นที่ใช้, กฎการต่อสายของทีม และ system prompt ของผู้ช่วยจัดอุปกรณ์ + ร่างผังโยง</p>
+            <p className="text-gray-500 mt-1">รุ่นที่ใช้, กฎการต่อสายของทีม และ system prompt ของผู้ช่วยจัดอุปกรณ์ + ร่างผังระบบ</p>
           </div>
           <div className="flex items-center gap-3">
             {saved && <span className="flex items-center gap-1 text-sm text-green-600"><CheckCircleIcon className="w-4 h-4" /> บันทึกแล้ว</span>}

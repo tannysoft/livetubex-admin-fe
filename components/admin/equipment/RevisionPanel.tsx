@@ -42,7 +42,7 @@ const SOURCE_LABEL: Record<PlanRevision['source'], { label: string; cls: string 
 }
 
 /**
- * Revision ของแผน — บันทึก snapshot (จัดของ + ผังโยง + ผังวาง) เป็น Rev 1, 2, 3 …
+ * Revision ของแผน — บันทึก snapshot (จัดของ + ผังระบบ + ผังวาง) เป็น Rev 1, 2, 3 …
  * เทียบกับตอนนี้ / พิมพ์ฉบับของ revision นั้น / กู้คืน (บันทึกของปัจจุบันเป็น revision ให้ก่อนเสมอ)
  */
 export default function RevisionPanel({ isOpen, onClose, plan, userEmail, onRestore, onRevisionChange }: RevisionPanelProps) {
@@ -175,7 +175,7 @@ export default function RevisionPanel({ isOpen, onClose, plan, userEmail, onRest
             </button>
           </div>
           <p className="text-[11px] text-gray-400">
-            เก็บ รายการจัดของ + ผังโยง + ผังวาง 3D · ติ๊ก “จัดแล้ว/เก็บกลับ” ไม่นับเป็นการแก้ · ค่าใช้จ่ายอื่นและการลงบัญชีไม่ถูกย้อนตอนกู้คืน
+            เก็บ รายการจัดของ + ผังระบบ + ผังวาง 3D · ติ๊ก “จัดแล้ว/เก็บกลับ” ไม่นับเป็นการแก้ · ค่าใช้จ่ายอื่นและการลงบัญชีไม่ถูกย้อนตอนกู้คืน
           </p>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
@@ -202,7 +202,7 @@ export default function RevisionPanel({ isOpen, onClose, plan, userEmail, onRest
                       </p>
                       <p className="text-xs text-gray-500">
                         {formatDateTime(r.createdAt)}{r.createdBy ? ` · ${r.createdBy}` : ''}
-                        {' · '}{r.stats.items} รายการ ({r.stats.pieces} ชิ้น) · {r.stats.diagrams} ผังโยง {r.stats.nodes} กล่อง {r.stats.edges} สาย{r.stats.layouts ? ` · ผังวาง ${r.stats.layouts}` : ''}
+                        {' · '}{r.stats.items} รายการ ({r.stats.pieces} ชิ้น) · {r.stats.diagrams} ผังระบบ {r.stats.nodes} กล่อง {r.stats.edges} สาย{r.stats.layouts ? ` · ผังวาง ${r.stats.layouts}` : ''}
                       </p>
                       {r.note && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{r.note}</p>}
                     </div>
@@ -226,7 +226,7 @@ export default function RevisionPanel({ isOpen, onClose, plan, userEmail, onRest
                     <div className="mt-3 space-y-3">
                       <p className="text-xs font-semibold text-gray-500">Rev {r.number} → ตอนนี้</p>
                       {itemDiff.added.length + itemDiff.removed.length + itemDiff.changed.length === 0 && diagramDiff.length === 0 && goneDiagrams.length === 0 ? (
-                        <p className="text-sm text-gray-500">ไม่มีความต่างในรายการจัดของและผังโยง</p>
+                        <p className="text-sm text-gray-500">ไม่มีความต่างในรายการจัดของและผังระบบ</p>
                       ) : (
                         <ul className="text-sm rounded-lg border border-gray-100 divide-y divide-gray-50 max-h-48 overflow-auto bg-white">
                           {itemDiff.added.map((it) => <li key={`a${it.id}`} className="px-3 py-1.5"><span className="text-green-600 font-semibold mr-2">+</span>{it.name} ×{it.quantity} <span className="text-gray-400">{it.toLocation}</span></li>)}
@@ -275,7 +275,7 @@ export default function RevisionPanel({ isOpen, onClose, plan, userEmail, onRest
       <ConfirmDialog
         isOpen={!!confirmRestore}
         title={`กู้คืน Rev ${confirmRestore?.number}`}
-        message={`รายการจัดของ ผังโยง และผังวาง จะถูกแทนด้วย Rev ${confirmRestore?.number}${modified ? ' — ของปัจจุบันจะถูกบันทึกเป็น revision ใหม่ให้ก่อน ย้อนกลับได้' : ''} · สถานะจัดแล้ว/เก็บกลับ และรายการที่ลงบัญชีแล้วจะคงไว้`}
+        message={`รายการจัดของ ผังระบบ และผังวาง จะถูกแทนด้วย Rev ${confirmRestore?.number}${modified ? ' — ของปัจจุบันจะถูกบันทึกเป็น revision ใหม่ให้ก่อน ย้อนกลับได้' : ''} · สถานะจัดแล้ว/เก็บกลับ และรายการที่ลงบัญชีแล้วจะคงไว้`}
         confirmLabel="กู้คืน"
         onConfirm={() => { const r = confirmRestore; setConfirmRestore(null); if (r) restore(r) }}
         onClose={() => setConfirmRestore(null)}

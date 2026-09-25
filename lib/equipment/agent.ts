@@ -9,7 +9,7 @@ import type { AgentEffort } from './agent-settings'
 import { applyAgentLayout, layoutAgentText, type ZonePlacement } from './layout-zones'
 
 /**
- * ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง — Cloud Function `equipmentAgent` (LangGraph.js + Claude)
+ * ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังระบบ — Cloud Function `equipmentAgent` (LangGraph.js + Claude)
  * ฝั่ง server คืน "ร่าง" (items + diagrams ทั้งชุด) ไม่เขียน Firestore — ผู้ใช้กดใช้ร่างแล้วค่อยเข้า autosave
  */
 export interface AgentTurn {
@@ -44,7 +44,7 @@ export type TraceEntry =
   | { kind: 'phase'; label: string }
 
 /**
- * all = ทำทั้งหมดในรอบเดียว · items = ขั้น 1 จัดของ (ปิด tool ผังโยง) · wiring = ขั้น 2 วาดผังจากรายการที่จัดแล้ว
+ * all = ทำทั้งหมดในรอบเดียว · items = ขั้น 1 จัดของ (ปิด tool ผังระบบ) · wiring = ขั้น 2 วาดผังจากรายการที่จัดแล้ว
  * ⚠️ ฝาแฝดของ AgentPhase ใน functions/src/equipment-agent/graph.ts
  */
 export type AgentPhase = 'all' | 'items' | 'wiring'
@@ -164,7 +164,7 @@ export function mergeStagedDrafts(first: AgentDraft, second: AgentDraft): AgentD
     placed: first.placed + second.placed,
     // คนละรุ่นต่อขั้น → "รุ่น1 → รุ่น2" (modelLabel ใน AgentPanel แยกให้)
     model: first.model === second.model ? second.model : `${first.model} → ${second.model}`,
-    summary: `【จัดของ】\n${first.summary}\n\n【ผังโยง】\n${second.summary}`,
+    summary: `【จัดของ】\n${first.summary}\n\n【ผังระบบ】\n${second.summary}`,
     questions: [...new Set([...first.questions, ...second.questions])],
     steps: first.steps + second.steps,
     usage: {

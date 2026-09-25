@@ -24,7 +24,7 @@ export function categoryLabel(c: EquipmentCategory): string {
   return EQUIPMENT_CATEGORIES.find((x) => x.value === c)?.label ?? c
 }
 
-/** สีหัวกล่องในผังโยง — แยกหมวดให้มองออกเร็ว (ไม่ใช่สีแบรนด์ จึงเป็น hex คงที่) */
+/** สีหัวกล่องในผังระบบ — แยกหมวดให้มองออกเร็ว (ไม่ใช่สีแบรนด์ จึงเป็น hex คงที่) */
 export const CATEGORY_COLORS: Record<EquipmentCategory, string> = {
   camera: '#2563eb',
   lens: '#0891b2',

@@ -8,7 +8,7 @@ import { newId } from './plans'
 import { formatShortLabel, sameFormat } from './video-format'
 
 /**
- * วาดสายส่งภาพ FOH จาก plan.fohFeeds **ลงผังหลัก** (1 แผน = 1 ผังโยง) — สวิตเชอร์ OB → (converter) → เครื่องของทีม Visual (E2 / LED processor / …)
+ * วาดสายส่งภาพ FOH จาก plan.fohFeeds **ลงผังหลัก** (1 แผน = 1 ผังระบบ) — สวิตเชอร์ OB → (converter) → เครื่องของทีม Visual (E2 / LED processor / …)
  * - กล่องที่สร้างติด `generated: 'foh'` → กดซ้ำลบชุดเดิมแล้ววาดใหม่ กล่องอื่นในผังไม่แตะ
  * - สวิตเชอร์ = กล่องสวิตเชอร์ที่มีอยู่ในผังแล้ว (ใช้ port ขาออกที่ยังว่าง) · ยังไม่มี = กล่องของแถว switcher แรก · ไม่มีแถว = กล่องอิสระ "OB Switcher"
  * - เลือก port ขาออกตามชื่อสัญญาณ (PGM / AUX n / Clean / MV) และชนิดสาย · ไม่เจอ = เพิ่ม port ให้กล่อง (ไม่แตะสต็อก)

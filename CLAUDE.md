@@ -12,7 +12,7 @@
   - **ภาษี**: รายงาน ภพ.30 (VAT) + ภงด.3/53 (WHT) + Export CSV
   - **งบการเงิน**: P&L รายเดือน เปรียบเทียบเดือนก่อนหน้า
   - **Auto-link**: Freelancer payment ที่ paid → สร้าง Expense (ค่าจ้างทำของ) อัตโนมัติ
-- **Equipment OB** (`/admin/equipment/*`) — สต็อกอุปกรณ์ + แผนจัดของต่องาน (จดว่าอะไรโยกไปไหน) + ผังโยงสัญญาณ + print
+- **Equipment OB** (`/admin/equipment/*`) — สต็อกอุปกรณ์ + แผนจัดของต่องาน (จดว่าอะไรโยกไปไหน) + ผังระบบ + print
 - **Freelancer LIFF** (`/freelancer/*`) — Freelancer ดูข้อมูล ขอเบิกเงิน ผ่าน LINE LIFF
 
 ## Stack
@@ -63,6 +63,12 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | Field | Type | หมายเหตุ |
 |---|---|---|
 | budget | number | ราคาขายของงาน — doc id = jobId |
+| accountingStatus | string? | สถานะทางบัญชีของงาน = id จาก `settings/jobAccounting.statuses` (id ที่ถูกลบ = ไม่ระบุ) — เปลี่ยนจากป้ายในหน้างานถ่ายทอดสด/ฟอร์มงาน · เขียนแบบ `merge` เสมอ ไม่งั้นทับ budget |
+
+### `settings/jobAccounting` (admin-only)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| statuses | `{id, label, color}[]` | รายการสถานะบัญชี เรียงตามลำดับที่โชว์ — แก้ชื่อ/สี/ลำดับ/เพิ่ม/ลบได้ (`AccountingStatusManager`) · ไม่มี doc = `DEFAULT_ACCOUNTING_STATUSES` (`lib/job-accounting.ts`) |
 
 ### `freelancers`
 | Field | Type | หมายเหตุ |
@@ -158,6 +164,16 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | phaseModels | `{items, wiring}` | รุ่นต่อขั้นในโหมดแบ่ง 2 ขั้น ('' = ตามรุ่นใน dropdown) · ไม่มี field = `DEFAULT_PHASE_MODELS` (จัดของ Sonnet 5 → โยงผัง Opus 5.5) |
 
 > แก้ที่ `/admin/equipment/agent-settings` · client ส่ง prompt/กฎ/model ไปกับทุกคำสั่ง — server ไม่อ่าน doc นี้เอง
+
+### `calendarEntries` (admin-only — ปฏิทินงาน `/admin/calendar`)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| type | 'job' \| 'note' | job = ดึงงานจาก `jobs` มาวาง (ชื่อ/วัน/สถานที่อ่านสดจาก jobs), note = โน้ตอิสระ |
+| jobId | string? | type='job' — งานถูกลบ = ไม่โชว์บนตาราง มีปุ่มเอาออกท้ายรายการ |
+| title / date / endDate | string? | type='note' |
+| color | string? | type='note' — สีจาก `CALENDAR_COLORS` (`lib/calendar.ts`) · แถบ**งาน**ใช้สีของสถานะบัญชี (`jobFinance.accountingStatus`) ไม่ระบุ = สีแบรนด์ — ไม่มีสีแยกต่องาน |
+| note | string? | โน้ตของรายการ (ทั้ง 2 แบบ) |
+| googleAddedAt | string? | type='job' — ป้าย "✓ Google" จดตอนกดปุ่มเพิ่มลง Google Calendar (ลิงก์ template ของ Google ไม่ใช่ API — ไม่รู้ว่าบันทึกจริงไหม, เอาป้ายออกได้ในปฏิทินงาน) · doc id = `job-{jobId}` (`addJobToCalendar`/`setGoogleAdded`) · สร้างงานใหม่ = ลงปฏิทินงานอัตโนมัติ |
 
 ### `settings/app`
 | Field | Type | หมายเหตุ |
@@ -276,9 +292,9 @@ setPlanShare(onCall)   // Admin — { planId, enabled?, password?, regenerate? }
 getSharedPlan(onCall)  // สาธารณะ — { shareId, password } → แผนที่ตัดข้อมูลการเงิน (ดู planShares)
 
 equipmentAgent(onCall)  — ดู functions/src/equipment-agent/
-// Admin only — ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง (LangGraph.js + Claude) timeout 900s, 1GiB
+// Admin only — ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังระบบ (LangGraph.js + Claude) timeout 900s, 1GiB
 // รับ: { plan: {id,title,date,endDate,location,notes,items,diagrams}, instruction, history[], model, systemPrompt, rules, phase, effort }
-// phase: 'all' (default) | 'items' (ขั้น 1 จัดของ — ปิด tool ผังโยง) | 'wiring' (ขั้น 2 วาดผังจากรายการที่จัดแล้ว)
+// phase: 'all' (default) | 'items' (ขั้น 1 จัดของ — ปิด tool ผังระบบ) | 'wiring' (ขั้น 2 วาดผังจากรายการที่จัดแล้ว)
 // คืน: ร่าง { items, diagrams, newDiagramIds, newNodeIds, summary, questions, issues, steps, usage } — ไม่เขียน Firestore
 // stream (sendChunk): AgentEvent — step / thinking / text / tool / tool_result / review → หน้าเว็บโชว์ความคิดสด
 // Secret: ANTHROPIC_API_KEY
@@ -790,7 +806,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 
 ---
 
-## Equipment — อุปกรณ์ OB / แผนจัดของ / ผังโยง
+## Equipment — อุปกรณ์ OB / แผนจัดของ / ผังระบบ
 
 ### Collections (admin-only)
 
@@ -803,7 +819,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 | quantity | number | ของชิ้นเดียว = 1, ของนับจำนวน (สาย, ขาตั้ง) > 1 |
 | storageLocation | string? | ที่เก็บประจำ → เป็นค่าตั้งต้นของ "หยิบจาก" ในแผน |
 | status | 'available' \| 'repair' \| 'retired' | retired ไม่โชว์ในตัวเลือกของแผน |
-| inputs / outputs | string[]? | ชื่อ port — **แม่แบบ**ตอนวางลงผังโยง (แก้ในผังไม่กระทบสต็อก) |
+| inputs / outputs | string[]? | ชื่อ port — **แม่แบบ**ตอนวางลงผังระบบ (แก้ในผังไม่กระทบสต็อก) |
 | ownership | 'owned' \| 'rental' \| 'partner' | ไม่มี field = owned · rental = **แค็ตตาล็อกของที่เช่าได้** · partner = ของพาร์ทเนอร์ที่เอามาร่วมงาน (เช่น Windblue) — `partnerName`, ค่าใช้จ่ายปกติ 0 |
 | rentalVendor / rentalRate | string? / number? | ผู้ให้เช่า + ราคา/ชิ้น/วัน — เลือกเข้าแผนแล้ว snapshot ลง `PlanItem` เป็นต้นทุนให้เอง |
 
@@ -814,7 +830,7 @@ VEN-0001       # ผู้ขาย (running ไม่ reset)
 | jobId / jobTitle | string? | ผูกกับ `jobs/{id}` (optional) — jobTitle เป็น snapshot |
 | status | 'draft' \| 'ready' \| 'on_site' \| 'returned' | |
 | items | `PlanItem[]` | snapshot `code/name/category` + `quantity`, `fromLocation` → `toLocation`, `note`, `packed`, `returned` |
-| diagrams | `PlanDiagram[]` | **1 แผน = 1 ผังโยง** (ภาพ เสียง ส่งจอ FOH Intercom รวมกัน) — ยังเป็น array เพราะข้อมูลเก่าแยกหลายผัง หน้าแก้แผนมีปุ่ม "รวมเป็นผังเดียว" (`mergeDiagrams`) · แต่ละผังมี `nodes[]` + `edges[]` |
+| diagrams | `PlanDiagram[]` | **1 แผน = 1 ผังระบบ** (ภาพ เสียง ส่งจอ FOH Intercom รวมกัน) — ยังเป็น array เพราะข้อมูลเก่าแยกหลายผัง หน้าแก้แผนมีปุ่ม "รวมเป็นผังเดียว" (`mergeDiagrams`) · แต่ละผังมี `nodes[]` + `edges[]` |
 | videoFormat | `VideoFormat?` | ระบบภาพ `{resolution, frameRate, range, note}` → หัวกระดาษทุกหน้า "1080i50 · SDR · Rec.709 · HD-SDI" (`lib/equipment/video-format.ts`) — ระดับ SDI คำนวณเอง ไม่เก็บ · interlaced ใช้ field rate |
 | recordings | `RecordingSpec[]?` | format ไฟล์บันทึก หลายรายการ `{target, codec, container, resolution?, media, note}` — `resolution` ว่าง = ตามระบบภาพ (ISO BRAW 4K + PGM HD ได้) เช่น PGM ProRes 422 HQ .mov / ISO H.264 .mp4 — หัวกระดาษบรรทัด "บันทึก:" (`lib/equipment/recording-format.ts`) |
 | fohFeeds | `FohFeed[]?` | สัญญาณส่งทีม Visual ที่ FOH `{source, destination, destInput?, connection, format?, cableLength, note}` — format ว่าง = ตามระบบหลัก · พิมพ์หน้าแยก (ช่องติ๊กรับ + เซ็นส่ง/รับ) + บรรทัดสรุปบนหัวกระดาษ (`lib/equipment/foh-feeds.ts`) |
@@ -867,7 +883,7 @@ lib/equipment/
 ├── agent-settings.ts # settings/equipmentAgent + AGENT_MODELS + DEFAULT_SYSTEM_PROMPT + DEFAULT_AGENT_RULES
 ├── foh-feeds.ts     # ส่งภาพทีม Visual (FOH): FOH_SYSTEMS (E2/Aquilon/Novastar…), feedFormatLabel, fohSummary, fohAgentText
 ├── layout-zones.ts  # ผังวาง 3D ตามโซน: applyZonePlacements, ensureFoh (ทุกผังมีโต๊ะ FOH), newLayout, applyAgentLayout
-├── atem-export.ts   # ตั้งค่า ATEM จากผังโยง: ชื่อ input (เดินย้อนผ่าน converter หากล้อง) · AUX = port SDI OUT ที่มีสาย (เดาแหล่งจากป้ายสาย PGM/Clean/MV/CAM n, เดาไม่ได้ = ATEM_UNSET ไม่แตะ) · Multiview (PVW, PGM + input) — เลขแหล่งตามโปรโตคอล ATEM (input n, PGM 10010+10(ME-1), Clean 700n, MV 900n) · patch ไฟล์ .xml จากเครื่อง (แก้เฉพาะ element ที่มีอยู่) หรือสร้าง XML ขั้นต่ำ (tag AUX/MV เดา) — `AtemExportModal` เปิดได้ 3 ที่: ปุ่ม "Download XML ATEM" บนแถบแท็บผังโยง, แผงกล่อง switcher, และหน้าแชร์ทีมงาน (แท็บผังโยง — ทำงานฝั่ง client ล้วน ไม่ต้อง login)
+├── atem-export.ts   # ตั้งค่า ATEM จากผังระบบ: ชื่อ input (เดินย้อนผ่าน converter หากล้อง) · AUX = port SDI OUT ที่มีสาย (เดาแหล่งจากป้ายสาย PGM/Clean/MV/CAM n, เดาไม่ได้ = ATEM_UNSET ไม่แตะ) · Multiview (PVW, PGM + input) — เลขแหล่งตามโปรโตคอล ATEM (input n, PGM 10010+10(ME-1), Clean 700n, MV 900n) · patch ไฟล์ .xml จากเครื่อง (แก้เฉพาะ element ที่มีอยู่) หรือสร้าง XML ขั้นต่ำ (tag AUX/MV เดา) — `AtemExportModal` เปิดได้ 3 ที่: ปุ่ม "Download XML ATEM" บนแถบแท็บผังระบบ, แผงกล่อง switcher, และหน้าแชร์ทีมงาน (แท็บผังระบบ — ทำงานฝั่ง client ล้วน ไม่ต้อง login)
 ├── foh-diagram.ts   # buildFohDiagram: feed → ผัง "ส่งภาพ FOH — ทีม Visual" (สวิตเชอร์ → converter/fiber/encoder → เครื่อง FOH)
 ├── recording-format.ts # format ไฟล์บันทึก: codec → นามสกุลไฟล์ตั้งต้น, presets, recordingsLabel
 ├── video-format.ts  # ระบบภาพ: presets, formatFullLabel, sdiLevel (ส่งเป็นข้อความให้ผู้ช่วย AI ด้วย)
@@ -902,28 +918,31 @@ app/admin/equipment/
 ├── inventory/page.tsx     # สต็อกอุปกรณ์ (CRUD + ค้นหา + ทำสำเนา)
 ├── availability/page.tsx  # ของเหลือตามช่วงวันที่ (มีปุ่มพิมพ์) — หักของที่แผน (ยังไม่เก็บกลับ) จองไว้ · usageInRange() ใช้ยอดวันพีค ไม่รวมแผนคนละวัน
 ├── plans/page.tsx         # รายการแผน + สร้าง/สำเนา/ลบ
-├── plans/edit/page.tsx    # ?id=xxx — แท็บ รายการอุปกรณ์ / ผังโยง (autosave)
+├── plans/edit/page.tsx    # ?id=xxx — แท็บ รายการอุปกรณ์ / ผังระบบ (autosave)
 ├── plans/print/page.tsx   # ?id=xxx — เลือกส่วนที่จะพิมพ์ แล้ว window.print()
 └── agent-settings/page.tsx # ตั้งค่าผู้ช่วย AI: รุ่นเริ่มต้น, กฎของทีม, system prompt (คืนค่าเริ่มต้นได้)
 
-app/share/plan/page.tsx     # ?s=shareId — หน้าแชร์ทีมงาน (มือถือ, ไม่ต้อง login): ใส่รหัส → แท็บ อุปกรณ์ / ผังโยง / ผังวาง
+app/share/plan/page.tsx     # ?s=shareId — หน้าแชร์ทีมงาน (มือถือ, ไม่ต้อง login): ใส่รหัส → แท็บ อุปกรณ์ / ผังระบบ / ผังวาง
                             # ผังซูมด้วย components/ui/ZoomPan (บีบ 2 นิ้ว/ลาก/แตะ 2 ครั้ง) · รหัสจำใน sessionStorage · robots noindex
                             # แท็บผังวางวาด 3D สดด้วย LayoutViewer (ไม่ใช่รูป — ซูมแล้วไม่แตก) · ปุ่มแนวเลนส์ใช้ค่า useLensLines() ร่วมกับหน้าแก้ผัง/หน้าพิมพ์ · ขนาดป้าย S/M/L = useLabelSize() + LabelSizePicker (lib/equipment/lens-lines.ts) ใช้ร่วม 3 หน้าเช่นกัน · โพเดียมไม่มีป้าย
 components/admin/equipment/SharePlanModal.tsx  # ปุ่ม "แชร์ทีมงาน" หน้าแก้แผน: ตั้งรหัส, เปิด/ปิด, คัดลอกลิงก์, สร้างลิงก์ใหม่
 lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายทาง + เลนส์ใต้กล้อง) ใช้ร่วมหน้าพิมพ์ + หน้าแชร์
-                             # ป้าย CAM: camTag(item, camLabels(plan)) อ่านเบอร์จาก label กล่องในผังโยง/ผัง 3D (planItemId) ก่อน → หมายเหตุ (ข้อมูลเก่า) → ปลายทาง
+                             # ป้าย CAM: camTag(item, camLabels(plan)) อ่านเบอร์จาก label กล่องในผังระบบ/ผัง 3D (planItemId) ก่อน → หมายเหตุ (ข้อมูลเก่า) → ปลายทาง
                              # ⇒ หมายเหตุไม่ต้องมี "CAM n" · กล้องเรียงตามเบอร์ (sortByCam) · หมายเหตุที่มีแค่ "CAMn" ไม่โชว์ (isCamOnlyNote)
 ```
 
 ### กฎสำคัญ
 
-- **ผังโยงเขียนเองด้วย SVG ไม่ใช้ library** — `DiagramGraph` เป็นตัว render เดียวทั้งจอและ print
+- **คำที่ใช้ในแอป**: "สต็อก" (ไม่ใช่ "คลัง") · "ผังระบบ" (ไม่ใช่ "ผังโยง" — ผู้ใช้ขอเปลี่ยน ก.ย. 2569) · "ผังวาง 3D" — ใช้ให้ตรงกันทั้ง UI, หน้าแชร์, หน้าพิมพ์ และ system prompt
+- **ผังระบบเขียนเองด้วย SVG ไม่ใช้ library** — `DiagramGraph` เป็นตัว render เดียวทั้งจอและ print
   แก้หน้าตากล่อง/เส้นที่เดียว ผังที่พิมพ์จะตรงกับที่วาดเสมอ ขนาดกล่อง/ตำแหน่ง port อยู่ใน `lib/equipment/diagram.ts`
 - **สีเส้นต้องคู่กับ dash เสมอ** (`SIGNAL_TYPES`) — ผังมักถูกพิมพ์ขาวดำ สีอย่างเดียวแยกประเภทสายไม่ออก
   สีหมวด/สีสัญญาณเป็น hex คงที่ได้ (เป็นความหมายของข้อมูล ไม่ใช่สีแบรนด์ — ไม่ขัดกฎข้อ 28)
 - **autosave ของหน้าแก้แผน**: `change()` เขียน `latest` ref + bump `version` แล้ว debounce 1.2s
   ห้ามอ่าน `plan` state ใน `save()` — ต้องอ่านจาก ref ไม่งั้น save ที่ค้างอยู่ได้ค่าเก่า
   ปุ่มพิมพ์ต้อง `await save()` ก่อน navigate เพราะหน้า print อ่านจาก Firestore
+  **undo/redo** (ปุ่มข้างสถานะบันทึก + ⌘Z / ⌘⇧Z / Ctrl+Y นอกช่องพิมพ์): `change()` เก็บทั้งแผนก่อนแก้ลง `undoStack` (ref) — แก้ต่อเนื่องห่างกัน < 800ms = ขั้นเดียว, สูงสุด 100 ขั้น
+  ย้อนแล้ว autosave ตามปกติ · `keepRecorded()` คงแถวที่ลงบัญชีแล้ว (expenseId) ตามปัจจุบันเสมอ กันยอดนับซ้ำ · history อยู่ในหน่วยความจำ รีเฟรชหน้าแล้วหาย (ย้อนไกลกว่านั้นใช้ Revision)
 - **Print ใช้ CSS ไม่ใช่ react-pdf**: `@page` ใน `globals.css` — **ทุกหน้าเป็น A4 แนวนอน** (ผู้ใช้ขอ — แนวตั้งไม่สวย), `.print-landscape`/`.print-portrait`
   เหลือแค่ขึ้นหน้าใหม่ (ชื่อ class เก่า) · ใช้ `window.print()` 2 ที่: หน้าพิมพ์แผน และหน้าของเหลือในสต็อก (`availability` — ซ่อนตัวกรองด้วย `print:hidden`, หัวกระดาษบอกช่วงวัน + ตัวกรอง) sidebar/toolbar ซ่อนด้วย `print:hidden`
   `app/admin/layout.tsx` มี `print:ml-0 print:p-0` — ห้ามเอาออก ไม่งั้นเอกสารเยื้องขวาเท่าความกว้าง sidebar
@@ -934,6 +953,10 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
   ลากวัตถุแล้ว `y` ตั้งตามผิวที่ ray ชนเอง (พื้น/เวที/ขั้นอัฒจันทร์)
 - **ทางเดินอัฒจันทร์** (เฉพาะแบบเหลี่ยม): `tiers.aisleWidth/sectionWidth` แบ่งที่นั่งเป็นบล็อก (ตำแหน่งคิดจากขอบพื้นราบ ใช้ทุกขั้น = แนวตรง),
   `tiers.crossAisle` = ขั้นที่เป็นทางเดินขวาง — ทางเดินยังเป็นผิววางของได้ · ค่าอยู่ใน venue ของแต่ละผัง แก้ preset แล้วผังเก่าไม่เปลี่ยนตาม
+- **แนวสายในผังวาง 3D** (`PlanLayout.cables: LayoutCable[]` — from/to = LayoutObject.id + จุดหักเลี้ยว {x,z}): `cableRuns()` สุ่มจุดทุก 0.5 ม. แล้วยิง ray ลงหาผิว
+  (สายแนบพื้น/เวที/ขั้นอัฒจันทร์ ความยาวรวมขึ้นลงขั้น) · เบิก = `cableOrderLength()` (+10% ปัดขึ้นทีละ 5 ม.) · ตัวแก้: ปุ่ม "ลากสาย" (คลิกวัตถุ → คลิกพื้น → คลิกวัตถุ),
+  ลากลูกกลมส้มย้ายจุดหัก, "สายกล้องทุกตัว → รถ OB/FOH" (รูปตัว L) · ลบวัตถุ = ลบสายที่ต่ออยู่ · หน้าพิมพ์มีตารางแนวสาย + รวมความยาวต่อชนิด (`measureCables`)
+  · หน้าแชร์ส่ง `cables` ผ่าน allowlist ใน `functions/src/plan-share.ts`
 - **ผนังล่างอัฒจันทร์** `tiers.wallSteps` = ขอบตรงลงพื้น N ขั้นก่อนแถวแรก (นั่ง/วางของที่ผนังไม่ได้) ทุกแถวยกขึ้น N ขั้น — Impact Arena = 3
 - **มุมโค้งอัฒจันทร์** `tiers.cornerRadius` (แบบเหลี่ยมที่มี sides + back/front) = มุมข้าง↔หลัง/หน้าเป็นวงแหวน 1/4 (`cornerSlab`) รัศมีวัดที่ขอบพื้นราบ — Impact Arena = 14
 - **หน้าพิมพ์ขยายเพิ่ม** (`snapshotLayout`): ป้าย ×`PRINT_LABEL_BOOST` และโมเดลกล้อง ×`PRINT_MODEL_BOOST` (ขยายจากพื้น กล้องดูสูงขึ้น — ไม่ใช่สเกลจริง) เพราะ A4 ย่อทั้งสถานที่
@@ -952,7 +975,7 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
   แล้วปิด `controls.enabled` เมื่อโดนวัตถุ
 - **ต้นทุนของแผน → ต้นทุนจริงของงาน** (`lib/equipment/rental-cost.ts`) มี 2 แหล่งที่รวมเป็น `CostLine` เดียวกัน:
   `plan.extraCosts` (รถตู้/ที่พัก/อาหาร — เลือกหมวดบัญชีเอง, ไม่โผล่ในใบจัดของ) และค่าเช่า: `isRentalItem()` =
-  `itemOrigin(it) !== 'owned'` — `PlanItem.origin` ('rental'|'partner', ยังมี `equipmentId` จึงได้ port ในผังโยง) หรือของพิมพ์เอง
+  `itemOrigin(it) !== 'owned'` — `PlanItem.origin` ('rental'|'partner', ยังมี `equipmentId` จึงได้ port ในผังระบบ) หรือของพิมพ์เอง
   (`equipmentId` ว่าง) · `isRental` เป็น field เก่า อ่านผ่าน `itemOrigin()` เท่านั้น · พาร์ทเนอร์มีแถวต้นทุนแต่ปกติ 0 (ลงบัญชีเฉพาะที่ > 0)
   มี `rentalVendor / unitCost / rentalDays` — ยอด = `unitCost × quantity × rentalDays` (ก่อน VAT)
   ยอดเดียวกันต้องถูกนับ **ที่เดียวเสมอ**: ยังไม่มี `expenseId` → หน้าต้นทุนต่อโปรเจกต์นับจากแผน
@@ -979,14 +1002,14 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
 - **ผังวาง 3D จากผู้ช่วย AI** (`layout-zones.ts`): tool `place_3d` ให้ LLM เลือก **โซน** (stage_front_left/right/center, on_stage,
   floor_left/right, foh_center, back_left/right, ob_area) ไม่ใช่พิกัด — server คืน `placements` แล้วเว็บแปลงเป็น x/z/rotation ตามขนาด venue
   (ซ้าย/ขวา = มองจาก FOH ไปเวที = x ลบ/บวก) · ของเดิมจับด้วย `planItemId` ก่อนชื่อ (ย้ายแล้วคงชนิดเดิม) · `swapWith` = สลับตำแหน่ง 2 วัตถุ
-  (tool `swap_positions` สลับปลายทาง+ของในชุด, sub ในผังโยง, ตำแหน่ง 3D ในครั้งเดียว) · `layoutAgentText` บอกโซนปัจจุบันของแต่ละชิ้นให้ผู้ช่วย
+  (tool `swap_positions` สลับปลายทาง+ของในชุด, sub ในผังระบบ, ตำแหน่ง 3D ในครั้งเดียว) · `layoutAgentText` บอกโซนปัจจุบันของแต่ละชิ้นให้ผู้ช่วย
   · `update_items`: เปลี่ยน toLocation กล้อง → ของในชุดที่อยู่ที่เดิมตาม, attachTo ไปกล้องใหม่ → ปลายทางตามกล้อง (ฝาแฝดของตารางหน้าเว็บ) วางในผังแรก (ไม่มี = สร้างใหม่ เดา venue จาก `plan.location`) · ชื่อ+item เดิม = ย้าย ไม่สร้างซ้ำ
   · หาช่องว่างในโซนเอง (ไม่ทับของเดิม) · **ทุกผังวางใหม่มีโต๊ะ FOH** (`ensureFoh`) ทั้งปุ่มเพิ่มผังและร่าง AI
   กติกาเลนส์ → โซน (16x/left/right = หน้าเวทีซ้ายขวา, tele/half tele = foh_center) อยู่ใน `DEFAULT_SYSTEM_PROMPT` แก้ได้จากหน้าตั้งค่า
   รายการโซนต้องตรงกันระหว่าง `LayoutZone` (เว็บ) และ `LAYOUT_ZONES` (functions/types.ts)
   ชนิดวัตถุ (`LayoutObjectKind`) ต้องตรงกับ `LAYOUT_KINDS` เช่นกัน · ชนิดที่เป็นกล้อง (กรวยภาพ/มุมมองกล้อง/คอลัมน์เลนส์) เช็กผ่าน `isCameraKind()` เท่านั้น
-  (camera, jib, gimbal = โรนิน/กิมบอลถือมือ, remote_head = หัว Jimmy Jib ห้อยจาก truss, micro_stand = ขา Micro เสาสูงฐานสามขา, action_cam = action cam บนไม้ถือสั้น, ptz = กล้อง PTZ บนขาตั้ง, tele_lens = กล้อง + เลนส์ tele ENG ~40x บนขาตั้ง, box_lens = กล้อง + box lens บนขาตั้งงานหนัก) — มี `podium` (แท่นพูด หมุน 180° หาผู้ชมเป็นค่าตั้งต้น)
-- **สายส่ง FOH** (`buildFohDiagram`): ปุ่ม "วาดลงผังโยง" วาด **ลงผังหลัก** (ไม่สร้างผังแยกแล้ว) กล่องที่สร้างติด `DiagramNode.generated = 'foh'`
+  (camera, jib, gimbal = โรนิน/กิมบอลถือมือ, remote_head = หัว Jimmy Jib ห้อยจาก truss, micro_stand = ขา Micro เสาสูงฐานสามขา, action_cam = action cam บนไม้ถือสั้น, ptz = กล้อง PTZ บนขาตั้ง, tele_lens = กล้อง + เลนส์ tele ENG ~40x บนขาตั้ง, box_lens = กล้อง + box lens บนขาตั้งงานหนัก, mirrorless = กล้อง mirrorless บนขาตั้งถ่ายภาพ) · `control_room` = ห้องคอนโทรล (ผนังโปร่ง ประตูด้านหน้า โต๊ะ+จอข้างใน — ปลายทางแรกของปุ่มสายกล้องอัตโนมัติ) · `LayoutObject.underTier` = อยู่ใต้อัฒจันทร์: ลากแล้ว y = 0 เสมอ, วาด x-ray (depthTest false) ทะลุขั้นที่นั่ง, สายจากห้องวิ่งบนพื้นจริงใต้ที่นั่งจนโผล่พื้นโล่ง (x-ray ด้วย) · ห้องคอนโทรลมาพร้อมตู้ Rack ในห้องเสมอ (`rackInRoom` ใน venues.ts — ตอนเพิ่ม/เปลี่ยนชนิดในตัวแก้, ตอนผู้ช่วย AI วางห้อง และ `ensureRoomRacks` ตอนเปิดหน้าแก้แผน (ห้องเก่า/ตู้ถูกลบ → ใส่คืนแล้ว autosave)) · `rack` = ตู้ Rack OB: ลากเข้าห้องคอนโทรล → ตั้งบนพื้นห้อง + underTier ตามห้อง (`insideFootprint`), ย้ายห้อง = rack ในห้องตามไป · ปุ่มสายกล้องอัตโนมัติเลือก rack ก่อน (rack → control_room → ob_truck → desk) — มี `podium` (แท่นพูด หมุน 180° หาผู้ชมเป็นค่าตั้งต้น)
+- **สายส่ง FOH** (`buildFohDiagram`): ปุ่ม "วาดลงผังระบบ" วาด **ลงผังหลัก** (ไม่สร้างผังแยกแล้ว) กล่องที่สร้างติด `DiagramNode.generated = 'foh'`
   → กดซ้ำ = ยืนยันแล้ว `stripFoh` ชุดเดิมก่อนวาดใหม่ กล่องอื่นไม่แตะ · ผังแยกแบบเก่า (`FOH_DIAGRAM_NAME`) ถูกเอาออกตอนวาดใหม่ · bump `agentApplied` ให้ DiagramEditor remount
   · ต้นทาง = กล่องสวิตเชอร์ที่อยู่ในผังแล้ว (port ขาออกที่มีเส้นอยู่ไม่แย่ง) ไม่มี = กล่องของแถว switcher แรก · จับ port ตามชื่อสัญญาณ 2 รอบ: ชื่อตรงก่อนแล้วค่อยตัวสำรอง
   ไม่งั้น "Clean feed" แย่ง AUX 1 · จัดตำแหน่งเฉพาะกล่องใหม่ต่อใต้ของเดิม · SDI↔HDMI ไม่ตรง = กล่อง converter, format ต่างจากระบบหลัก = cross converter, Fiber = TX/RX, NDI/SRT = encoder

@@ -10,7 +10,7 @@ export type GroupBy = 'category' | 'destination'
 type GroupableItem = Pick<PlanItem, 'id' | 'attachedTo' | 'category' | 'toLocation' | 'note'>
 
 type CamItem = Pick<PlanItem, 'id' | 'category' | 'note' | 'toLocation' | 'attachedTo'>
-/** planItemId → "CAM n" ที่อ่านจากป้ายกล่องในผังโยง / วัตถุในผังวาง 3D */
+/** planItemId → "CAM n" ที่อ่านจากป้ายกล่องในผังระบบ / วัตถุในผังวาง 3D */
 export type CamLabels = Map<string, string>
 
 const camOf = (text: string | undefined) => {
@@ -19,7 +19,7 @@ const camOf = (text: string | undefined) => {
 }
 
 /**
- * เบอร์กล้องต่อแถว — อ่านจากป้ายในผังโยง ("CAM 1") ก่อน แล้วผังวาง 3D
+ * เบอร์กล้องต่อแถว — อ่านจากป้ายในผังระบบ ("CAM 1") ก่อน แล้วผังวาง 3D
  * ไม่ต้องเขียนเบอร์กล้องซ้ำในหมายเหตุของรายการ
  */
 export function camLabels(plan: { diagrams?: { nodes: { planItemId?: string; label: string }[] }[]; layouts?: { objects: { planItemId?: string; label: string }[] }[] }): CamLabels {
@@ -31,7 +31,7 @@ export function camLabels(plan: { diagrams?: { nodes: { planItemId?: string; lab
 }
 
 /**
- * เบอร์กล้องของแถวกล้อง เช่น "CAM 1" — ผังโยง/ผัง 3D (labels) → หมายเหตุ (ข้อมูลเก่า) → ปลายทาง ("จุดกล้อง 1")
+ * เบอร์กล้องของแถวกล้อง เช่น "CAM 1" — ผังระบบ/ผัง 3D (labels) → หมายเหตุ (ข้อมูลเก่า) → ปลายทาง ("จุดกล้อง 1")
  * ไม่ใช่กล้อง/หาไม่เจอ = '' · ใช้โชว์ป้ายหน้าชื่อ + เรียงกล้องตามเบอร์
  */
 export function camTag(it: CamItem, labels?: CamLabels): string {

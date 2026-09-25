@@ -36,6 +36,7 @@ import {
   ClipboardDocumentListIcon,
   SparklesIcon,
   CalendarDaysIcon,
+  CalendarIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import { useBrand } from '@/components/BrandProvider'
@@ -61,7 +62,8 @@ const navGroups: NavGroup[] = [
     title: 'เมนูหลัก',
     items: [
       { href: '/admin', label: 'Dashboard', icon: HomeIcon, exact: true },
-      { href: '/admin/jobs', label: 'จัดการงานถ่ายทอดสด', icon: VideoCameraIcon },
+      { href: '/admin/jobs', label: 'งานถ่ายทอดสด', icon: VideoCameraIcon },
+      { href: '/admin/calendar', label: 'ปฏิทินงาน', icon: CalendarIcon },
       { href: '/admin/freelancers', label: 'Freelancer', icon: UsersIcon },
       { href: '/admin/positions', label: 'ตำแหน่ง', icon: BriefcaseIcon },
       { href: '/admin/payments', label: 'การเบิกจ่าย', icon: BanknotesIcon },
@@ -76,7 +78,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/admin/equipment/inventory', label: 'สต็อกอุปกรณ์', icon: CubeIcon },
       { href: '/admin/equipment/availability', label: 'ของเหลือตามวันที่', icon: CalendarDaysIcon },
-      { href: '/admin/equipment/plans', label: 'แผนจัดของ / ผังโยง', icon: ClipboardDocumentListIcon },
+      { href: '/admin/equipment/plans', label: 'แผนจัดของ / ผังระบบ', icon: ClipboardDocumentListIcon },
       { href: '/admin/equipment/agent-settings', label: 'ตั้งค่าผู้ช่วย AI', icon: SparklesIcon },
     ],
   },

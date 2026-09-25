@@ -28,7 +28,7 @@ interface PlanItemsTableProps {
   /** วันงาน — งานหลายวันถึงจะกำหนด "วันที่ใช้" รายแถวได้ (ไม่ล็อกคิวเกินวันที่ใช้จริง) */
   planDate?: string
   planEndDate?: string
-  /** planItemId → "CAM n" จากผังโยง/ผัง 3D (camLabels) — ป้ายกล้องไม่ต้องพึ่งหมายเหตุ */
+  /** planItemId → "CAM n" จากผังระบบ/ผัง 3D (camLabels) — ป้ายกล้องไม่ต้องพึ่งหมายเหตุ */
   camLabels?: CamLabels
   /** แถวนอกสต็อก (พิมพ์เอง) → เปิดตัวเลือกของเช่า/พาร์ทเนอร์ในสต็อกมาแทนแถวนี้ */
   onPickFromStock?: (item: PlanItem) => void

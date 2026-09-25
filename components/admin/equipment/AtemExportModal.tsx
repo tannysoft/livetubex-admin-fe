@@ -29,7 +29,7 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-/** Export ตั้งค่า ATEM จากผังโยง (ชื่อ input / AUX / Multiview) → ไฟล์ XML ให้ ATEM Software Control (File → Restore) */
+/** Export ตั้งค่า ATEM จากผังระบบ (ชื่อ input / AUX / Multiview) → ไฟล์ XML ให้ ATEM Software Control (File → Restore) */
 export default function AtemExportModal({ isOpen, onClose, diagram, switcher }: Props) {
   // เริ่มจากผังทุกครั้งที่เปิด (key ที่ตัวแม่) แล้วให้ผู้ใช้แก้ก่อนดาวน์โหลด
   const [inputs, setInputs] = useState<AtemInput[]>(() => atemInputs(diagram, switcher))

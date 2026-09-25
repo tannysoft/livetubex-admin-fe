@@ -2,7 +2,7 @@ import type { DiagramNode, PlanDiagram } from '../types'
 import { portsOf } from './diagram'
 
 /**
- * ตั้งค่า ATEM จากผังโยง → ไฟล์ XML ที่ ATEM Software Control เปิดด้วย File → Restore ได้
+ * ตั้งค่า ATEM จากผังระบบ → ไฟล์ XML ที่ ATEM Software Control เปิดด้วย File → Restore ได้
  * - ชื่อ input: เลข = ตัวเลขท้ายชื่อ port (เช่น "SDI IN 5" → 5) · ไม่มีเลข/เลขซ้ำ = ลำดับ port
  *   ชื่อ = กล่องต้นทาง โดยเดินย้อนผ่านกล่องส่งต่อ (converter / fiber RX / ส่งภาพไร้สาย) ไปหากล้องจริง
  * - AUX: port ขาออก SDI ที่มีสาย (Constellation ทุก SDI OUT คือ AUX) — เดาแหล่งภาพจากป้ายสาย/ปลายทาง (PGM / Clean / MV / CAM n) เดาไม่ได้ = ไม่แตะ

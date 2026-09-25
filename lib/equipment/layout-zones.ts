@@ -1,5 +1,5 @@
 import type { EquipmentPlan, LayoutObject, LayoutObjectKind, PlanItem, PlanLayout, VenueConfig } from '../types'
-import { KIND_DEFAULTS, VENUE_PRESETS, cloneVenue, isCameraKind } from './venues'
+import { KIND_DEFAULTS, VENUE_PRESETS, cloneVenue, insideFootprint, isCameraKind, rackInRoom } from './venues'
 import { newId } from './plans'
 
 /**
@@ -131,7 +131,17 @@ export function applyZonePlacements(layout: PlanLayout, placements: ZonePlacemen
       })
     }
   }
-  return { ...layout, objects }
+  return ensureRoomRacks({ ...layout, objects })
+}
+
+/** ห้องคอนโทรลทุกห้องต้องมีตู้ Rack ข้างใน (จุดโยงสาย) — ไม่มี = ใส่ให้ · ไม่มีอะไรเปลี่ยน = คืนตัวเดิม (เทียบ === ได้) */
+export function ensureRoomRacks(layout: PlanLayout): PlanLayout {
+  const objects = [...layout.objects]
+  for (const room of layout.objects.filter((o) => o.kind === 'control_room')) {
+    if (objects.some((o) => o.kind === 'rack' && insideFootprint(room, o.x, o.z))) continue
+    objects.push(rackInRoom(room, newId(), `RACK ${objects.filter((o) => o.kind === 'rack').length + 1}`))
+  }
+  return objects.length === layout.objects.length ? layout : { ...layout, objects }
 }
 
 /** มี FOH ในผังหรือยัง — ถ้าไม่มี วางโต๊ะ FOH กลางหลังสุด (ทุกงานมี FOH) */
