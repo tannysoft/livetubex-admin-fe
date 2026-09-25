@@ -8,6 +8,7 @@ import FormCheckbox from '@/components/ui/FormCheckbox'
 import SuggestInput from '@/components/ui/SuggestInput'
 import { CATEGORY_COLORS, EQUIPMENT_CATEGORIES } from '@/lib/equipment/constants'
 import { ORIGIN_LABEL, isRentalItem, itemCost, itemOrigin } from '@/lib/equipment/rental-cost'
+import { itemOwner } from '@/lib/equipment/owners'
 import { clipItemRange, daysIn, planRange } from '@/lib/equipment/availability'
 import { formatCurrency, formatDatePill } from '@/lib/utils'
 import type { EquipmentCategory, PlanItem } from '@/lib/types'
@@ -31,12 +32,14 @@ interface PlanItemsTableProps {
   camLabels?: CamLabels
   /** แถวนอกสต็อก (พิมพ์เอง) → เปิดตัวเลือกของเช่า/พาร์ทเนอร์ในสต็อกมาแทนแถวนี้ */
   onPickFromStock?: (item: PlanItem) => void
+  /** กรองแสดงเฉพาะของเจ้านี้ (itemOwner) — กล้องที่ไม่ตรงแต่มีของในชุดตรง ยังโชว์ (จาง) ให้รู้ว่าติดกล้องไหน · ไม่ส่ง = ทุกแถว */
+  ownerFilter?: string
 }
 
 const cellInput = 'w-full px-2 py-1 rounded-lg border border-transparent bg-transparent text-sm hover:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
 
 /** รายการจัดของ — แก้ในตารางได้ทุกช่อง จัดกลุ่มตามหมวด */
-export default function PlanItemsTable({ items, onChange, vendorOptions = [], locationOptions = [], onAddKit, planDate, planEndDate, camLabels, onPickFromStock }: PlanItemsTableProps) {
+export default function PlanItemsTable({ items, onChange, vendorOptions = [], locationOptions = [], onAddKit, planDate, planEndDate, camLabels, onPickFromStock, ownerFilter }: PlanItemsTableProps) {
   const [bulkTo, setBulkTo] = useState('')
   // ── วันที่ใช้รายแถว (เฉพาะงานหลายวัน) ──
   const pr = planRange({ date: planDate, endDate: planEndDate })
@@ -140,8 +143,13 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
     )
   }
 
+  const matches = (it: PlanItem) => ownerFilter == null || itemOwner(it) === ownerFilter
+  const shownChildren = (id: string) => childrenOf(id).filter(matches)
   const groups = EQUIPMENT_CATEGORIES
-    .map((c) => ({ ...c, rows: sortByCam(items.filter((i) => i.category === c.value && !isChild(i)), camLabels) }))
+    .map((c) => ({
+      ...c,
+      rows: sortByCam(items.filter((i) => i.category === c.value && !isChild(i) && (matches(i) || shownChildren(i.id).length > 0)), camLabels),
+    }))
     .filter((g) => g.rows.length > 0)
 
   /** ใต้ชื่อ: วันที่ใช้ — ใช้ไม่เต็มงาน = ป้ายวัน (กดแก้) · เต็มงาน = ลิงก์จางๆ โผล่ตอนชี้แถว */
@@ -205,6 +213,12 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
       {!it.equipmentId && !it.expenseId && onPickFromStock && (
         <button type="button" onClick={() => onPickFromStock(it)} className="inline-flex items-center gap-1 px-1.5 py-px rounded border border-dashed border-gray-300 text-[11px] font-medium text-gray-600 hover:border-brand hover:text-brand">
           <ArrowsRightLeftIcon className="w-3 h-3" /> เลือกจากสต็อก (เช่า / พาร์ทเนอร์)
+        </button>
+      )}
+      {/* เปลี่ยนเป็นของตัวอื่น (เจ้าอื่น / ของบริษัท) — คงตำแหน่ง ปลายทาง ของในชุด และกล่องในผังไว้ · แถวที่ลงบัญชีแล้วเปลี่ยนไม่ได้ */}
+      {it.equipmentId && !it.expenseId && onPickFromStock && (
+        <button type="button" onClick={() => onPickFromStock(it)} title="เปลี่ยนเป็นของตัวอื่น / เจ้าอื่น" className="inline-flex items-center gap-1 px-1.5 py-px rounded border border-gray-200 text-[11px] font-medium text-gray-500 hover:border-brand hover:text-brand">
+          <ArrowsRightLeftIcon className="w-3 h-3" /> เปลี่ยน
         </button>
       )}
       {isPartial(it) && dateControl(it)}
@@ -410,8 +424,9 @@ export default function PlanItemsTable({ items, onChange, vendorOptions = [], lo
               </tr>
               {group.rows.map((it) => (
                 <Fragment key={it.id}>
-                  {renderRow(it, false)}
-                  {childrenOf(it.id).map((c) => <Fragment key={c.id}>{renderRow(c, true)}</Fragment>)}
+                  {/* แถวแม่ที่ไม่ใช่เจ้าที่กรอง (โชว์เพราะของในชุดตรง) → จาง */}
+                  {matches(it) ? renderRow(it, false) : <tr className="opacity-45"><td colSpan={9} className="px-5 py-1.5 text-xs text-gray-500">{it.name}{it.code ? ` · ${it.code}` : ''}</td></tr>}
+                  {shownChildren(it.id).map((c) => <Fragment key={c.id}>{renderRow(c, true)}</Fragment>)}
                 </Fragment>
               ))}
             </tbody>
