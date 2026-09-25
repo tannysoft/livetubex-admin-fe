@@ -401,6 +401,7 @@ function JobPicker({ jobs, onCalendar, month, onClose, onAdded }: {
             <li key={j.id}>
               <FormCheckbox
                 size="sm"
+                align="center"
                 checked={picked.has(j.id)}
                 onChange={() => toggle(j.id)}
                 className="px-4 py-2.5 hover:bg-gray-50"

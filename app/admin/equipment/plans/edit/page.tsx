@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeftIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, PlusIcon, PrinterIcon, TrashIcon, CheckCircleIcon, ArrowPathIcon, ExclamationCircleIcon, SparklesIcon, ClockIcon, ShareIcon, PencilSquareIcon,
+  ArrowLeftIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, PlusIcon, PrinterIcon, TrashIcon, CheckCircleIcon, ArrowPathIcon, ExclamationCircleIcon, SparklesIcon, ClockIcon, ShareIcon, PencilSquareIcon, PaperAirplaneIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -17,6 +17,7 @@ import AgentPanel from '@/components/admin/equipment/AgentPanel'
 import { deleteField } from 'firebase/firestore'
 import RevisionPanel from '@/components/admin/equipment/RevisionPanel'
 import SharePlanModal from '@/components/admin/equipment/SharePlanModal'
+import SendPlanModal from '@/components/admin/equipment/SendPlanModal'
 import PlanInfoModal from '@/components/admin/equipment/PlanInfoModal'
 import { formatFullLabel } from '@/lib/equipment/video-format'
 import RecordingList from '@/components/admin/equipment/RecordingList'
@@ -68,6 +69,9 @@ function PlanEditor() {
   const [showAgent, setShowAgent] = useState(false)
   const [showRevisions, setShowRevisions] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showSend, setShowSend] = useState(false)
+  // เปิด "แชร์ทีมงาน" จากหน้าต่างส่ง LINE → ปิดแล้วกลับไปหน้าต่างส่ง (โหลดสถานะแชร์ใหม่)
+  const [sendAfterShare, setSendAfterShare] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   /** เปิด modal ใหม่ = ร่างเริ่มจากแผนปัจจุบัน */
   const [infoKey, setInfoKey] = useState(0)
@@ -454,6 +458,13 @@ function PlanEditor() {
               <ShareIcon className="w-4 h-4" /> แชร์ทีมงาน
             </button>
             <button
+              onClick={() => setShowSend(true)}
+              title="ส่งแผน / ผังระบบ เข้ากลุ่ม LINE หรือรายคน — เปิดดูใน LINE ได้เลย"
+              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 bg-white text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <PaperAirplaneIcon className="w-4 h-4" /> ส่ง LINE
+            </button>
+            <button
               onClick={openPrint}
               className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 transition-colors"
             >
@@ -484,9 +495,18 @@ function PlanEditor() {
         }}
       />
 
+      {showSend && (
+        <SendPlanModal
+          plan={plan}
+          onClose={() => setShowSend(false)}
+          onOpenShare={() => { setShowSend(false); setSendAfterShare(true); setShowShare(true) }}
+          flush={async () => { if (version.current !== savedVersion.current) await save() }}
+        />
+      )}
+
       <SharePlanModal
         isOpen={showShare}
-        onClose={() => setShowShare(false)}
+        onClose={() => { setShowShare(false); if (sendAfterShare) { setSendAfterShare(false); setShowSend(true) } }}
         planId={plan.id}
         flush={async () => { if (version.current !== savedVersion.current) await save() }}
       />

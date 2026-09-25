@@ -152,9 +152,14 @@ export interface LineMessageLog {
   freelancerName: string
   lineUserId: string
   paymentCount: number   // จำนวน payment ที่โอนในครั้งนี้ (kind 'job' = 0)
-  kind?: 'payout' | 'job' | 'job_done' // ไม่มี = payout (ข้อมูลเก่า) · job = ส่งรายละเอียดงาน · job_done = แจ้งงานเสร็จสิ้น/เบิกเงิน (sendJobDetails)
+  kind?: 'payout' | 'job' | 'job_done' | 'plan' // ไม่มี = payout (ข้อมูลเก่า) · job = ส่งรายละเอียดงาน · job_done = แจ้งงานเสร็จสิ้น/เบิกเงิน (sendJobDetails) · plan = ส่งแผน/ผัง (sendPlanToLine)
   jobId?: string
   jobTitle?: string
+  planId?: string
+  planTitle?: string
+  /** kind 'plan': group = ส่งเข้ากลุ่ม LINE (freelancerId ว่าง, freelancerName = ชื่อกลุ่ม) */
+  target?: 'user' | 'group'
+  groupId?: string
 }
 
 export interface AppSettings {

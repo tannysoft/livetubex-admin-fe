@@ -52,9 +52,9 @@ export function planShareUrl(shareId: string): string {
  * ลิงก์เปิดใน LINE (LIFF) — endpoint ของ LIFF คือ /freelancer จึงได้หน้า /freelancer/plan
  * freelancer ที่ลงทะเบียนแล้วดูได้เลยไม่ต้องใส่รหัส · ไม่ได้ตั้ง LIFF ID = ''
  */
-export async function liffPlanUrl(shareId: string): Promise<string> {
+export async function liffPlanUrl(shareId: string, tab?: string): Promise<string> {
   const id = await resolveLiffId()
-  return id ? `https://liff.line.me/${id}/plan?s=${encodeURIComponent(shareId)}` : ''
+  return id ? `https://liff.line.me/${id}/plan?s=${encodeURIComponent(shareId)}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}` : ''
 }
 
 /** error ของ callable → ข้อความภาษาคน */

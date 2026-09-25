@@ -13,6 +13,8 @@ interface FormCheckboxProps {
   invalid?: boolean
   /** ขนาด — default 'md' */
   size?: 'sm' | 'md'
+  /** start = ชิดบรรทัดแรกของข้อความ (default) · center = กึ่งกลางแถว (แถวรายการที่มีรูป/2 บรรทัด) */
+  align?: 'start' | 'center'
   className?: string
 }
 
@@ -23,21 +25,21 @@ interface FormCheckboxProps {
  *   - layout: [checkbox] [label + description]
  */
 const FormCheckbox = forwardRef<HTMLButtonElement, FormCheckboxProps>(function FormCheckbox(
-  { checked, onChange, label, description, disabled, invalid, size = 'md', className = '' },
+  { checked, onChange, label, description, disabled, invalid, size = 'md', align = 'start', className = '' },
   ref,
 ) {
   const boxSize = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'
   const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'
 
   return (
-    <Field disabled={disabled} className={`flex items-start gap-2.5 ${disabled ? 'opacity-60' : ''} ${className}`}>
+    <Field disabled={disabled} className={`flex ${align === 'center' ? 'items-center' : 'items-start'} gap-2.5 ${disabled ? 'opacity-60' : ''} ${className}`}>
       <Checkbox
         ref={ref}
         checked={checked}
         onChange={onChange}
         className={[
           'group relative flex items-center justify-center shrink-0 rounded-md border transition-all cursor-pointer',
-          'mt-0.5',
+          align === 'center' ? '' : 'mt-0.5',
           boxSize,
           'bg-white',
           invalid

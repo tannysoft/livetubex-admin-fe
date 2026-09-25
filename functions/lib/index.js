@@ -33,13 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSharedPlan = exports.setPlanShare = exports.systemAgent = exports.equipmentAgent = exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendJobDetails = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
+exports.getSharedPlan = exports.setPlanShare = exports.systemAgent = exports.equipmentAgent = exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPlanToLine = exports.lineWebhook = exports.sendJobDetails = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const v2_1 = require("firebase-functions/v2");
 const https = __importStar(require("https"));
 const mail_1 = require("./mail");
+const line_groups_1 = require("./line-groups");
 admin.initializeApp();
 (0, v2_1.setGlobalOptions)({ region: 'asia-southeast1' });
 // ── Whitelabel config (ตั้งใน functions/.env — ดู functions/.env.example) ───
@@ -150,6 +151,7 @@ const MAIL_FROM = (0, params_1.defineSecret)('MAIL_FROM'); // เช่น notif
 const MAIL_TO = (0, params_1.defineSecret)('MAIL_TO'); // admin ที่รับแจ้งเตือน
 const SMTP_PASSWORD = (0, params_1.defineSecret)('SMTP_PASSWORD'); // รหัสผ่าน SMTP (ใช้เมื่อ provider = smtp)
 const LINE_CHANNEL_ACCESS_TOKEN = (0, params_1.defineSecret)('LINE_CHANNEL_ACCESS_TOKEN'); // LINE Messaging API long-lived token
+const LINE_CHANNEL_SECRET = (0, params_1.defineSecret)('LINE_CHANNEL_SECRET'); // ตรวจลายเซ็น webhook (lineWebhook)
 // ── ชื่อย่อธนาคาร ────────────────────────────────────────────────────────────
 const BANK_ABBR = {
     'กสิกรไทย': 'KBANK', 'ธนาคารกสิกรไทย': 'KBANK',
@@ -860,12 +862,13 @@ exports.sendJobDetails = (0, https_1.onCall)({ cors: CORS_ORIGINS, secrets: [LIN
         { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: [
                 row('วันที่', dateText),
                 row('สถานที่', job.location ?? ''),
-                ...(job.clientName ? [row('ลูกค้า', job.clientName)] : []),
+                // แจ้งงานเสร็จสิ้นไม่ใส่ชื่อลูกค้า (ผู้ใช้ขอ)
+                ...(job.clientName && template !== 'completed' ? [row('ลูกค้า', job.clientName)] : []),
             ] },
     ];
     if (template === 'completed') {
         bodyContents.push({ type: 'separator', margin: 'lg' });
-        bodyContents.push({ type: 'text', text: 'ขอบคุณที่ร่วมงานนี้ 🙏 งานเสร็จสิ้นแล้ว — ส่งเบิกค่าจ้างได้เลย', size: 'sm', color: '#111827', wrap: true, margin: 'lg' });
+        bodyContents.push({ type: 'text', text: '🎉 งานเสร็จสิ้นแล้ว — ส่งเบิกค่าจ้างได้เลย 🥳', size: 'sm', color: '#111827', wrap: true, margin: 'lg' });
     }
     else if (job.description?.trim()) {
         bodyContents.push({ type: 'separator', margin: 'lg' });
@@ -947,6 +950,167 @@ exports.sendJobDetails = (0, https_1.onCall)({ cors: CORS_ORIGINS, secrets: [LIN
         }
     }
     console.log(`[sendJobDetails] job ${jobId} sent:${sent.length} failed:${failed.length}`);
+    return { sent, failed };
+});
+// ── LINE webhook — จดกลุ่มที่บอทอยู่ (lineGroups) ให้แอดมินเลือกส่งแผนเข้ากลุ่มได้ ─────────
+// ตั้ง Webhook URL ใน LINE Developers (Messaging API channel) = URL ของ function นี้ + เปิด "Allow bot to join group chats"
+exports.lineWebhook = (0, https_1.onRequest)({ secrets: [LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN], cors: false }, async (req, res) => {
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+    const sig = req.get('x-line-signature');
+    if (!(0, line_groups_1.verifyLineSignature)(req.rawBody, sig, LINE_CHANNEL_SECRET.value())) {
+        res.status(401).send('Bad signature');
+        return;
+    }
+    const events = Array.isArray(req.body?.events) ? req.body.events : [];
+    try {
+        await (0, line_groups_1.handleLineEvents)(events, LINE_CHANNEL_ACCESS_TOKEN.value());
+    }
+    catch (e) {
+        console.error('[lineWebhook] ❌', e);
+    }
+    res.status(200).send('OK'); // ตอบ 200 เสมอ — LINE ส่งซ้ำ/ปิด webhook ถ้า error บ่อย
+});
+// ── ส่งแผนจัดอุปกรณ์ / ผังระบบ ทาง LINE (กลุ่ม + รายคน) ─────────────────────
+// ปุ่มเปิด LIFF /plan?s=&tab= (ต้องเปิดลิงก์แชร์แผนก่อน) — freelancer ที่ลงทะเบียนดูได้เลย คนอื่นใส่รหัสแชร์
+// ไม่ส่งต้นทุน (ข้อความมีแค่ชื่อ/วัน/สถานที่/จำนวน) · ส่งเข้ากลุ่ม LINE นับโควตาตามจำนวนสมาชิกกลุ่ม
+exports.sendPlanToLine = (0, https_1.onCall)({ cors: CORS_ORIGINS, secrets: [LINE_CHANNEL_ACCESS_TOKEN] }, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Authentication required');
+    const token = request.auth.token;
+    if (token.firebase?.sign_in_provider !== 'password')
+        throw new https_1.HttpsError('permission-denied', 'Admin only');
+    const { planId, groupIds, freelancerIds, message } = (request.data ?? {});
+    if (!planId || typeof planId !== 'string')
+        throw new https_1.HttpsError('invalid-argument', 'Missing planId');
+    const gIds = [...new Set((Array.isArray(groupIds) ? groupIds : []).filter((x) => typeof x === 'string' && x))];
+    const fIds = [...new Set((Array.isArray(freelancerIds) ? freelancerIds : []).filter((x) => typeof x === 'string' && x))];
+    if (gIds.length + fIds.length === 0)
+        throw new https_1.HttpsError('invalid-argument', 'เลือกกลุ่มหรือคนที่จะส่งก่อน');
+    if (gIds.length > 20 || fIds.length > 100)
+        throw new https_1.HttpsError('invalid-argument', 'ส่งได้ครั้งละไม่เกิน 20 กลุ่ม / 100 คน');
+    const extra = typeof message === 'string' ? message.trim().slice(0, 1000) : '';
+    const db = admin.firestore();
+    const planSnap = await db.collection('equipmentPlans').doc(planId).get();
+    if (!planSnap.exists)
+        throw new https_1.HttpsError('not-found', 'ไม่พบแผน');
+    const plan = planSnap.data();
+    const share = (await db.collection('planShares').doc(planId).get()).data();
+    if (!share?.enabled || !share.shareId)
+        throw new https_1.HttpsError('failed-precondition', 'เปิดลิงก์แชร์ทีมงานของแผนนี้ก่อน (ปุ่ม “แชร์ทีมงาน”)');
+    const brand = await getBrandInfo();
+    const liffId = await getLiffId();
+    const color = brand.primaryColor;
+    const title = plan.title || 'แผนงาน';
+    const s = encodeURIComponent(share.shareId);
+    const planUri = (tab) => liffId ? `https://liff.line.me/${liffId}/plan?s=${s}&tab=${tab}` : `${APP_URL}/share/plan?s=${s}&tab=${tab}`;
+    const itemCount = Array.isArray(plan.items) ? plan.items.length : 0;
+    const nodeCount = (plan.diagrams ?? []).reduce((n, d) => n + (Array.isArray(d?.nodes) ? d.nodes.length : 0), 0);
+    const layoutCount = (plan.layouts ?? []).filter((l) => Array.isArray(l?.objects) && l.objects.length > 0).length; // ตรงกับแท็บผังวางของหน้าแชร์
+    const dateText = plan.date ? thaiDateRange(plan.date, plan.endDate) : '-';
+    const row = (label, value) => ({
+        type: 'box', layout: 'baseline', spacing: 'md',
+        contents: [
+            { type: 'text', text: label, size: 'sm', color: '#6b7280', flex: 2 },
+            { type: 'text', text: value || '-', size: 'sm', color: '#111827', flex: 5, wrap: true },
+        ],
+    });
+    const bodyContents = [
+        { type: 'text', text: title, size: 'lg', weight: 'bold', color: '#111827', wrap: true },
+        { type: 'box', layout: 'vertical', spacing: 'sm', margin: 'md', contents: [
+                ...(plan.jobTitle ? [row('งาน', plan.jobTitle)] : []),
+                row('วันที่', dateText),
+                row('สถานที่', plan.location ?? ''),
+                row('อุปกรณ์', `${itemCount} รายการ`),
+                ...(nodeCount ? [row('ผังระบบ', `${nodeCount} กล่อง`)] : []),
+            ] },
+    ];
+    if (extra) {
+        bodyContents.push({ type: 'box', layout: 'vertical', margin: 'lg', paddingAll: '12px', cornerRadius: '8px', backgroundColor: '#fef9c3', contents: [
+                { type: 'text', text: 'ข้อความจากแอดมิน', size: 'xs', color: '#854d0e', weight: 'bold' },
+                { type: 'text', text: extra, size: 'sm', color: '#422006', wrap: true, margin: 'sm' },
+            ] });
+    }
+    const buttons = [
+        { type: 'button', style: 'primary', color, height: 'sm', action: { type: 'uri', label: 'ดูรายการอุปกรณ์', uri: planUri('items') } },
+        ...(nodeCount ? [{ type: 'button', style: 'primary', color, height: 'sm', action: { type: 'uri', label: 'ดูผังระบบ', uri: planUri('diagrams') } }] : []),
+        ...(layoutCount ? [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: 'ดูผังวาง 3D', uri: planUri('layouts') } }] : []),
+    ];
+    const flexMessage = {
+        type: 'flex',
+        altText: `${brand.appName}: แผนจัดอุปกรณ์ ${title} (${dateText})`.slice(0, 400),
+        sender: { name: brand.appName.slice(0, 20) },
+        contents: {
+            type: 'bubble',
+            header: { type: 'box', layout: 'vertical', backgroundColor: color, paddingAll: '16px', contents: [
+                    { type: 'text', text: brand.appName, color: '#ffffffBF', size: 'xs', weight: 'bold' },
+                    { type: 'text', text: 'แผนจัดอุปกรณ์ / ผังระบบ 📋', color: '#ffffff', size: 'lg', weight: 'bold', margin: 'xs', wrap: true },
+                ] },
+            body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: bodyContents },
+            footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', contents: [
+                    ...buttons,
+                    { type: 'text', text: 'ทีมงานที่ลงทะเบียนใน LINE แล้วเปิดดูได้เลย ไม่ต้องใส่รหัส', size: 'xxs', color: '#9ca3af', wrap: true, align: 'center', margin: 'sm' },
+                ] },
+        },
+    };
+    const bangkokNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const month = `${bangkokNow.getFullYear()}-${String(bangkokNow.getMonth() + 1).padStart(2, '0')}`;
+    const lineToken = LINE_CHANNEL_ACCESS_TOKEN.value();
+    const sent = [];
+    const failed = [];
+    const logBase = { month, kind: 'plan', planId, planTitle: title, paymentCount: 0 };
+    if (gIds.length) {
+        const snaps = await db.getAll(...gIds.map((id) => db.collection('lineGroups').doc(id)));
+        for (const snap of snaps) {
+            const g = snap.data();
+            const name = g?.label || g?.name || snap.id;
+            if (!g) {
+                failed.push({ id: snap.id, name, reason: 'ไม่พบกลุ่ม' });
+                continue;
+            }
+            if (g.active === false) {
+                failed.push({ id: snap.id, name, reason: 'บอทออกจากกลุ่มแล้ว' });
+                continue;
+            }
+            try {
+                await sendLineMessage(snap.id, lineToken, [flexMessage]);
+                sent.push(snap.id);
+                await db.collection('lineMessageLogs').add({ ...logBase, sentAt: new Date().toISOString(), target: 'group', groupId: snap.id, freelancerId: '', freelancerName: name, lineUserId: snap.id });
+            }
+            catch (e) {
+                console.warn('[sendPlanToLine] group ❌', snap.id, e);
+                failed.push({ id: snap.id, name, reason: e instanceof Error ? e.message.slice(0, 200) : 'ส่งไม่สำเร็จ' });
+            }
+        }
+    }
+    if (fIds.length) {
+        const snaps = await db.getAll(...fIds.map((id) => db.collection('freelancers').doc(id)));
+        for (const snap of snaps) {
+            const fl = snap.data();
+            const name = fl?.name ?? snap.id;
+            const lineUserId = fl?.lineUserId?.trim();
+            if (!fl) {
+                failed.push({ id: snap.id, name, reason: 'ไม่พบ freelancer' });
+                continue;
+            }
+            if (!lineUserId) {
+                failed.push({ id: snap.id, name, reason: 'ไม่มี LINE' });
+                continue;
+            }
+            try {
+                await sendLineMessage(lineUserId, lineToken, [flexMessage]);
+                sent.push(snap.id);
+                await db.collection('lineMessageLogs').add({ ...logBase, sentAt: new Date().toISOString(), target: 'user', freelancerId: snap.id, freelancerName: name, lineUserId });
+            }
+            catch (e) {
+                console.warn('[sendPlanToLine] user ❌', snap.id, e);
+                failed.push({ id: snap.id, name, reason: e instanceof Error ? e.message.slice(0, 200) : 'ส่งไม่สำเร็จ' });
+            }
+        }
+    }
+    console.log(`[sendPlanToLine] plan ${planId} sent:${sent.length} failed:${failed.length}`);
     return { sent, failed };
 });
 exports.sendPaymentReport = (0, https_1.onCall)({
