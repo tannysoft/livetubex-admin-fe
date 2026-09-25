@@ -227,7 +227,7 @@ export class Workspace {
       `รายการอุปกรณ์ (${this.items.length} แถว):`,
       ...(itemLines.length ? itemLines : ['(ว่าง)']),
       '',
-      `ผังโยง (${this.diagrams.length} ผัง):`,
+      `ผังระบบ (${this.diagrams.length} ผัง):`,
       ...(diagramLines.length ? diagramLines : ['(ยังไม่มี)']),
       '(✔ = port นั้นถูกโยงแล้ว)',
       '',
@@ -236,7 +236,7 @@ export class Workspace {
     ].join('\n')
   }
 
-  /** หากล้อง/ของจาก item id, ชื่อกล่องในผังโยง (เช่น "CAM 2") หรือหมายเหตุของแถว */
+  /** หากล้อง/ของจาก item id, ชื่อกล่องในผังระบบ (เช่น "CAM 2") หรือหมายเหตุของแถว */
   private resolveItem(ref: string): PlanItem | undefined {
     const byId = this.items.find((i) => i.id === ref)
     if (byId) return byId
@@ -247,7 +247,7 @@ export class Workspace {
     return this.items.find((i) => norm(i.note ?? '') === norm(ref)) ?? this.items.find((i) => norm(i.name) === norm(ref))
   }
 
-  /** ชื่อที่ใช้ในผัง (label กล่องผังโยง) — ไม่มี = ชื่ออุปกรณ์ */
+  /** ชื่อที่ใช้ในผัง (label กล่องผังระบบ) — ไม่มี = ชื่ออุปกรณ์ */
   private labelOf(it: PlanItem): string {
     for (const d of this.diagrams) {
       const n = d.nodes.find((x) => x.planItemId === it.id)
@@ -257,13 +257,13 @@ export class Workspace {
   }
 
   /**
-   * สลับตำแหน่งกล้อง 2 ตัวทั้งแผน: ปลายทางของกล้อง (+ ของในชุดย้ายตาม), บรรทัดรองของกล่องในผังโยง (จุดติดตั้ง), ตำแหน่งในผังวาง 3D
+   * สลับตำแหน่งกล้อง 2 ตัวทั้งแผน: ปลายทางของกล้อง (+ ของในชุดย้ายตาม), บรรทัดรองของกล่องในผังระบบ (จุดติดตั้ง), ตำแหน่งในผังวาง 3D
    * เลนส์/ของในชุดยังติดกล้องตัวเดิม — ถ้าจะให้เลนส์อยู่กับจุดเดิมต้อง update_items attachTo แยก
    */
   swapPositions(a: string, b: string): string {
     const A = this.resolveItem(a)
     const B = this.resolveItem(b)
-    if (!A) return `✗ ไม่พบ ${a} (ใช้ item id หรือชื่อกล่องในผังโยง เช่น "CAM 2")`
+    if (!A) return `✗ ไม่พบ ${a} (ใช้ item id หรือชื่อกล่องในผังระบบ เช่น "CAM 2")`
     if (!B) return `✗ ไม่พบ ${b}`
     if (A.id === B.id) return '✗ เป็นตัวเดียวกัน'
     const locA = A.toLocation ?? ''
@@ -289,7 +289,7 @@ export class Workspace {
     const labelB = this.labelOf(B)
     this.placements.push({ kind: 'camera', label: labelA, itemId: A.id, swapWith: { label: labelB, itemId: B.id } })
     return `✓ สลับ ${labelA} ⇄ ${labelB}: ปลายทาง "${locB || '-'}" ⇄ "${locA || '-'}" (ของในชุด ${kidsA.length + kidsB.length} ชิ้นย้ายตาม)`
-      + ` · ผังโยงสลับบรรทัดรอง ${subs} ผัง · ผังวาง 3D สลับตำแหน่ง`
+      + ` · ผังระบบสลับบรรทัดรอง ${subs} ผัง · ผังวาง 3D สลับตำแหน่ง`
       + ' — ถ้าเลนส์ต้องอยู่กับจุดเดิมให้ update_items attachTo เพิ่ม และแก้ note ของกล้อง (update_node) ให้ตรงเลนส์'
   }
 
@@ -488,16 +488,16 @@ export class Workspace {
     }).join('\n')
   }
 
-  // ── แก้ผังโยง ─────────────────────────────────────────────────────────────
+  // ── แก้ผังระบบ ─────────────────────────────────────────────────────────────
 
   private diagram(id: string): PlanDiagram | undefined {
     return this.diagrams.find((d) => d.id === id) ?? this.diagrams.find((d) => norm(d.name) === norm(id))
   }
 
   createDiagram(name: string): string {
-    // 1 แผน = 1 ผังโยง (ฝาแฝดของหน้าเว็บที่ไม่มีปุ่มเพิ่มผังแล้ว) — มีผังแล้วคืนผังเดิมเสมอ ไม่ว่าจะขอชื่ออะไร
+    // 1 แผน = 1 ผังระบบ (ฝาแฝดของหน้าเว็บที่ไม่มีปุ่มเพิ่มผังแล้ว) — มีผังแล้วคืนผังเดิมเสมอ ไม่ว่าจะขอชื่ออะไร
     const existing = this.diagrams.find((d) => norm(d.name) === norm(name)) ?? this.diagrams[0]
-    if (existing) return `แผนมีผังโยงผังเดียว "${existing.name}" → ${existing.id} (วาดต่อในผังนี้ — ภาพ/เสียง/FOH/Intercom รวมกัน หรือ clear_diagram ก่อนถ้าจะวาดใหม่)`
+    if (existing) return `แผนมีผังระบบผังเดียว "${existing.name}" → ${existing.id} (วาดต่อในผังนี้ — ภาพ/เสียง/FOH/Intercom รวมกัน หรือ clear_diagram ก่อนถ้าจะวาดใหม่)`
     const d: PlanDiagram = { id: newId(), name: 'Video', nodes: [], edges: [] }
     this.diagrams.push(d)
     this.newDiagramIds.add(d.id)

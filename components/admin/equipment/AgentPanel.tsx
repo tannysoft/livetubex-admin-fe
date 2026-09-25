@@ -29,7 +29,7 @@ interface AgentPanelProps {
 
 const EXAMPLES = [
   'จัดของงานนี้ 4 กล้อง สตรีม YouTube บันทึก PGM และมีอินเตอร์คอมให้ทีมกล้อง',
-  'วาดผังโยง Video จากของที่อยู่ในรายการตอนนี้',
+  'วาดผังระบบ Video จากของที่อยู่ในรายการตอนนี้',
   'ตั้งปลายทางให้ทุกรายการที่ยังว่าง',
   'เพิ่มกล้องอีก 2 ตัวบนอัฒจันทร์ แล้วโยงเข้าสวิตเชอร์',
 ]
@@ -119,7 +119,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
         setTrace([{ kind: 'phase', label: 'ขั้น 1/2 — จัดของ' }])
         first = await runEquipmentAgent({ ...common, model: settings.phaseModels.items || common.model, base, instruction: text, history, phase: 'items' })
         setPhaseLabel('ขั้น 2/2 โยงผัง')
-        setTrace((t) => [...t, { kind: 'phase', label: 'ขั้น 2/2 — วาดผังโยง' }])
+        setTrace((t) => [...t, { kind: 'phase', label: 'ขั้น 2/2 — วาดผังระบบ' }])
         const second = await runEquipmentAgent({
           ...common,
           model: settings.phaseModels.wiring || common.model,
@@ -138,7 +138,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
     } catch (err) {
       if (first) {
         done(first, first.summary)
-        setError(`ขั้นโยงผังไม่สำเร็จ (${agentErrorMessage(err)}) — ร่างจัดของยังอยู่ สั่ง "วาดผังโยง Video จากรายการในร่าง" ต่อได้`)
+        setError(`ขั้นโยงผังไม่สำเร็จ (${agentErrorMessage(err)}) — ร่างจัดของยังอยู่ สั่ง "วาดผังระบบ Video จากรายการในร่าง" ต่อได้`)
       } else {
         setError(agentErrorMessage(err))
       }
@@ -162,7 +162,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
   const warnings = draft?.issues.filter((i) => i.level === 'warning') ?? []
 
   return (
-    <Modal isOpen={isOpen} onClose={() => { if (!running) onClose() }} title="ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง" size="4xl">
+    <Modal isOpen={isOpen} onClose={() => { if (!running) onClose() }} title="ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังระบบ" size="4xl">
       <div className="space-y-4">
         {history.length > 0 && (
           <div className="space-y-2">
@@ -315,7 +315,7 @@ export default function AgentPanel({ isOpen, onClose, plan, onApply }: AgentPane
               </div>
             )}
             {!draft && (
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none" title="งานใหญ่: จัดของให้เสร็จก่อน แล้วค่อยวาดผังโยงเป็นอีกรอบ — แต่ละขั้นได้เวลาเต็ม ไม่หมดเวลากลางคัน">
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none" title="งานใหญ่: จัดของให้เสร็จก่อน แล้วค่อยวาดผังระบบเป็นอีกรอบ — แต่ละขั้นได้เวลาเต็ม ไม่หมดเวลากลางคัน">
                 <input type="checkbox" checked={staged} onChange={(e) => setStaged(e.target.checked)} disabled={running} className="rounded border-gray-300 text-brand focus:ring-brand/30" />
                 แบ่งเป็น 2 ขั้น (จัดของ → โยงผัง)
                 {staged && settings && (settings.phaseModels.items || settings.phaseModels.wiring) && (

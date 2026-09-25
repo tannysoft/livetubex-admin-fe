@@ -1329,7 +1329,7 @@ export const adminResetUserPassword = onCall({ cors: ADMIN_CORS }, async (reques
   return { ok: true }
 })
 
-// ── ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังโยง (LangGraph.js + Claude) ──────────────────
+// ── ผู้ช่วย AI จัดอุปกรณ์ + ร่างผังระบบ (LangGraph.js + Claude) ──────────────────
 // คืน "ร่าง" ให้หน้าเว็บตรวจก่อน — ไม่เขียน Firestore เอง (ดู functions/src/equipment-agent/)
 // ⚠️ ANTHROPIC_API_KEY ต้องมีใน Secret Manager ก่อน deploy ไม่งั้น deploy functions ล้มทั้งชุด
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY')

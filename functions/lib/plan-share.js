@@ -154,7 +154,7 @@ function sanitizePlan(p) {
         const venue = { ...l.venue };
         // รูป floor plan อยู่ใน collection admin-only — ไม่ส่ง (ผังวางยังดูได้ แค่ไม่มีรูปปูพื้น)
         delete venue.floorImageId;
-        return { id: l.id, name: l.name, venue, objects: l.objects ?? [] };
+        return { id: l.id, name: l.name, venue, objects: l.objects ?? [], cables: l.cables ?? [] };
     });
     const revision = p.revision;
     return {

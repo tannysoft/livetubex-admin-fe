@@ -20,6 +20,11 @@ import {
 import type { Job } from '@/lib/types'
 import { formatCurrency, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
 import { SkeletonTableRow } from '@/components/ui/Skeleton'
+import { getCalendarEntries } from '@/lib/calendar'
+import { getAccountingStatuses, setJobAccountingStatus, type AccountingStatusDef } from '@/lib/job-accounting'
+import AccountingStatusMenu from '@/components/admin/AccountingStatusMenu'
+import AccountingStatusManager from '@/components/admin/AccountingStatusManager'
+import GoogleCalendarButton, { GoogleAddedBadge } from '@/components/admin/GoogleCalendarButton'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -27,6 +32,41 @@ export default function JobsPage() {
   const [search, setSearch] = useState('')
 
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
+  // jobId → เวลาที่กดลง Google Calendar (ป้าย) — อ่านจากปฏิทินงาน โหลดไม่ได้ก็แค่ไม่มีป้าย
+  const [googleAdded, setGoogleAddedMap] = useState<Map<string, string>>(new Map())
+  const markGoogle = (jobId: string, at: string | undefined) => setGoogleAddedMap((m) => {
+    const n = new Map(m)
+    if (at) n.set(jobId, at); else n.delete(jobId)
+    return n
+  })
+
+  // สถานะทางบัญชี — รายการ/สีแก้ได้ (settings/jobAccounting) · ค่าของงานอยู่ใน jobFinance (มากับ getJobsWithBudget)
+  const [acctStatuses, setAcctStatuses] = useState<AccountingStatusDef[]>([])
+  const [acctFilter, setAcctFilter] = useState<string | null>(null) // null = ทั้งหมด, '' = ไม่ระบุ
+  const [managing, setManaging] = useState(false)
+  useEffect(() => {
+    getAccountingStatuses().then(setAcctStatuses).catch((e) => console.error(e))
+  }, [])
+  const acctOf = (j: Job) => (j.accountingStatus && acctStatuses.some((s) => s.id === j.accountingStatus) ? j.accountingStatus : '')
+  const acctUsage = new Map<string, number>()
+  for (const j of jobs) acctUsage.set(acctOf(j), (acctUsage.get(acctOf(j)) ?? 0) + 1)
+
+  const handleAccountingStatus = async (job: Job, id: string) => {
+    const prev = job.accountingStatus
+    setJobs((list) => list.map((j) => (j.id === job.id ? { ...j, accountingStatus: id || undefined } : j)))
+    try {
+      await setJobAccountingStatus(job.id, id)
+    } catch (e) {
+      console.error(e)
+      setJobs((list) => list.map((j) => (j.id === job.id ? { ...j, accountingStatus: prev } : j)))
+    }
+  }
+
+  useEffect(() => {
+    getCalendarEntries()
+      .then((list) => setGoogleAddedMap(new Map(list.filter((e) => e.jobId && e.googleAddedAt).map((e) => [e.jobId!, e.googleAddedAt!]))))
+      .catch(() => {})
+  }, [])
 
   const loadJobs = async () => {
     setLoading(true)
@@ -63,17 +103,19 @@ export default function JobsPage() {
 
   const filtered = jobs.filter(
     (j) =>
-      j.title.toLowerCase().includes(search.toLowerCase()) ||
-      j.location.toLowerCase().includes(search.toLowerCase()) ||
-      j.clientName.toLowerCase().includes(search.toLowerCase())
+      (acctFilter === null || acctOf(j) === acctFilter) &&
+      (j.title.toLowerCase().includes(search.toLowerCase()) ||
+        j.location.toLowerCase().includes(search.toLowerCase()) ||
+        j.clientName.toLowerCase().includes(search.toLowerCase()))
   )
+  const chipCls = (on: boolean) => `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${on ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">จัดการงานถ่ายทอดสด</h1>
+          <h1 className="text-2xl font-bold text-gray-900">งานถ่ายทอดสด</h1>
           <p className="text-gray-500 mt-1">{jobs.length} งานทั้งหมด</p>
         </div>
         <Link
@@ -96,6 +138,24 @@ export default function JobsPage() {
         />
       </div>
 
+      {/* กรองสถานะบัญชี */}
+      {acctStatuses.length > 0 && !loading && (
+        <div className="flex items-center gap-2 flex-wrap -mt-2">
+          <span className="text-xs text-gray-400">สถานะบัญชี</span>
+          <button onClick={() => setAcctFilter(null)} className={chipCls(acctFilter === null)}>ทั้งหมด <span className="opacity-60">{jobs.length}</span></button>
+          {acctStatuses.map((st) => (
+            <button key={st.id} onClick={() => setAcctFilter(acctFilter === st.id ? null : st.id)} className={chipCls(acctFilter === st.id)}>
+              <span className="w-2 h-2 rounded-full" style={{ background: st.color }} />
+              {st.label} <span className="opacity-60">{acctUsage.get(st.id) ?? 0}</span>
+            </button>
+          ))}
+          {(acctUsage.get('') ?? 0) > 0 && (
+            <button onClick={() => setAcctFilter(acctFilter === '' ? null : '')} className={chipCls(acctFilter === '')}>ไม่ระบุ <span className="opacity-60">{acctUsage.get('')}</span></button>
+          )}
+          <button onClick={() => setManaging(true)} className="text-xs text-gray-400 hover:text-brand ml-1">แก้ชื่อ/สี</button>
+        </div>
+      )}
+
       {/* Job table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -106,16 +166,17 @@ export default function JobsPage() {
                 <th className="px-5 py-3">งาน</th>
                 <th className="px-5 py-3 hidden md:table-cell">สถานที่</th>
                 <th className="px-2 py-3 whitespace-nowrap w-px">สถานะ</th>
+                <th className="px-2 py-3 whitespace-nowrap w-px">บัญชี</th>
                 <th className="px-5 py-3 text-right whitespace-nowrap">ราคาขาย</th>
                 <th className="px-5 py-3 text-right w-32"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={6} />)
+                Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={7} />)
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-16 text-gray-400">
+                  <td colSpan={7} className="text-center py-16 text-gray-400">
                     <p className="text-base font-medium">ไม่พบงาน</p>
                     <p className="text-sm mt-1">ลองเปลี่ยนคำค้นหา หรือเพิ่มงานใหม่</p>
                   </td>
@@ -162,7 +223,20 @@ export default function JobsPage() {
 
                       {/* สถานะ */}
                       <td className="px-2 py-4 align-top whitespace-nowrap">
-                        <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
+                          <GoogleAddedBadge addedAt={googleAdded.get(job.id)} />
+                        </div>
+                      </td>
+
+                      {/* สถานะบัญชี */}
+                      <td className="px-2 py-4 align-top whitespace-nowrap">
+                        <AccountingStatusMenu
+                          statuses={acctStatuses}
+                          value={acctOf(job)}
+                          onChange={(id) => handleAccountingStatus(job, id)}
+                          onManage={() => setManaging(true)}
+                        />
                       </td>
 
                       {/* ราคาขาย */}
@@ -185,6 +259,7 @@ export default function JobsPage() {
                           >
                             {showing ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
                           </button>
+                          <GoogleCalendarButton variant="icon" job={job} addedAt={googleAdded.get(job.id)} onChange={(at) => markGoogle(job.id, at)} />
                           <Link
                             href={`/admin/jobs/new?id=${job.id}`}
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -207,6 +282,19 @@ export default function JobsPage() {
           </table>
         </div>
       </div>
+
+      {managing && (
+        <AccountingStatusManager
+          statuses={acctStatuses}
+          usage={acctUsage}
+          onClose={() => setManaging(false)}
+          onSaved={(list) => {
+            setAcctStatuses(list)
+            if (acctFilter && !list.some((x) => x.id === acctFilter)) setAcctFilter(null)
+            setManaging(false)
+          }}
+        />
+      )}
 
       {/* Delete Dialog */}
       <ConfirmDialog

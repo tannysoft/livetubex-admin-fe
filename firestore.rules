@@ -173,6 +173,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── ปฏิทินงาน: งานที่ดึงจาก jobs + โน้ต (Admin only) ────────────────────
+    match /calendarEntries/{entryId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── Equipment: คลังอุปกรณ์ OB + แผนจัดของ/ผังโยง (Admin only) ────────────
     match /equipment/{equipmentId} {
       allow read, write: if isAdmin();

@@ -50,7 +50,7 @@ function portTooltip(diagram: PlanDiagram, nodeById: Map<string, DiagramNode>, r
 }
 
 /**
- * เนื้อในของผังโยง (เส้น + กล่อง) — ไม่มี <svg> ครอบ
+ * เนื้อในของผังระบบ (เส้น + กล่อง) — ไม่มี <svg> ครอบ
  * ตัวแก้ไขกับหน้า print ใช้ตัวเดียวกัน ผังที่พิมพ์จึงตรงกับที่วาดเสมอ
  * ไม่ส่ง handler = read-only
  */

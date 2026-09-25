@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { ArrowsPointingInIcon } from '@heroicons/react/24/outline'
 import {
-  addLights, buildObject, buildVenue, declutterLabels, disposeGroup, labelSizeFor, venueExtent,
+  addLights, buildCables, buildObject, buildVenue, cableRuns, declutterLabels, disposeGroup, groundsOf, labelSizeFor, venueExtent, focusAt, tuneOrbit,
 } from '@/lib/equipment/layout-scene'
 import type { PlanLayout } from '@/lib/types'
 
@@ -43,19 +43,21 @@ export default function LayoutViewer({ layout, view, lensLines, labelScale = 1, 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0xffffff)
     addLights(scene)
-    scene.add(buildVenue(layout.venue))
+    const venue = buildVenue(layout.venue)
+    scene.add(venue)
     const size = labelSizeFor(layout.venue, labelScale)
     layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines)))
+    venue.updateMatrixWorld(true)
+    scene.add(buildCables(cableRuns(layout, groundsOf(venue)), size))
 
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.3, 5000)
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.maxPolarAngle = Math.PI / 2 - 0.02
-    controls.screenSpacePanning = true
+    tuneOrbit(controls)
     const e = venueExtent(layout.venue)
     const cx = (e.minX + e.maxX) / 2
     const cz = (e.minZ + e.maxZ) / 2
     const span = Math.max(e.maxX - e.minX, e.maxZ - e.minZ)
-    controls.minDistance = 2
     controls.maxDistance = span * 3
     if (view === 'top') {
       // มุมบน: ไม่หมุน — นิ้วเดียว/คลิกซ้ายเลื่อนแผนที่แทน
@@ -75,6 +77,18 @@ export default function LayoutViewer({ layout, view, lensLines, labelScale = 1, 
       })
     }
     controls.addEventListener('change', render)
+
+    // ดับเบิลคลิก/แตะ 2 ครั้งที่พื้น → ซูมไปจุดนั้น
+    const raycaster = new THREE.Raycaster()
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const onDbl = (ev: MouseEvent) => {
+      const r = renderer.domElement.getBoundingClientRect()
+      raycaster.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera)
+      const hit = raycaster.intersectObject(venue, true)[0]
+      const p = hit ? hit.point : raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3())
+      if (p) { focusAt(camera, controls, p); render() }
+    }
+    renderer.domElement.addEventListener('dblclick', onDbl)
 
     const fit = () => {
       controls.target.set(cx, 0, cz)
@@ -101,6 +115,7 @@ export default function LayoutViewer({ layout, view, lensLines, labelScale = 1, 
     return () => {
       observer.disconnect()
       cancelAnimationFrame(frame)
+      renderer.domElement.removeEventListener('dblclick', onDbl)
       controls.dispose()
       disposeGroup(scene)
       renderer.dispose()

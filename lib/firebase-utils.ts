@@ -40,8 +40,11 @@ export async function getJobsWithBudget(): Promise<Job[]> {
     getDocs(query(collection(db, 'jobs'), orderBy('date', 'desc'))),
     getDocs(collection(db, 'jobFinance')),
   ])
-  const budgets = new Map(finSnap.docs.map((d) => [d.id, (d.data().budget as number | undefined) ?? 0]))
-  return jobsSnap.docs.map((d) => ({ id: d.id, ...d.data(), budget: budgets.get(d.id) ?? 0 } as Job))
+  const fin = new Map(finSnap.docs.map((d) => [d.id, d.data() as { budget?: number; accountingStatus?: string }]))
+  return jobsSnap.docs.map((d) => {
+    const f = fin.get(d.id)
+    return { id: d.id, ...d.data(), budget: f?.budget ?? 0, ...(f?.accountingStatus ? { accountingStatus: f.accountingStatus } : {}) } as Job
+  })
 }
 
 export async function getJobWithBudget(id: string): Promise<Job | null> {
@@ -50,25 +53,27 @@ export async function getJobWithBudget(id: string): Promise<Job | null> {
     getDoc(doc(db, 'jobFinance', id)),
   ])
   if (!jobSnap.exists()) return null
-  const budget = (finSnap.exists() ? (finSnap.data().budget as number | undefined) : undefined) ?? 0
-  return { id: jobSnap.id, ...jobSnap.data(), budget } as Job
+  const f = finSnap.exists() ? (finSnap.data() as { budget?: number; accountingStatus?: string }) : undefined
+  return { id: jobSnap.id, ...jobSnap.data(), budget: f?.budget ?? 0, ...(f?.accountingStatus ? { accountingStatus: f.accountingStatus } : {}) } as Job
 }
 
 export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-  const { budget, ...rest } = data
+  const { budget, accountingStatus, ...rest } = data
   const ref = await addDoc(collection(db, 'jobs'), {
     ...rest,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   })
-  await setDoc(doc(db, 'jobFinance', ref.id), { budget: budget ?? 0 })
+  await setDoc(doc(db, 'jobFinance', ref.id), { budget: budget ?? 0, ...(accountingStatus ? { accountingStatus } : {}) })
   return ref.id
 }
 
 export async function updateJob(id: string, data: Partial<Job>): Promise<void> {
-  const { budget, ...rest } = data
+  // ข้อมูลเงิน/บัญชีไม่ลง jobs doc · merge = ไม่ทับ field อื่นใน jobFinance (budget ↔ accountingStatus)
+  const { budget, accountingStatus, ...rest } = data
   await updateDoc(doc(db, 'jobs', id), { ...rest, updatedAt: new Date().toISOString() })
-  if (budget !== undefined) await setDoc(doc(db, 'jobFinance', id), { budget })
+  const fin = { ...(budget !== undefined ? { budget } : {}), ...(accountingStatus !== undefined ? { accountingStatus: accountingStatus || deleteField() } : {}) }
+  if (Object.keys(fin).length) await setDoc(doc(db, 'jobFinance', id), fin, { merge: true })
 }
 
 export async function deleteJob(id: string): Promise<void> {

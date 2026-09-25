@@ -5,6 +5,7 @@ import FormListbox from '@/components/ui/FormListbox'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import type { Job, JobStatus } from '@/lib/types'
 import { generatePaymentCycleOptions } from '@/lib/utils'
+import type { AccountingStatusDef } from '@/lib/job-accounting'
 
 type FormData = {
   title: string
@@ -16,6 +17,7 @@ type FormData = {
   budget: number
   status: JobStatus
   paymentCycle?: string
+  accountingStatus?: string
   notes?: string
 }
 
@@ -26,6 +28,8 @@ interface JobFormProps {
   onSubmit: (data: FormData) => Promise<void>
   onCancel: () => void
   isLoading?: boolean
+  /** รายการสถานะบัญชี — ไม่ส่ง = ไม่โชว์ช่อง */
+  accountingStatuses?: AccountingStatusDef[]
 }
 
 const statusOptions: { value: JobStatus; label: string }[] = [
@@ -36,7 +40,7 @@ const statusOptions: { value: JobStatus; label: string }[] = [
   { value: 'cancelled', label: 'ยกเลิก' },
 ]
 
-export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }: JobFormProps) {
+export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, accountingStatuses }: JobFormProps) {
   const {
     register,
     control,
@@ -54,6 +58,7 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
       budget: defaultValues?.budget ?? 0,
       status: (defaultValues?.status as JobStatus) ?? 'draft',
       paymentCycle: defaultValues?.paymentCycle ?? '',
+      accountingStatus: defaultValues?.accountingStatus ?? '',
       notes: defaultValues?.notes ?? '',
     },
   })
@@ -174,6 +179,24 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading }
             )}
           />
         </div>
+
+        {accountingStatuses && accountingStatuses.length > 0 && (
+          <div>
+            <label className={labelCls}>สถานะทางบัญชี</label>
+            <Controller
+              name="accountingStatus"
+              control={control}
+              render={({ field }) => (
+                <FormListbox
+                  value={accountingStatuses.some((s) => s.id === field.value) ? field.value ?? '' : ''}
+                  onChange={(v) => field.onChange(v)}
+                  options={[{ value: '', label: 'ไม่ระบุ' }, ...accountingStatuses.map((s) => ({ value: s.id, label: s.label }))]}
+                  buttonClassName={inputCls}
+                />
+              )}
+            />
+          </div>
+        )}
 
         <div className="sm:col-span-2">
           <label className={labelCls}>หมายเหตุ</label>

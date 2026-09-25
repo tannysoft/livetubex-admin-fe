@@ -17,7 +17,7 @@ interface FohFeedsEditorProps {
   onChange: (next: FohFeed[]) => void
   /** ระบบภาพหลักของแผน — feed ที่ไม่ตั้ง format เองใช้ค่านี้ */
   mainFormat?: VideoFormat
-  /** กด "วาดลงผังโยง" → วาดสายส่ง FOH ลงผังหลักจาก feed (ไม่ส่ง = ไม่มีปุ่ม) */
+  /** กด "วาดลงผังระบบ" → วาดสายส่ง FOH ลงผังหลักจาก feed (ไม่ส่ง = ไม่มีปุ่ม) */
   onBuildDiagram?: () => void
 }
 
@@ -85,7 +85,7 @@ export default function FohFeedsEditor({ value, onChange, mainFormat, onBuildDia
         </button>
         {onBuildDiagram && list.length > 0 && (
           <button type="button" onClick={onBuildDiagram} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark">
-            <Squares2X2Icon className="w-3.5 h-3.5" /> วาดลงผังโยง
+            <Squares2X2Icon className="w-3.5 h-3.5" /> วาดลงผังระบบ
           </button>
         )}
       </div>

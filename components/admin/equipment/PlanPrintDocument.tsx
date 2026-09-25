@@ -13,7 +13,7 @@ import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { formatFullLabel } from '@/lib/equipment/video-format'
 import { recordingsLabel } from '@/lib/equipment/recording-format'
 import { FEED_CONNECTIONS, feedFormatLabel, fohSummary } from '@/lib/equipment/foh-feeds'
-import type { EquipmentPlan, PlanDiagram, PlanLayout } from '@/lib/types'
+import type { EquipmentPlan, LayoutCable, PlanDiagram, PlanLayout } from '@/lib/types'
 import { camLabels, camTag, groupItems, isCamOnlyNote, type GroupBy } from '@/lib/equipment/item-groups'
 import { itemUseLabel } from '@/lib/equipment/availability'
 
@@ -41,7 +41,7 @@ interface PlanPrintDocumentProps {
 /** ส่งป้าย revision ให้ PrintHeader ทุกหน้าโดยไม่ต้องไล่ส่ง prop ทุก section */
 const RevisionLabelContext = createContext<string | undefined>(undefined)
 
-/** ตัวเอกสารที่ถูกพิมพ์ — รายการ (A4 ตั้ง) → ผังโยงทีละผัง (A4 นอน) → ตารางสาย (A4 ตั้ง) */
+/** ตัวเอกสารที่ถูกพิมพ์ — รายการ (A4 ตั้ง) → ผังระบบทีละผัง (A4 นอน) → ตารางสาย (A4 ตั้ง) */
 export default function PlanPrintDocument(props: PlanPrintDocumentProps) {
   return (
     <RevisionLabelContext.Provider value={props.revisionLabel}>
@@ -169,7 +169,7 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
 
       {showDiagrams && diagrams.map((d) => (
         <section key={d.id} className="print-landscape mt-10 print:mt-0">
-          <PrintHeader plan={plan} subtitle={`ผังโยง — ${d.name}`} />
+          <PrintHeader plan={plan} subtitle={`ผังระบบ — ${d.name}`} />
           <DiagramFigure diagram={d} />
           <Legend diagram={d} />
           <FullNotes diagram={d} />
@@ -275,12 +275,15 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
 function LayoutPages({ plan, layout, lensLines, labelScale }: { plan: EquipmentPlan; layout: PlanLayout; lensLines: boolean; labelScale: number }) {
   const [shots, setShots] = useState<{ top: string; persp: string } | null>(null)
   const [failed, setFailed] = useState(false)
+  const [cables, setCables] = useState<{ cable: LayoutCable; length: number; order: number }[]>([])
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       // three.js โหลดเฉพาะตอนมีผัง 3D ให้พิมพ์
-      const { snapshotLayout } = await import('@/lib/equipment/layout-scene')
+      const { snapshotLayout, measureCables, cableOrderLength } = await import('@/lib/equipment/layout-scene')
+      const measured = measureCables(layout).map((r) => ({ ...r, order: cableOrderLength(r.length) }))
+      if (alive) setCables(measured)
       const floor = layout.venue.floorImageId ? await getPlanAsset(layout.venue.floorImageId).catch(() => null) : null
       const top = await snapshotLayout(layout, 'top', floor, undefined, undefined, lensLines, undefined, labelScale)
       const persp = await snapshotLayout(layout, 'perspective', floor, undefined, undefined, lensLines, undefined, labelScale)
@@ -345,6 +348,51 @@ function LayoutPages({ plan, layout, lensLines, labelScale }: { plan: EquipmentP
           </table>
         </section>
       )}
+
+      {cables.length > 0 && (() => {
+        const label = (id: string) => layout.objects.find((o) => o.id === id)?.label ?? '?'
+        // รวมความยาวที่ต้องเบิกต่อชนิดสาย — ไว้เตรียมม้วนสายก่อนออกงาน
+        const totals = SIGNAL_TYPES.map((t) => ({ t, n: cables.filter((c) => c.cable.signal === t.value).length, m: cables.filter((c) => c.cable.signal === t.value).reduce((s, c) => s + c.order, 0) })).filter((x) => x.n > 0)
+        return (
+          <section className="print-portrait mt-10 print:mt-0">
+            <PrintHeader plan={plan} subtitle={`แนวสาย — ${layout.name}`} />
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs mb-2">
+              {totals.map(({ t, n, m }) => (
+                <span key={t.value} className="inline-flex items-center gap-1.5"><SignalSwatch color={t.color} dash={t.dash} /> {t.label} {n} เส้น · รวม <b>{m} ม.</b></span>
+              ))}
+            </div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-y border-gray-400 text-left">
+                  <th className="py-1.5 pr-2 w-6">#</th>
+                  <th className="py-1.5 pr-2">จาก → ไป</th>
+                  <th className="py-1.5 pr-2">ชนิด</th>
+                  <th className="py-1.5 pr-2">ป้ายสาย</th>
+                  <th className="py-1.5 pr-2 text-right">แนวจริง</th>
+                  <th className="py-1.5 pr-2 text-right">เบิก</th>
+                  <th className="py-1.5 pr-2">หมายเหตุ</th>
+                  <th className="py-1.5 w-10 text-center">ลากแล้ว</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cables.map(({ cable, length, order }, i) => (
+                  <tr key={cable.id} className="border-b border-gray-200 break-inside-avoid align-top">
+                    <td className="py-1.5 pr-2 text-gray-500">{i + 1}</td>
+                    <td className="py-1.5 pr-2 font-medium">{label(cable.from)} → {label(cable.to)}</td>
+                    <td className="py-1.5 pr-2"><span className="inline-flex items-center gap-1.5"><SignalSwatch color={signalMeta(cable.signal).color} dash={signalMeta(cable.signal).dash} />{signalMeta(cable.signal).label}</span></td>
+                    <td className="py-1.5 pr-2">{cable.label}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-gray-500">{length.toFixed(0)} ม.</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums font-semibold">{order} ม.</td>
+                    <td className="py-1.5 pr-2">{cable.note}</td>
+                    <td className="py-1.5 text-center"><span className="inline-block w-3.5 h-3.5 border border-gray-500 rounded-sm" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[10px] text-gray-500 mt-1">แนวจริงคิดตามพื้น/เวที/ขั้นอัฒจันทร์ในผังวาง (ขนาดสถานที่เป็นค่าที่กรอกในระบบ) · เบิก = แนวจริง + เผื่อ 10% ปัดขึ้นทีละ 5 ม.</p>
+          </section>
+        )
+      })()}
     </>
   )
 }

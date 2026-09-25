@@ -3,7 +3,7 @@ import type { CatalogProduct } from './blackmagic'
 /**
  * Hollyland — ส่งวิดีโอไร้สาย / อินเตอร์คอมไร้สาย / ไมค์ไร้สาย
  * ⚠️ port ต่อรุ่นมาจากความรู้ทั่วไป ไม่ใช่ spec sheet — ตรวจกับตัวเครื่องอีกครั้ง
- * ชุด TX/RX แยกเป็นคนละรายการ เพราะในผังโยงเป็นคนละกล่อง (ตัวส่งอยู่ที่กล้อง ตัวรับอยู่ที่สวิตเชอร์)
+ * ชุด TX/RX แยกเป็นคนละรายการ เพราะในผังระบบเป็นคนละกล่อง (ตัวส่งอยู่ที่กล้อง ตัวรับอยู่ที่สวิตเชอร์)
  */
 const H = 'Hollyland'
 // รวมสะกดผิดที่พบบ่อยไว้ใน alias ให้ค้นเจอ
@@ -67,7 +67,7 @@ export const HOLLYLAND_PRODUCTS: CatalogProduct[] = [
   { brand: H, name: 'Pyro 7', category: 'monitor', aliases: [...A, 'monitor', 'tx', 'rx'], inputs: ['HDMI IN', 'SDI IN'], outputs: ['HDMI OUT', 'SDI OUT'], ios: ['USB-C'] },
 
   // ── Wireless intercom ────────────────────────────────────────────────────
-  // ชุด = 1 รายการในสต็อก (นับเป็น 1 ชุด) และเป็น 1 กล่องในผังโยง — port คือของตัวแม่/base station
+  // ชุด = 1 รายการในสต็อก (นับเป็น 1 ชุด) และเป็น 1 กล่องในผังระบบ — port คือของตัวแม่/base station
   // ตัวเดี่ยว (เพิ่ม/อะไหล่) เก็บไว้ท้ายชุดสำหรับซื้อเพิ่มทีหลัง
   // Solidcom C1 — master headset + remote headsets (ไม่ต้องมี base)
   ...[2, 3, 4, 6, 8].map((n) => hsSet('Solidcom C1', n)),

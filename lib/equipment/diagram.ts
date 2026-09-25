@@ -1,6 +1,6 @@
 import type { DiagramEdge, DiagramNode, DiagramPortRef, PlanDiagram, PortSide } from '../types'
 
-// เรขาคณิตของผังโยง — ใช้ร่วมกันทั้งตัวแก้ไขและหน้า print เพื่อให้ผังที่พิมพ์ตรงกับที่วาด
+// เรขาคณิตของผังระบบ — ใช้ร่วมกันทั้งตัวแก้ไขและหน้า print เพื่อให้ผังที่พิมพ์ตรงกับที่วาด
 
 export const NODE_W = 190
 export const NODE_HEADER_H = 40

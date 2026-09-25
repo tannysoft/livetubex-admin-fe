@@ -47,7 +47,7 @@ export function buildTools(ws: Workspace, onFinish: (r: FinishResult) => void) {
     }),
     tool(async () => ws.listPlan(), {
       name: 'list_plan',
-      description: 'ดูร่างปัจจุบัน: รายการอุปกรณ์ (item id) และผังโยง (node id, port ที่ใช้แล้ว, เส้น)',
+      description: 'ดูร่างปัจจุบัน: รายการอุปกรณ์ (item id) และผังระบบ (node id, port ที่ใช้แล้ว, เส้น)',
       schema: z.object({}),
     }),
     tool(async ({ items }) => ws.addItems(items), {
@@ -105,7 +105,7 @@ export function buildTools(ws: Workspace, onFinish: (r: FinishResult) => void) {
     }),
     tool(async ({ name }) => ws.createDiagram(name), {
       name: 'create_diagram',
-      description: 'สร้างผังโยง "Video" — 1 แผนมีผังเดียว (ภาพ เสียง FOH Intercom รวมกัน) มีผังอยู่แล้วจะคืนผังเดิม',
+      description: 'สร้างผังระบบ "Video" — 1 แผนมีผังเดียว (ภาพ เสียง FOH Intercom รวมกัน) มีผังอยู่แล้วจะคืนผังเดิม',
       schema: z.object({ name: z.string() }),
     }),
     tool(async ({ diagramId }) => ws.clearDiagram(diagramId), {
@@ -183,7 +183,7 @@ export function buildTools(ws: Workspace, onFinish: (r: FinishResult) => void) {
         objects: z.array(z.object({
           zone: z.enum(LAYOUT_ZONES).describe('stage_front_left/right/center = หน้าเวที, on_stage = บนเวที, floor_left/right = กลางฮอลล์ด้านข้าง, foh_center = กลางหลังสุดแถว FOH, back_left/right = หลังฮอลล์มุม, ob_area = รถ OB นอกฮอลล์'),
           kind: z.enum(LAYOUT_KINDS).optional().describe('ไม่ใส่ = camera ถ้า item เป็นกล้อง'),
-          label: z.string().optional().describe('ชื่อในผัง ใช้ชื่อเดียวกับผังโยง เช่น "CAM 1"'),
+          label: z.string().optional().describe('ชื่อในผัง ใช้ชื่อเดียวกับผังระบบ เช่น "CAM 1"'),
           itemId: z.string().optional().describe('item id ในแผน (กล้อง/รถ OB/จอ)'),
           note: z.string().optional().describe('เช่น เลนส์ที่ใส่, ความสูง riser'),
         })).min(1),
@@ -191,10 +191,10 @@ export function buildTools(ws: Workspace, onFinish: (r: FinishResult) => void) {
     }),
     tool(async ({ a, b }) => ws.swapPositions(a, b), {
       name: 'swap_positions',
-      description: 'สลับตำแหน่งกล้อง 2 ตัวในครั้งเดียว: ปลายทาง (ของในชุดย้ายตาม), บรรทัดรอง (จุดติดตั้ง) ในผังโยง, ตำแหน่ง/ทิศในผังวาง 3D — ใช้เมื่อผู้ใช้สั่ง "สลับกล้อง X กับ Y"',
+      description: 'สลับตำแหน่งกล้อง 2 ตัวในครั้งเดียว: ปลายทาง (ของในชุดย้ายตาม), บรรทัดรอง (จุดติดตั้ง) ในผังระบบ, ตำแหน่ง/ทิศในผังวาง 3D — ใช้เมื่อผู้ใช้สั่ง "สลับกล้อง X กับ Y"',
       schema: z.object({
-        a: z.string().describe('item id หรือชื่อกล่องในผังโยง เช่น "CAM 2"'),
-        b: z.string().describe('item id หรือชื่อกล่องในผังโยง เช่น "CAM 3"'),
+        a: z.string().describe('item id หรือชื่อกล่องในผังระบบ เช่น "CAM 2"'),
+        b: z.string().describe('item id หรือชื่อกล่องในผังระบบ เช่น "CAM 3"'),
       }),
     }),
     tool(async () => ws.validateText(), {

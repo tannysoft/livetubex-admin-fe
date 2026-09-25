@@ -1,6 +1,7 @@
 import * as THREE from 'three'
-import type { LayoutObject, PlanLayout, VenueConfig } from '../types'
+import type { LayoutCable, LayoutObject, PlanLayout, VenueConfig } from '../types'
 import { KIND_DEFAULTS, isCameraKind, kindMeta } from './venues'
+import { signalMeta } from './constants'
 
 // ฉาก 3D ของผังวางอุปกรณ์ — ใช้ร่วมกันทั้งตัวแก้ไข (LayoutEditor) และ snapshot ตอนพิมพ์
 // ⚠️ ไฟล์นี้ดึง three.js ทั้งก้อน — import แบบ dynamic เท่านั้น (next/dynamic หรือ await import)
@@ -515,6 +516,55 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
       g.add(wedge)
     }
     top = m.mountHeight + 0.15 * k
+  } else if (o.kind === 'mirrorless') {
+    // กล้อง mirrorless บนขาตั้งถ่ายภาพ: ขาเรียว 3 ขา + แกนกลาง → หัวบอล → บอดี้เล็ก + เลนส์สั้น + จอ monitor เล็กบนตัว
+    const grey = new THREE.MeshLambertMaterial({ color: 0x374151 })
+    const legH = m.mountHeight - 0.35
+    tripodLegs(g, legH, 0.35, 0.016, grey)
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.25, 8), grey)
+    column.position.y = legH + 0.12
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    ball.position.y = legH + 0.27
+    const body = box(0.2, 0.14, 0.12, color)
+    body.position.set(0, m.mountHeight, 0.02)
+    const grip = box(0.05, 0.12, 0.1, '#111827')
+    grip.position.set(0.11, m.mountHeight - 0.005, 0)
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.052, 0.17, 16), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    lens.rotation.x = Math.PI / 2
+    lens.position.set(0, m.mountHeight, -0.12)
+    const monitor = box(0.14, 0.09, 0.02, '#1f2937')
+    monitor.position.set(0, m.mountHeight + 0.14, 0.04)
+    g.add(column, ball, body, grip, lens, monitor)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.22
+  } else if (o.kind === 'rack') {
+    // ตู้ Rack 19" บนล้อ: ตัวตู้ + เครื่อง 1U/2U เรียงด้านหน้า (-z) พร้อมไฟสถานะ — จุดรวมสายในห้องคอนโทรล
+    const { w, d, h } = m
+    const wheel = 0.08
+    const cab = box(w, h - wheel, d, color)
+    cab.position.y = wheel + (h - wheel) / 2
+    g.add(cab)
+    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+      c.rotation.z = Math.PI / 2
+      c.position.set((x * (w / 2 - 0.07)), 0.04, z * (d / 2 - 0.07))
+      g.add(c)
+    }
+    const leds = ['#22c55e', '#3b82f6', '#f59e0b', '#22c55e']
+    const unit = 0.13
+    const rows = Math.max(1, Math.floor((h - wheel - 0.12) / unit))
+    for (let i = 0; i < rows; i++) {
+      const y = wheel + 0.08 + i * unit + unit / 2
+      const panel = box(w * 0.86, unit * 0.78, 0.02, i % 3 === 0 ? '#9ca3af' : '#4b5563')
+      panel.position.set(0, y, -d / 2 - 0.011)
+      const led = box(0.03, 0.03, 0.01, leds[i % leds.length])
+      led.position.set(w * 0.33, y, -d / 2 - 0.025)
+      g.add(panel, led)
+    }
   } else if (o.kind === 'tele_lens') {
     // กล้อง + เลนส์ tele แบบถือ (ENG เช่น Canon CJ45, Fujinon UA46x): ขาตั้ง 3 ขา → หัวแพน + ด้ามแพน → บอดี้กล้อง
     // → เลนส์ทรงกระบอกยาวยื่นไปหน้า มีแท่งรองเลนส์ด้านล่าง (เล็กกว่า box lens มาก ไม่มีกล่อง)
@@ -704,6 +754,33 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
       g.add(wedge)
     }
     top = m.mountHeight + 0.3
+  } else if (o.kind === 'control_room') {
+    // ห้องคอนโทรล: พื้นห้อง + ผนังโปร่งใส (มองเห็นข้างใน) + กรอบเส้นขอบ · ประตูช่องว่างที่ผนังหน้า (-z) · ข้างในโต๊ะยาว + จอ 3 จอหันหาผนังหลัง
+    const { w, d, h } = m
+    const t = 0.12
+    const floor = box(w, 0.08, d, '#e2e8f0')
+    floor.position.y = 0.04
+    // ผนังโปร่ง — ไม่เขียน depth ไม่งั้นบังโต๊ะ/จอข้างใน
+    const wall = (ww: number, hh: number, dd: number) => { const mesh = box(ww, hh, dd, color, 0.28); (mesh.material as THREE.Material).depthWrite = false; return mesh }
+    const back = wall(w, h, t); back.position.set(0, h / 2, d / 2 - t / 2)
+    const left = wall(t, h, d); left.position.set(-w / 2 + t / 2, h / 2, 0)
+    const right = wall(t, h, d); right.position.set(w / 2 - t / 2, h / 2, 0)
+    const door = Math.min(1.2, w * 0.3)
+    const seg = (w - door) / 2
+    const frontL = wall(seg, h, t); frontL.position.set(-w / 2 + seg / 2, h / 2, -d / 2 + t / 2)
+    const frontR = wall(seg, h, t); frontR.position.set(w / 2 - seg / 2, h / 2, -d / 2 + t / 2)
+    const frame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), new THREE.LineBasicMaterial({ color }))
+    frame.position.y = h / 2
+    frame.raycast = () => {}
+    const deskW = Math.min(w - 0.8, 4)
+    const desk = box(deskW, 0.75, 0.8, '#475569')
+    desk.position.set(0, 0.375, d / 2 - 0.9)
+    g.add(floor, back, left, right, frontL, frontR, frame, desk)
+    for (let i = -1; i <= 1; i++) {
+      const mon = box(deskW / 3.6, 0.45, 0.06, '#111827')
+      mon.position.set((i * deskW) / 3, 1.05, d / 2 - 0.65)
+      g.add(mon)
+    }
   } else if (o.kind === 'screen') {
     // จอยกลอยจากพื้น 1.5 ม. หน้าจอหันไป -z (ด้านหน้าของวัตถุ)
     const panel = box(m.w, m.h, m.d, color)
@@ -736,6 +813,20 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
     const nose = box(Math.min(0.4, m.w / 3), 0.06, 0.3, '#ffffff')
     nose.position.set(0, m.h + 0.03, -m.d / 2 + 0.2)
     g.add(nose)
+  }
+
+  // ใต้อัฒจันทร์: ขั้นอัฒจันทร์เป็นก้อนทึบ → วาดแบบ x-ray (ไม่เทสต์ความลึก วาดทับทีหลัง) ให้เห็นห้องทะลุที่นั่ง
+  if (o.underTier) {
+    g.traverse((c) => {
+      const mesh = c as THREE.Mesh
+      if (!mesh.material) return
+      for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        mat.depthTest = false
+        mat.transparent = true
+        mat.opacity = Math.min(mat.opacity, 0.85)
+      }
+      c.renderOrder = 6
+    })
   }
 
   // กรวยมุมภาพออกจากก้อนที่ขยาย: ตำแหน่งคูณ S ให้ตรงเลนส์ แต่ระยะ/มุมคงค่าจริง
@@ -776,6 +867,162 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
   label.userData.leaderFrom = new THREE.Vector3(0, top, 0)
   root.add(leader, label)
   return root
+}
+
+// ── การควบคุมมุมมอง (ใช้ทั้งตัวแก้และหน้าแชร์) ─────────────────────────────────
+/**
+ * OrbitControls ค่าเริ่มต้นซูมเข้าหา "จุดหมุน" กลางสถานที่ → ยิ่งซูมใกล้ยิ่งช้าจนหยุด และแพนได้ทีละนิดเพราะความเร็วแพนแปรตามระยะ
+ * zoomToCursor = ซูมไปหาตำแหน่งเมาส์ (จุดหมุนเลื่อนตาม) · screenSpacePanning = แพนตามระนาบจอ
+ */
+export function tuneOrbit(controls: { zoomToCursor: boolean; screenSpacePanning: boolean; minDistance: number; zoomSpeed: number; panSpeed: number }) {
+  controls.zoomToCursor = true
+  controls.screenSpacePanning = true
+  controls.minDistance = 1
+  controls.zoomSpeed = 1.3
+  controls.panSpeed = 1.2
+}
+
+/** ดับเบิลคลิก → ย้ายจุดหมุนไปที่จุดนั้น แล้วขยับกล้องเข้าไปใกล้ (ไม่เกิน dist ม.) โดยคงมุมมองเดิม */
+export function focusAt(camera: THREE.Camera, controls: { target: THREE.Vector3; update: () => void }, point: THREE.Vector3, dist = 20) {
+  const offset = camera.position.clone().sub(controls.target)
+  const len = Math.min(offset.length(), dist)
+  controls.target.copy(point)
+  camera.position.copy(point).add(offset.setLength(Math.max(len, 2)))
+  controls.update()
+}
+
+// ── แนวสาย ─────────────────────────────────────────────────────────────────
+// สายวาดแนบผิว (พื้น/เวที/ขั้นอัฒจันทร์) โดยสุ่มจุดทุก CABLE_STEP ม. ตามแนวที่ผู้ใช้ลาก แล้วยิง ray ลงหาผิวบนสุด
+// → ความยาวที่ได้รวมขึ้น-ลงขั้นบันไดแล้ว · ป้ายบอกความยาวเผื่อ CABLE_SLACK ปัดขึ้นทีละ 5 ม. (ขนาดม้วนสายที่ต้องเบิก)
+
+const CABLE_STEP = 0.5
+export const CABLE_SLACK = 0.1
+
+export interface CableRun { cable: LayoutCable; path: THREE.Vector3[]; length: number; underTier: boolean }
+
+/** ผิวที่วางของ/เดินสายได้ในกลุ่มนี้ (userData.ground) — ต้อง updateMatrixWorld ก่อน */
+export function groundsOf(root: THREE.Object3D): THREE.Object3D[] {
+  const out: THREE.Object3D[] = []
+  root.traverse((o) => { if (o.userData.ground) out.push(o) })
+  return out
+}
+
+const DOWN = new THREE.Vector3(0, -1, 0)
+function surfaceAt(grounds: THREE.Object3D[], x: number, z: number): number {
+  const hit = new THREE.Raycaster(new THREE.Vector3(x, 500, z), DOWN).intersectObjects(grounds, false)[0]
+  return hit ? Math.max(0, hit.point.y) : 0
+}
+
+/** เส้นทางจริงของสายแต่ละเส้น (แนบผิว) + ความยาว — วัตถุต้นทาง/ปลายทางหาย = ข้ามเส้นนั้น */
+export function cableRuns(layout: PlanLayout, grounds: THREE.Object3D[]): CableRun[] {
+  const byId = new Map(layout.objects.map((o) => [o.id, o]))
+  return (layout.cables ?? []).flatMap((cable) => {
+    const a = byId.get(cable.from)
+    const b = byId.get(cable.to)
+    if (!a || !b) return []
+    const pts = [{ x: a.x, z: a.z }, ...cable.points, { x: b.x, z: b.z }]
+    const path: THREE.Vector3[] = []
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p = pts[i], q = pts[i + 1]
+      const n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / CABLE_STEP))
+      for (let k = i === 0 ? 0 : 1; k <= n; k++) {
+        const x = p.x + ((q.x - p.x) * k) / n
+        const z = p.z + ((q.z - p.z) * k) / n
+        path.push(new THREE.Vector3(x, surfaceAt(grounds, x, z), z))
+      }
+    }
+    // ปลายทั้งสองอยู่ที่ระดับวัตถุ (อาจยืนบน riser ซึ่งไม่อยู่ในผิวของสถานที่)
+    path[0].y = Math.max(path[0].y, a.y)
+    path[path.length - 1].y = Math.max(path[path.length - 1].y, b.y)
+    // ปลายที่อยู่ใต้อัฒจันทร์: สายวิ่งบนพื้นจริงใต้ที่นั่งจนโผล่ออกพื้นโล่ง แล้วค่อยแนบผิวตามปกติ
+    const under = (end: LayoutObject, idx: number[]) => {
+      if (!end.underTier) return
+      for (const i of idx) { if (path[i].y <= 0.05) break; path[i].y = end.y }
+    }
+    under(a, path.map((_, i) => i))
+    under(b, path.map((_, i) => path.length - 1 - i))
+    let length = 0
+    for (let i = 1; i < path.length; i++) length += path[i].distanceTo(path[i - 1])
+    return [{ cable, path, length, underTier: !!(a.underTier || b.underTier) }]
+  })
+}
+
+/** ความยาวที่ต้องเบิก: + CABLE_SLACK แล้วปัดขึ้นทีละ 5 ม. */
+export function cableOrderLength(length: number): number {
+  return Math.max(5, Math.ceil((length * (1 + CABLE_SLACK)) / 5) * 5)
+}
+
+/** วาดสาย: ท่อสีตามชนิดสัญญาณ + ป้ายความยาวกลางเส้น · selected = หนาขึ้นและมีจุดหักเลี้ยวให้ลาก (userData.cablePoint) */
+export function buildCables(runs: CableRun[], labelSize: number, selectedId?: string | null, showLabels = true): THREE.Group {
+  const g = new THREE.Group()
+  for (const { cable, path, length, underTier } of runs) {
+    const color = signalMeta(cable.signal).color
+    const selected = cable.id === selectedId
+    const lifted = path.map((p) => p.clone().setY(p.y + 0.08))
+    const curve = new THREE.CatmullRomCurve3(lifted, false, 'catmullrom', 0) // tension 0 = แนวตรงตามจุด ไม่โค้งเกิน
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, Math.max(8, lifted.length * 2), selected ? 0.2 : 0.11, 6, false),
+      new THREE.MeshLambertMaterial({ color, emissive: selected ? 0x333333 : 0x000000 }),
+    )
+    tube.userData.cableId = cable.id
+    // สายจากห้องใต้อัฒจันทร์ลอดใต้ที่นั่ง → วาดมองทะลุเหมือนตัวห้อง
+    if (underTier) {
+      const mat = tube.material as THREE.Material
+      mat.depthTest = false
+      mat.transparent = true
+      mat.opacity = 0.9
+      tube.renderOrder = 5
+    }
+    g.add(tube)
+    if (showLabels) {
+      const mid = lifted[Math.floor(lifted.length / 2)]
+      const label = makeLabel(`${cable.label?.trim() || signalMeta(cable.signal).label} ${cableOrderLength(length)} ม.`, color, labelSize * 0.6)
+      label.position.set(mid.x, mid.y + labelSize * 0.6, mid.z)
+      markLabel(label, false)
+      g.add(label)
+    }
+    if (selected) {
+      cable.points.forEach((pt, index) => {
+        const y = path.reduce((best, p) => (Math.hypot(p.x - pt.x, p.z - pt.z) < Math.hypot(best.x - pt.x, best.z - pt.z) ? p : best), path[0]).y
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), new THREE.MeshLambertMaterial({ color: 0xf59e0b }))
+        knob.position.set(pt.x, y + 0.3, pt.z)
+        knob.userData.cablePoint = { cableId: cable.id, index }
+        g.add(knob)
+      })
+    }
+  }
+  return g
+}
+
+/** เส้นร่างระหว่างกำลังลากสาย (ยังไม่แนบผิว) */
+export function buildCableDraft(points: THREE.Vector3[]): THREE.Group {
+  const g = new THREE.Group()
+  if (points.length < 2) return g
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points.map((p) => p.clone().setY(p.y + 0.15))),
+    new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 1, gapSize: 0.6, depthTest: false }),
+  )
+  line.computeLineDistances()
+  line.renderOrder = 11
+  line.raycast = () => {}
+  g.add(line)
+  for (const p of points.slice(0, -1)) {
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), new THREE.MeshBasicMaterial({ color: 0xf59e0b }))
+    dot.position.copy(p).setY(p.y + 0.15)
+    dot.raycast = () => {}
+    g.add(dot)
+  }
+  return g
+}
+
+/** ความยาวสายทุกเส้นโดยไม่ต้องมี renderer (หน้าพิมพ์/ตาราง) */
+export function measureCables(layout: PlanLayout): { cable: LayoutCable; length: number }[] {
+  if (!layout.cables?.length) return []
+  const venue = buildVenue(layout.venue)
+  venue.updateMatrixWorld(true)
+  const runs = cableRuns(layout, groundsOf(venue)).map(({ cable, length }) => ({ cable, length }))
+  disposeGroup(venue)
+  return runs
 }
 
 export function disposeGroup(group: THREE.Object3D): void {
@@ -839,6 +1086,8 @@ export async function snapshotLayout(
   // กระดาษ A4 ย่อทั้งสถานที่ → ป้ายและกล้องขนาดเท่าบนจอเล็กจนอ่านไม่ออก ขยายเพิ่มเฉพาะหน้าพิมพ์
   const size = labelSizeFor(layout.venue, labelScale) * PRINT_LABEL_BOOST
   layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines, PRINT_MODEL_BOOST)))
+  venue.updateMatrixWorld(true)
+  scene.add(buildCables(cableRuns(layout, groundsOf(venue)), size))
 
   const e = venueExtent(layout.venue)
   const cx = (e.minX + e.maxX) / 2

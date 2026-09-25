@@ -84,7 +84,7 @@ export default function SharePlanModal({ isOpen, onClose, planId, flush }: Share
     <Modal isOpen={isOpen} onClose={close} title="แชร์แผนให้ทีมงาน" size="md">
       <div className="space-y-4">
         <p className="text-sm text-gray-500">
-          ทีมงานเปิดลิงก์บนมือถือแล้วใส่รหัสผ่าน ดูได้ทั้งรายการอุปกรณ์ ผังโยง และผังวาง (ซูมได้) — ไม่ต้องมีบัญชี
+          ทีมงานเปิดลิงก์บนมือถือแล้วใส่รหัสผ่าน ดูได้ทั้งรายการอุปกรณ์ ผังระบบ และผังวาง (ซูมได้) — ไม่ต้องมีบัญชี
           ไม่เห็นต้นทุนหรือข้อมูลบัญชี และเห็นแผนล่าสุดที่บันทึกเสมอ
         </p>
 

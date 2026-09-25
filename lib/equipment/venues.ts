@@ -89,7 +89,10 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
   { value: 'ptz', label: 'กล้อง PTZ', color: '#65a30d' },
   { value: 'tele_lens', label: 'กล้องเลนส์ Tele (40x)', color: '#0369a1' },
   { value: 'box_lens', label: 'กล้อง Box Lens (เลนส์ tele)', color: '#1e40af' },
+  { value: 'mirrorless', label: 'กล้อง Mirrorless (ขาตั้ง)', color: '#9333ea' },
   { value: 'ob_truck', label: 'รถ OB', color: '#475569' },
+  { value: 'control_room', label: 'ห้องคอนโทรล', color: '#0f766e' },
+  { value: 'rack', label: 'ตู้ Rack OB', color: '#1f2937' },
   { value: 'desk', label: 'FOH / โต๊ะคอนโทรล', color: '#7c3aed' },
   { value: 'screen', label: 'จอ LED / Projector', color: '#111827' },
   { value: 'speaker', label: 'ลำโพง', color: '#16a34a' },
@@ -100,7 +103,7 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
 
 /** วัตถุที่มีกรวยมุมภาพ + มุมมองจากกล้อง + คอลัมน์เลนส์ในหน้าพิมพ์ */
 export function isCameraKind(kind: LayoutObjectKind): boolean {
-  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head' || kind === 'micro_stand' || kind === 'action_cam' || kind === 'ptz' || kind === 'tele_lens' || kind === 'box_lens'
+  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head' || kind === 'micro_stand' || kind === 'action_cam' || kind === 'ptz' || kind === 'tele_lens' || kind === 'box_lens' || kind === 'mirrorless'
 }
 
 export function kindMeta(kind: LayoutObjectKind) {
@@ -126,6 +129,12 @@ export const KIND_DEFAULTS: Record<LayoutObjectKind, Partial<LayoutObject>> = {
   box_lens: { mountHeight: 1.8, fov: 10, range: 60 },
   jib: { mountHeight: 4, fov: 50, range: 30, w: 1.2, d: 7, h: 1.2 },
   ob_truck: { w: 2.6, d: 12, h: 3.6 },
+  // ห้องคอนโทรล (ห้องในสถานที่ / เต็นท์ / ตู้คอนเทนเนอร์) — ผนังโปร่งให้เห็นโต๊ะข้างใน · ประตูอยู่ด้านหน้า (-z)
+  control_room: { w: 6, d: 4, h: 2.8 },
+  // ตู้ Rack 19" บนล้อ (สวิตเชอร์/converter/router) — จุดรวมสายในห้องคอนโทรล
+  rack: { w: 0.6, d: 0.8, h: 1.6 },
+  // กล้อง mirrorless (Sony FX3/A7, Lumix GH7 ฯลฯ) บนขาตั้งกล้องถ่ายภาพ — มุมกลาง ระยะใกล้-กลาง
+  mirrorless: { mountHeight: 1.5, fov: 50, range: 20 },
   desk: { w: 4, d: 2, h: 1 },
   screen: { w: 8, d: 0.3, h: 4.5 },
   speaker: { w: 1.2, d: 1.2, h: 3 },
@@ -142,4 +151,35 @@ export function kindForCategory(category: string): LayoutObjectKind {
   if (category === 'audio') return 'speaker'
   if (category === 'switcher') return 'desk'
   return 'generic'
+}
+
+const footprint = (o: LayoutObject) => ({ w: o.w ?? KIND_DEFAULTS[o.kind]?.w ?? 1, d: o.d ?? KIND_DEFAULTS[o.kind]?.d ?? 1 })
+
+/** จุด (x, z) อยู่ในพื้นที่ของวัตถุ (คิดการหมุนแล้ว) — ใช้หาว่าตู้ Rack อยู่ในห้องคอนโทรลไหน */
+export function insideFootprint(o: LayoutObject, x: number, z: number): boolean {
+  const { w, d } = footprint(o)
+  const a = (o.rotation * Math.PI) / 180
+  const dx = x - o.x
+  const dz = z - o.z
+  const lx = dx * Math.cos(a) + dz * Math.sin(a)
+  const lz = -dx * Math.sin(a) + dz * Math.cos(a)
+  return Math.abs(lx) <= w / 2 && Math.abs(lz) <= d / 2
+}
+
+/**
+ * ตู้ Rack ในห้องคอนโทรล (จุดให้โยงสายเข้า): ชิดผนังขวา หันหน้าเข้ากลางห้อง ไม่ทับโต๊ะที่ชิดผนังหลัง
+ * ระดับพื้นห้อง + มองทะลุตามห้อง (ห้องใต้อัฒจันทร์) · id ให้ผู้เรียกสร้าง (lib นี้ไม่ผูก firebase)
+ */
+export function rackInRoom(room: LayoutObject, id: string, label: string): LayoutObject {
+  const { w } = footprint(room)
+  const rack = KIND_DEFAULTS.rack
+  const lx = w / 2 - 0.12 - (rack.d ?? 0.8) / 2
+  const a = (room.rotation * Math.PI) / 180
+  const r = (n: number) => Math.round(n * 100) / 100
+  return {
+    id, kind: 'rack', label, ...rack,
+    x: r(room.x + lx * Math.cos(a)), z: r(room.z + lx * Math.sin(a)), y: r(room.y + 0.08),
+    rotation: (room.rotation + 270) % 360,
+    ...(room.underTier ? { underTier: true } : {}),
+  }
 }

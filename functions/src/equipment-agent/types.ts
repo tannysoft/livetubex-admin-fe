@@ -24,7 +24,7 @@ export const LAYOUT_ZONES = [
   'floor_left', 'floor_right', 'foh_center', 'back_left', 'back_right', 'ob_area',
 ] as const
 export type LayoutZone = (typeof LAYOUT_ZONES)[number]
-export const LAYOUT_KINDS = ['camera', 'jib', 'ob_truck', 'desk', 'screen', 'speaker', 'riser', 'podium', 'gimbal', 'remote_head', 'micro_stand', 'action_cam', 'ptz', 'tele_lens', 'box_lens', 'generic'] as const
+export const LAYOUT_KINDS = ['camera', 'jib', 'ob_truck', 'desk', 'screen', 'speaker', 'riser', 'podium', 'gimbal', 'remote_head', 'micro_stand', 'action_cam', 'ptz', 'tele_lens', 'box_lens', 'mirrorless', 'control_room', 'rack', 'generic'] as const
 export type LayoutKind = (typeof LAYOUT_KINDS)[number]
 /** วาง/ย้ายตามโซน — หรือ swapWith = สลับตำแหน่งกับวัตถุอื่นในผัง (zone ไม่ใช้) · ⚠️ ฝาแฝดของ ZonePlacement ใน lib/equipment/layout-zones.ts */
 export interface ZonePlacement { zone?: LayoutZone; kind: LayoutKind; label: string; itemId?: string; note?: string; swapWith?: { label: string; itemId?: string } }

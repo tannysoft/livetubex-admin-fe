@@ -8,7 +8,7 @@ import type {
 import { newId, stripUndefined } from './plans'
 
 /**
- * Revision ของแผน — snapshot ของ รายการจัดของ + ผังโยง + ผังวาง 3D
+ * Revision ของแผน — snapshot ของ รายการจัดของ + ผังระบบ + ผังวาง 3D
  * เก็บที่ equipmentPlans/{planId}/revisions/{id} (doc แยก ไม่ให้ plan doc โตจนชนเพดาน 1MB)
  * plan.revision = meta ของ revision ที่เนื้อหาตรงกับแผนล่าสุด (ไว้โชว์ Rev + เช็ก "แก้หลังจากนั้นแล้ว")
  *

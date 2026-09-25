@@ -64,7 +64,7 @@ function PlanPrint() {
         </Link>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-x-6 gap-y-3 flex-wrap">
           <FormCheckbox checked={showList} onChange={setShowList} label="รายการอุปกรณ์" />
-          <FormCheckbox checked={showDiagrams} onChange={setShowDiagrams} label={`ผังโยง (${diagrams.length})`} />
+          <FormCheckbox checked={showDiagrams} onChange={setShowDiagrams} label={`ผังระบบ (${diagrams.length})`} />
           <FormCheckbox checked={showLayouts} onChange={setShowLayouts} label={`ผังวาง 3D (${plan.layouts?.length ?? 0})`} />
           {showLayouts && !!plan.layouts?.length && <FormCheckbox checked={lensLines} onChange={setLensLines} label="แนวเลนส์ในผังวาง" />}
           {showLayouts && !!plan.layouts?.length && <LabelSizePicker />}

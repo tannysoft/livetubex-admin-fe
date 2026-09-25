@@ -32,6 +32,7 @@ export interface Job {
   endDate?: string
   location: string
   clientName: string
+  accountingStatus?: string // สถานะทางบัญชี (id จาก settings/jobAccounting) — ลับ เก็บที่ jobFinance/{jobId} เหมือน budget
   budget?: number // ลับ — เก็บแยกที่ jobFinance/{jobId} (admin-only) ไม่เก็บใน jobs doc; ฝั่ง admin join ผ่าน getJobsWithBudget
   status: JobStatus
   paymentCycle?: string  // format: "YYYY-MM-mid" | "YYYY-MM-end"
@@ -40,6 +41,26 @@ export interface Job {
   updatedAt: string
   coverImage?: string
   notes?: string
+}
+
+/**
+ * ปฏิทินงาน (`calendarEntries`) — 2 แบบ:
+ * - job: ดึงงานจาก jobs มาแสดง (ชื่อ/วัน/สถานที่อ่านสดจาก jobs — แก้งานแล้วปฏิทินตาม) + โน้ตของปฏิทินเอง
+ * - note: โน้ตอิสระ มีวัน/ช่วงวันของตัวเอง (เช่น "ส่งของคืนร้านเช่า", "ประชุมลูกค้า")
+ */
+export type CalendarEntryType = 'job' | 'note'
+export interface CalendarEntry {
+  id: string
+  type: CalendarEntryType
+  jobId?: string              // type='job'
+  title?: string              // type='note'
+  date?: string               // type='note' — YYYY-MM-DD
+  endDate?: string            // type='note' — ว่าง = วันเดียว
+  note?: string
+  color?: string              // type='note' — hex จาก CALENDAR_COLORS
+  googleAddedAt?: string      // type='job' — กดเพิ่มลง Google Calendar แล้วเมื่อไหร่ (ป้าย "Google ✓")
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Freelancer {
@@ -429,7 +450,7 @@ export interface Equipment {
   quantity: number            // ของชิ้นเดียว = 1, ของนับจำนวน (สาย, ขาตั้ง) > 1
   storageLocation?: string    // ที่เก็บประจำ เช่น "ห้องเก็บของ A / ชั้น 2", "รถ OB"
   status: EquipmentStatus
-  inputs?: string[]           // ชื่อ port ขาเข้า — ใช้เป็น template ตอนวางลงผังโยง
+  inputs?: string[]           // ชื่อ port ขาเข้า — ใช้เป็น template ตอนวางลงผังระบบ
   outputs?: string[]          // ชื่อ port ขาออก
   ios?: string[]              // port เข้า-ออกในตัวเดียว (bidirectional) เช่น 12G-SDI, Network, Intercom
   // ของเช่า = แค็ตตาล็อกของที่เช่าได้จากข้างนอก (ไม่ใช่ทรัพย์สินบริษัท) — เลือกเข้าแผนแล้วต้นทุนเติมให้เอง
@@ -443,7 +464,7 @@ export interface Equipment {
   updatedAt: string
 }
 
-/** ประเภทสัญญาณ/สาย ของเส้นในผังโยง */
+/** ประเภทสัญญาณ/สาย ของเส้นในผังระบบ */
 export type SignalType =
   | 'sdi' | 'hdmi' | 'fiber' | 'audio' | 'network' | 'intercom' | 'control' | 'power' | 'other'
 
@@ -460,7 +481,7 @@ export interface DiagramNode {
   outputs: string[]
   ios?: string[]              // port เข้า-ออก — วางฝั่งขวาต่อจาก outputs โยงได้ทั้งสองทาง (ไม่มี field = ข้อมูลเก่า)
   note?: string               // หมายเหตุของกล่อง — โชว์ใต้ port ในผัง (ตัดที่ NOTE_MAX_LINES บรรทัด ฉบับเต็มอยู่ในหน้า print)
-  generated?: 'foh'           // กล่องที่ปุ่ม "วาดลงผังโยง" (ส่ง FOH) สร้าง — กดซ้ำจะลบชุดเดิมแล้ววาดใหม่ (กล่องอื่นในผังไม่แตะ)
+  generated?: 'foh'           // กล่องที่ปุ่ม "วาดลงผังระบบ" (ส่ง FOH) สร้าง — กดซ้ำจะลบชุดเดิมแล้ววาดใหม่ (กล่องอื่นในผังไม่แตะ)
 }
 
 export type PortSide = 'in' | 'out' | 'io'
@@ -543,7 +564,7 @@ export interface VenueConfig {
 }
 
 export type LayoutObjectKind =
-  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'micro_stand' | 'action_cam' | 'ptz' | 'tele_lens' | 'box_lens' | 'generic'
+  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'micro_stand' | 'action_cam' | 'ptz' | 'tele_lens' | 'box_lens' | 'mirrorless' | 'control_room' | 'rack' | 'generic'
 
 export interface LayoutObject {
   id: string
@@ -562,6 +583,19 @@ export interface LayoutObject {
   d?: number
   h?: number
   note?: string
+  /** อยู่ใต้อัฒจันทร์ (เช่น ห้องคอนโทรล) — ตั้งบนพื้นจริง y = 0 และวาดแบบมองทะลุขั้นอัฒจันทร์ */
+  underTier?: boolean
+}
+
+/** แนวเดินสายในผังวาง 3D — จากวัตถุหนึ่งไปอีกวัตถุ ผ่านจุดหักเลี้ยว (วาดแนบพื้น/ขั้นอัฒจันทร์ ความยาวคิดจากแนวจริง) */
+export interface LayoutCable {
+  id: string
+  from: string                // LayoutObject.id ต้นทาง (เช่น กล้อง)
+  to: string                  // LayoutObject.id ปลายทาง (เช่น รถ OB / FOH)
+  points: { x: number; z: number }[]  // จุดหักเลี้ยวระหว่างทาง (ความสูงตามผิวที่จุดนั้นเอง)
+  signal: SignalType
+  label?: string              // เช่น "SDI #12", "Fiber LC 2 คอร์"
+  note?: string
 }
 
 export interface PlanLayout {
@@ -569,6 +603,7 @@ export interface PlanLayout {
   name: string
   venue: VenueConfig
   objects: LayoutObject[]
+  cables?: LayoutCable[]
 }
 
 /** ค่าใช้จ่ายอื่นของงานที่ไม่ใช่อุปกรณ์ (รถตู้, ที่พัก, อาหาร…) — ไม่โผล่ในใบจัดของ */
@@ -608,7 +643,7 @@ export interface EquipmentPlan {
   updatedAt: string
 }
 
-// ── Revision ของแผน (จัดของ + ผังโยง + ผังวาง) — equipmentPlans/{planId}/revisions/{id} ──
+// ── Revision ของแผน (จัดของ + ผังระบบ + ผังวาง) — equipmentPlans/{planId}/revisions/{id} ──
 export type PlanRevisionSource = 'manual' | 'agent' | 'restore'
 
 /** สรุป revision ที่ฝังไว้ใน plan doc — ไว้โชว์ "Rev 3" และเช็กว่าแก้หลังจากนั้นหรือยัง (hash) */
