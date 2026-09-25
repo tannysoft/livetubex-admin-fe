@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CalendarDaysIcon, CubeIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { CalendarDaysIcon, CubeIcon, MagnifyingGlassIcon, PrinterIcon } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import FormCheckbox from '@/components/ui/FormCheckbox'
@@ -13,6 +13,7 @@ import { usageInRange, type RangeUsage } from '@/lib/equipment/availability'
 import { CATEGORY_COLORS, EQUIPMENT_CATEGORIES, PLAN_STATUSES } from '@/lib/equipment/constants'
 import { formatDate, formatDatePill } from '@/lib/utils'
 import type { Equipment, EquipmentPlan } from '@/lib/types'
+import { equipmentOwner, ownerCounts, ownerLabel } from '@/lib/equipment/owners'
 
 type Ownership = '' | 'owned' | 'partner' | 'rental'
 
@@ -45,6 +46,8 @@ export default function EquipmentAvailabilityPage() {
   const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
   const [onlyBooked, setOnlyBooked] = useState(false)
+  // เจ้าของ: '*' = ทุกบริษัท · OWN_OWNER = ของบริษัทเรา · อื่นๆ = ชื่อพาร์ทเนอร์/ผู้ให้เช่า
+  const [owner, setOwner] = useState('*')
 
   useEffect(() => {
     Promise.all([getEquipmentList(), getEquipmentPlans()])
@@ -78,6 +81,7 @@ export default function EquipmentAvailabilityPage() {
   const keyword = search.trim().toLowerCase()
   const filtered = rows.filter(({ eq, booked }) => {
     if (ownership && (eq.ownership ?? 'owned') !== ownership) return false
+    if (owner !== '*' && equipmentOwner(eq) !== owner) return false
     if (category && eq.category !== category) return false
     if (onlyBooked && booked === 0) return false
     if (!keyword) return true
@@ -91,15 +95,35 @@ export default function EquipmentAvailabilityPage() {
   const outCount = rows.filter((r) => r.booked > 0 && r.left === 0).length
   const overCount = rows.filter((r) => r.left < 0).length
   const outsideItems = plans.reduce((s, p) => s + p.items.filter((i) => !i.equipmentId).length, 0)
+  // เงื่อนไขที่กรองอยู่ — พิมพ์บนหัวกระดาษให้รู้ว่าเอกสารนี้ไม่ใช่รายการครบทุกชิ้น
+  const filterText = [
+    ownership && ({ owned: 'ของบริษัท', partner: 'พาร์ทเนอร์', rental: 'ของเช่า' } as const)[ownership],
+    owner !== '*' && ownerLabel(owner),
+    category && EQUIPMENT_CATEGORIES.find((c) => c.value === category)?.label,
+    keyword && `ค้นหา “${search.trim()}”`,
+    onlyBooked && 'เฉพาะที่ถูกจอง',
+  ].filter(Boolean).join(' · ')
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">ของเหลือในสต็อก</h1>
-        <p className="text-gray-500 mt-1">เลือกวันที่ แล้วดูว่าหลังหักของที่แผนงานจองไว้ ยังเหลืออะไรบ้าง</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 print:text-xl">ของเหลือในสต็อก <span className="hidden print:inline font-semibold">· {rangeLabel(start, end)}</span></h1>
+          <p className="text-gray-500 mt-1 print:hidden">เลือกวันที่ แล้วดูว่าหลังหักของที่แผนงานจองไว้ ยังเหลืออะไรบ้าง</p>
+          <p className="hidden print:block text-xs text-gray-500 mt-0.5">
+            {filterText ? `กรอง: ${filterText} · ` : ''}พิมพ์เมื่อ {formatDate(today)}
+          </p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          disabled={loading}
+          className="print:hidden flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-40"
+        >
+          <PrinterIcon className="w-4 h-4" /> พิมพ์
+        </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 print:hidden">
         <div className="flex items-end gap-3 flex-wrap">
           <div className="w-44">
             <span className="block text-xs font-semibold text-gray-500 mb-1.5">ตั้งแต่วันที่</span>
@@ -142,7 +166,7 @@ export default function EquipmentAvailabilityPage() {
         <div className="space-y-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 print:grid-cols-4 gap-3 print:gap-2">
             <Stat label="แผนงานในช่วงนี้" value={plans.length} />
             <Stat label="รายการที่ถูกจอง" value={bookedCount} />
             <Stat label="จองหมดแล้ว" value={outCount} tone={outCount > 0 ? 'amber' : undefined} />
@@ -168,10 +192,10 @@ export default function EquipmentAvailabilityPage() {
             <p className="text-sm text-gray-500">ไม่มีแผนงานในช่วง {rangeLabel(start, end)} — ของทุกชิ้นว่าง</p>
           )}
 
-          <div className="flex gap-3 flex-wrap items-center">
+          <div className="flex gap-3 flex-wrap items-center print:hidden">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
               {([['', 'ทั้งหมด'], ['owned', 'ของบริษัท'], ['partner', 'พาร์ทเนอร์'], ['rental', 'ของเช่า']] as const).map(([key, label]) => (
-                <button key={key} onClick={() => setOwnership(key)} className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${ownership === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                <button key={key} onClick={() => { setOwnership(key); setOwner('*') }} className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${ownership === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
                   {label}
                 </button>
               ))}
@@ -185,28 +209,40 @@ export default function EquipmentAvailabilityPage() {
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
               />
             </div>
+            <div className="w-60">
+              {/* รายชื่อบริษัทตามแท็บที่มา (ทั้งหมด/บริษัท/พาร์ทเนอร์/เช่า) */}
+              <FormListbox
+                value={owner}
+                onChange={setOwner}
+                options={[
+                  { value: '*', label: 'ทุกบริษัท' },
+                  ...ownerCounts(rows.filter((r) => !ownership || (r.eq.ownership ?? 'owned') === ownership).map((r) => equipmentOwner(r.eq)))
+                    .map((o) => ({ value: o.key, label: `${o.label} (${o.count})` })),
+                ]}
+              />
+            </div>
             <div className="w-52">
               <FormListbox value={category} onChange={setCategory} options={[{ value: '', label: 'ทุกหมวด' }, ...EQUIPMENT_CATEGORIES]} />
             </div>
             <FormCheckbox checked={onlyBooked} onChange={setOnlyBooked} label="เฉพาะที่ถูกจอง" />
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none print:overflow-visible">
             {groups.length === 0 ? (
               <div className="py-16 text-center">
                 <CubeIcon className="w-10 h-10 text-gray-300 mx-auto" />
                 <p className="text-gray-400 text-sm mt-3">ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto print:overflow-visible">
+                <table className="w-full text-sm print:text-xs">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-100">
                       <th className="px-5 py-3">อุปกรณ์</th>
                       <th className="px-3 py-3 text-right">ทั้งหมด</th>
                       <th className="px-3 py-3 text-right">จอง</th>
                       <th className="px-3 py-3 text-right">เหลือ</th>
-                      <th className="px-3 py-3 w-40" />
+                      <th className="px-3 py-3 w-40 print:w-24" />
                       <th className="px-5 py-3">แผนที่ใช้</th>
                     </tr>
                   </thead>
@@ -239,9 +275,9 @@ export default function EquipmentAvailabilityPage() {
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'amber' | 'red' }) {
   const color = tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-600' : 'text-gray-900'
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 print:shadow-none print:border-gray-300 print:py-2">
       <p className="text-xs text-gray-500">{label}</p>
-      <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+      <p className={`text-2xl print:text-lg font-bold tabular-nums ${color}`}>{value}</p>
     </div>
   )
 }
@@ -254,7 +290,7 @@ function AvailabilityRow({ row, multiDay }: { row: Row; multiDay: boolean }) {
   const leftColor = left < 0 ? 'text-red-600' : left === 0 ? 'text-amber-600' : 'text-green-700'
   const barColor = left < 0 ? 'bg-red-500' : left === 0 ? 'bg-amber-500' : 'bg-brand'
   return (
-    <tr className="border-b border-gray-50 align-top">
+    <tr className="border-b border-gray-50 align-top break-inside-avoid print:border-gray-200">
       <td className="px-5 py-2.5">
         <p className="font-medium text-gray-900">
           {eq.name}

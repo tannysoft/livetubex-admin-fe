@@ -20,6 +20,7 @@ import { fohSummary } from '@/lib/equipment/foh-feeds'
 import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
 import LabelSizePicker from '@/components/admin/equipment/LabelSizePicker'
 import { itemUseLabel } from '@/lib/equipment/availability'
+import { ownerCounts, sharedItemOwner } from '@/lib/equipment/owners'
 import { fetchSharedPlan, shareErrorMessage, type SharedPlan, type SharedPlanItem } from '@/lib/equipment/plan-share'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import type { PlanDiagram, PlanLayout } from '@/lib/types'
@@ -198,14 +199,18 @@ function SharedPlanPage() {
 function ItemsTab({ plan }: { plan: SharedPlan }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('destination')
   const [query, setQuery] = useState('')
+  // กรองตามเจ้าของ (บริษัทเรา / พาร์ทเนอร์ / ร้านเช่า) — null = ทั้งหมด · ของในชุดที่เป็นของเจ้าที่เลือกแต่กล้องไม่ใช่ = ขึ้นเป็นแถวเดี่ยว
+  const [owner, setOwner] = useState<string | null>(null)
+  const owners = useMemo(() => ownerCounts(plan.items.map(sharedItemOwner)), [plan.items])
   const q = query.trim().toLowerCase()
   const items = useMemo(() => {
-    if (!q) return plan.items
+    const base = owner == null ? plan.items : plan.items.filter((i) => sharedItemOwner(i) === owner)
+    if (!q) return base
     const hit = (i: SharedPlanItem) => [i.name, i.code, i.toLocation, i.fromLocation, i.note].some((v) => v?.toLowerCase().includes(q))
     // เจอเลนส์ → โชว์กล้องของมันด้วย (และกลับกัน) จะได้เห็นเป็นชุด
-    const ids = new Set(plan.items.filter(hit).map((i) => i.id))
-    return plan.items.filter((i) => ids.has(i.id) || (i.attachedTo && ids.has(i.attachedTo)))
-  }, [plan.items, q])
+    const ids = new Set(base.filter(hit).map((i) => i.id))
+    return base.filter((i) => ids.has(i.id) || (i.attachedTo && ids.has(i.attachedTo)))
+  }, [plan.items, q, owner])
   const labels = useMemo(() => camLabels(plan), [plan])
   const groups = groupItems(items, groupBy, labels)
   const totalQty = plan.items.reduce((s, i) => s + (i.quantity || 0), 0)
@@ -258,7 +263,21 @@ function ItemsTab({ plan }: { plan: SharedPlan }) {
       </div>
       <p className="text-xs text-gray-500 px-1 lg:hidden">ทั้งหมด {plan.items.length} รายการ · {totalQty} ชิ้น</p>
 
-      {groups.length === 0 && <p className="py-10 text-center text-sm text-gray-400">{q ? 'ไม่พบอุปกรณ์ที่ค้นหา' : 'ยังไม่มีรายการอุปกรณ์'}</p>}
+      {owners.length > 1 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto -mx-3 px-3 lg:mx-0 lg:px-0 lg:flex-wrap [scrollbar-width:none]">
+          {[{ key: null as string | null, label: 'ทุกบริษัท', count: plan.items.length }, ...owners].map((o) => (
+            <button
+              key={o.key ?? '*'}
+              onClick={() => setOwner(o.key)}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-sm border ${owner === o.key ? 'bg-brand text-white border-brand' : 'bg-white text-gray-600 border-gray-200'}`}
+            >
+              {o.label} <span className={owner === o.key ? 'text-white/80' : 'text-gray-400'}>{o.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 && <p className="py-10 text-center text-sm text-gray-400">{q || owner != null ? 'ไม่พบอุปกรณ์ที่ค้นหา' : 'ยังไม่มีรายการอุปกรณ์'}</p>}
       {/* desktop: กลุ่มเรียงเป็นคอลัมน์ (masonry) ใช้ความกว้างแทนการเลื่อนยาว */}
       <div className="space-y-3 lg:space-y-0 lg:columns-2 2xl:columns-3 lg:gap-3">
       {groups.map((g) => (

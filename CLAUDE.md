@@ -843,7 +843,7 @@ allowlist field ของ item (ไม่มีต้นทุน/ผู้ใ�
 > อ่านผ่าน `clipItemRange()`/`itemUseLabel()` เสมอ · ตารางจัดของตั้งวันได้เฉพาะงานหลายวัน, ของเช่า → `rentalDays` = จำนวนวันที่ใช้, ของติดกล้องที่วันตรงกับกล้องเปลี่ยนตาม
 > `PlanItem.attachedTo` = id ของแถวแม่ในแผน (เลนส์ → กล้อง) — ตาราง/print วาดใต้กล้อง (หมวดกล้อง), แถวแม่หาย = กลับเป็นแถวปกติ
 > เลนส์รุ่นเดียวกันจับคู่หลายกล้องได้ = **หลายแถว equipmentId ซ้ำ** → เช็กของว่างต้องรวมจำนวนต่อ equipmentId (`planConflicts` ทำแล้ว,
-> picker ทุกตัวรับ `inPlanQty` (แถวกล้องมีปุ่มเดียว "+ เพิ่มของ" → picker ทุกหมวด ติดกล้องนั้น + เช่าเพิ่มนอกสต็อก)) · ลบกล้อง = ถอดคู่ ไม่ลบเลนส์ · เปลี่ยนปลายทางกล้อง → เลนส์ที่ปลายทางเดิมตรงกันย้ายตาม
+> picker ทุกตัวรับ `inPlanQty` (แถวกล้องมีปุ่มเดียว "+ เพิ่มของ" → picker ทุกหมวด ติดกล้องนั้น + เช่าเพิ่มนอกสต็อก)) · ปุ่ม "เปลี่ยน" ทุกแถวในสต็อก (ยังไม่ลงบัญชี) = `replaceWithStock` เปลี่ยนเป็นของตัวอื่น/เจ้าอื่น คงแถว (id, ปลายทาง, ของในชุด, วันใช้) + กล่องในผัง (label/port เดิม, sub รุ่นใหม่) · ลบกล้อง = ถอดคู่ ไม่ลบเลนส์ · เปลี่ยนปลายทางกล้อง → เลนส์ที่ปลายทางเดิมตรงกันย้ายตาม
 > ผู้ช่วย AI: `add_items`/`update_items` มี `attachTo` (ฝาแฝดใน `workspace.ts`)
 > `DiagramEdge.from/to` = `{ nodeId, side: 'in'|'out'|'io', index }` — **อ้าง port ด้วย index**
 > `DiagramNode.note` = หมายเหตุของกล่อง วาดเป็นแถบเหลืองใต้ port (`wrapNote` ตัดคำไทยด้วย `Intl.Segmenter`, ≤ `NOTE_MAX_LINES` บรรทัด
@@ -871,6 +871,7 @@ lib/equipment/
 ├── foh-diagram.ts   # buildFohDiagram: feed → ผัง "ส่งภาพ FOH — ทีม Visual" (สวิตเชอร์ → converter/fiber/encoder → เครื่อง FOH)
 ├── recording-format.ts # format ไฟล์บันทึก: codec → นามสกุลไฟล์ตั้งต้น, presets, recordingsLabel
 ├── video-format.ts  # ระบบภาพ: presets, formatFullLabel, sdiLevel (ส่งเป็นข้อความให้ผู้ช่วย AI ด้วย)
+├── owners.ts        # "เจ้าของ" ของอุปกรณ์ (OWN_OWNER = บริษัทเรา / partnerName / rentalVendor) — กรองทีละบริษัทในหน้าของเหลือ (dropdown) ตารางรายการในแผน (chips, `PlanItemsTable.ownerFilter`) และหน้าแชร์ทีมงาน (`sharedItemOwner` ใช้ fromLocation เพราะ allowlist ไม่ส่ง rentalVendor)
 ├── revisions.ts     # revision: create/list/get/delete, planContentHash, restoreContent
 └── plan-diff.ts     # diffItems / changedDiagrams / removedDiagrams — ใช้ทั้งร่าง AI และหน้า revision
 
@@ -899,7 +900,7 @@ components/admin/equipment/
 
 app/admin/equipment/
 ├── inventory/page.tsx     # สต็อกอุปกรณ์ (CRUD + ค้นหา + ทำสำเนา)
-├── availability/page.tsx  # ของเหลือตามช่วงวันที่ — หักของที่แผน (ยังไม่เก็บกลับ) จองไว้ · usageInRange() ใช้ยอดวันพีค ไม่รวมแผนคนละวัน
+├── availability/page.tsx  # ของเหลือตามช่วงวันที่ (มีปุ่มพิมพ์) — หักของที่แผน (ยังไม่เก็บกลับ) จองไว้ · usageInRange() ใช้ยอดวันพีค ไม่รวมแผนคนละวัน
 ├── plans/page.tsx         # รายการแผน + สร้าง/สำเนา/ลบ
 ├── plans/edit/page.tsx    # ?id=xxx — แท็บ รายการอุปกรณ์ / ผังโยง (autosave)
 ├── plans/print/page.tsx   # ?id=xxx — เลือกส่วนที่จะพิมพ์ แล้ว window.print()
@@ -924,7 +925,7 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
   ห้ามอ่าน `plan` state ใน `save()` — ต้องอ่านจาก ref ไม่งั้น save ที่ค้างอยู่ได้ค่าเก่า
   ปุ่มพิมพ์ต้อง `await save()` ก่อน navigate เพราะหน้า print อ่านจาก Firestore
 - **Print ใช้ CSS ไม่ใช่ react-pdf**: `@page` ใน `globals.css` — **ทุกหน้าเป็น A4 แนวนอน** (ผู้ใช้ขอ — แนวตั้งไม่สวย), `.print-landscape`/`.print-portrait`
-  เหลือแค่ขึ้นหน้าใหม่ (ชื่อ class เก่า) · หน้าพิมพ์แผนเป็นที่เดียวที่ใช้ `window.print()` sidebar/toolbar ซ่อนด้วย `print:hidden`
+  เหลือแค่ขึ้นหน้าใหม่ (ชื่อ class เก่า) · ใช้ `window.print()` 2 ที่: หน้าพิมพ์แผน และหน้าของเหลือในสต็อก (`availability` — ซ่อนตัวกรองด้วย `print:hidden`, หัวกระดาษบอกช่วงวัน + ตัวกรอง) sidebar/toolbar ซ่อนด้วย `print:hidden`
   `app/admin/layout.tsx` มี `print:ml-0 print:p-0` — ห้ามเอาออก ไม่งั้นเอกสารเยื้องขวาเท่าความกว้าง sidebar
 - **React ผูก `wheel` แบบ passive** → zoom/pan ของ canvas ผูก native listener เอง (`{ passive: false }`)
 - **ผังวาง 3D**: หน่วยเมตร, x = ซ้าย-ขวา, z = ลึก (เวทีอยู่ฝั่ง -z), `rotation` 0° = หันหาเวที หมุนตามเข็ม

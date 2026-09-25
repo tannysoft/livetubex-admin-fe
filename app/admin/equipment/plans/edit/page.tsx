@@ -28,6 +28,7 @@ import { getEquipmentPlan, getEquipmentPlans, updateEquipmentPlan, newId } from 
 import { overlappingPlans, planConflicts, planRange, usageByEquipment } from '@/lib/equipment/availability'
 import { FOH_DIAGRAM_NAME, buildFohDiagram, mergeDiagrams } from '@/lib/equipment/foh-diagram'
 import { newLayout } from '@/lib/equipment/layout-zones'
+import { itemOwner, ownerCounts } from '@/lib/equipment/owners'
 import { ArrowDownTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { getEquipmentList } from '@/lib/equipment/equipment'
 import { PLAN_STATUSES } from '@/lib/equipment/constants'
@@ -74,6 +75,8 @@ function PlanEditor() {
   const [agentApplied, setAgentApplied] = useState(0)
   const [confirmFoh, setConfirmFoh] = useState(false)
   const [confirmMerge, setConfirmMerge] = useState(false)
+  // กรองตารางรายการตามเจ้าของ (บริษัทเรา / พาร์ทเนอร์ / ผู้ให้เช่า) — null = ทั้งหมด
+  const [ownerFilter, setOwnerFilter] = useState<string | null>(null)
   // Export ตั้งค่า ATEM — ปุ่มเด่นบนแถบแท็บผังโยง (หลายสวิตเชอร์ = เลือกก่อน)
   const [atemMenu, setAtemMenu] = useState(false)
   const [atemFor, setAtemFor] = useState<string | null>(null)
@@ -242,10 +245,18 @@ function PlanEditor() {
     }
     delete next.isRental
     if (origin === 'owned') { delete next.rentalVendor; delete next.unitCost; delete next.rentalDays }
+    // ชื่อแถวเดิมที่ผู้ใช้ตั้งเอง (เช่น "กล้อง 7") ไม่ใช่ชื่อรุ่นเดิม → คงไว้
+    const oldEq = row.equipmentId ? equipmentById.get(row.equipmentId) : undefined
+    if (oldEq && row.name !== oldEq.name) next.name = row.name
+    const model = (x?: Equipment) => [x?.brand, x?.model].filter(Boolean).join(' ')
+    const oldModel = model(oldEq)
+    const newModel = model(e)
     const diagrams = plan.diagrams.map((d) => ({
       ...d,
       nodes: d.nodes.map((n) => n.planItemId !== row.id ? n : {
         ...n, equipmentId: e.id,
+        // บรรทัดรองที่ขึ้นต้นด้วยรุ่นเดิม → เปลี่ยนเป็นรุ่นใหม่ (ชื่อกล่อง เช่น "CAM 7" และ port เดิมคงไว้ ไม่ให้เส้นหลุด)
+        ...(oldModel && n.sub?.startsWith(oldModel) ? { sub: (newModel || e.name) + n.sub.slice(oldModel.length) } : {}),
         ...(!n.inputs.length && !n.outputs.length && !(n.ios ?? []).length ? { inputs: e.inputs ?? [], outputs: e.outputs ?? [], ios: e.ios ?? [] } : {}),
       }),
     }))
@@ -606,7 +617,23 @@ function PlanEditor() {
               </button>
             </div>
           </div>
-          <PlanItemsTable items={plan.items} onChange={(items) => change({ items })} vendorOptions={knownVendors} locationOptions={knownLocations} onAddKit={setKitFor} planDate={plan.date} planEndDate={plan.endDate} camLabels={camLabels(plan)} onPickFromStock={setReplaceRow} />
+          {(() => {
+            const owners = ownerCounts(plan.items.map(itemOwner))
+            if (owners.length < 2) return null
+            const chip = (active: boolean) => `shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`
+            return (
+              <div className="flex items-center gap-1.5 overflow-x-auto px-5 py-2.5 border-b border-gray-100 [scrollbar-width:none]">
+                <span className="shrink-0 text-xs text-gray-400 mr-1">เจ้าของ</span>
+                <button onClick={() => setOwnerFilter(null)} className={chip(ownerFilter == null)}>ทั้งหมด {plan.items.length}</button>
+                {owners.map((o) => (
+                  <button key={o.key || '_none'} onClick={() => setOwnerFilter(o.key)} className={chip(ownerFilter === o.key)}>
+                    {o.label} {o.count}
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+          <PlanItemsTable ownerFilter={ownerFilter ?? undefined} items={plan.items} onChange={(items) => change({ items })} vendorOptions={knownVendors} locationOptions={knownLocations} onAddKit={setKitFor} planDate={plan.date} planEndDate={plan.endDate} camLabels={camLabels(plan)} onPickFromStock={setReplaceRow} />
 
         </div>
 
@@ -687,17 +714,17 @@ function PlanEditor() {
         onConfirm={(picked) => addPicked(picked)}
       />
 
-      {/* แทนแถวนอกสต็อกด้วยของเช่า/พาร์ทเนอร์ในสต็อก — เปิดแท็บตามที่มาเดิม ค้นด้วยชื่อเดิมถ้าเจอ */}
+      {/* แทนแถวด้วยของในสต็อก: แถวนอกสต็อก → เปิดแท็บตามที่มาเดิม ค้นด้วยชื่อเดิม · แถวในสต็อก (ปุ่ม "เปลี่ยน") → ทุกที่มา หมวดเดิม */}
       <EquipmentPicker
         key={replaceRow?.id ?? 'none-replace'}
         isOpen={!!replaceRow}
         onClose={() => setReplaceRow(null)}
         single
-        title={`เลือกจากสต็อกแทน “${replaceRow?.name || 'แถวนอกสต็อก'}”`}
-        initialOwnership={replaceRow?.origin === 'partner' ? 'partner' : 'rental'}
-        initialSearch={replaceRow && equipment.some((e) => e.name.toLowerCase().includes(replaceRow.name.trim().toLowerCase())) ? replaceRow.name.trim() : ''}
+        title={replaceRow?.equipmentId ? `เปลี่ยน “${replaceRow.name}” เป็นของตัวอื่น` : `เลือกจากสต็อกแทน “${replaceRow?.name || 'แถวนอกสต็อก'}”`}
+        initialOwnership={replaceRow?.equipmentId ? '' : replaceRow?.origin === 'partner' ? 'partner' : 'rental'}
+        initialSearch={replaceRow && !replaceRow.equipmentId && equipment.some((e) => e.name.toLowerCase().includes(replaceRow.name.trim().toLowerCase())) ? replaceRow.name.trim() : ''}
         initialCategory={replaceRow && replaceRow.category !== 'other' ? replaceRow.category : ''}
-        equipment={equipment}
+        equipment={replaceRow?.equipmentId ? equipment.filter((e) => e.id !== replaceRow.equipmentId) : equipment}
         existingIds={new Set()}
         inPlanQty={inPlanQty}
         usage={usage}
