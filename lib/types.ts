@@ -28,8 +28,9 @@ export interface Job {
   id: string
   title: string
   description: string
-  date: string // ISO date string
-  endDate?: string
+  date: string // ISO date string — วันแรก
+  endDate?: string // วันสุดท้าย (งานเว้นวันก็เป็นวันสุดท้ายจริง)
+  dates?: string[] // วันงานจริงเมื่อเว้นวัน (เช่น 22,23,25) — ไม่มี = ทุกวันใน date..endDate · อ่านผ่าน jobDays() (lib/job-dates.ts)
   location: string
   clientName: string
   docNumber?: string // เลขที่เอกสารอ้างอิงของงาน (เช่น เลขใบเสนอราคา/PO) — พิมพ์เอง ไม่ auto
@@ -83,6 +84,7 @@ export interface Freelancer {
   totalEarned: number
   createdAt: string
   isActive: boolean
+  nickname?: string         // ชื่อเล่น — กรอกตอนสมัคร LIFF / admin แก้ได้ · โชว์คู่ชื่อจริงในรายชื่อทีมงาน
   position?: string         // ตำแหน่งงานหลัก (ชื่อจาก positions) — เลือกตอนสมัคร LIFF / admin แก้ได้ · เป็นค่าตั้งต้นตอนขอเบิก
 }
 

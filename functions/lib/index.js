@@ -814,9 +814,35 @@ function jobGoogleCalendarUrl(job) {
     const q = new URLSearchParams({ action: 'TEMPLATE', text: job.title, dates: `${ymd(start)}/${ymd(end)}` });
     if (job.location)
         q.set('location', job.location);
-    if (job.description)
-        q.set('details', job.description.slice(0, 1500));
+    // งานเว้นวัน: template ของ Google ได้ช่วงเดียว → คลุมทั้งช่วง + บอกวันงานจริงในรายละเอียด (ฝาแฝด lib/calendar.ts)
+    const gap = job.dates && job.dates.length ? `วันงาน: ${thaiDateRuns(job.dates)} (เว้นวัน)` : '';
+    const details = [gap, job.description?.slice(0, 1500)].filter(Boolean).join('\n\n');
+    if (details)
+        q.set('details', details);
     return `https://calendar.google.com/calendar/render?${q.toString().replace('%2F', '/')}`;
+}
+/** งานเว้นวัน ["2026-09-22","2026-09-23","2026-09-25"] → "22–23, 25 ก.ย. 2569" (ฝาแฝดแบบย่อของ formatDateRuns ใน lib/job-dates.ts) */
+function thaiDateRuns(days) {
+    const sorted = [...new Set(days)].sort();
+    const next = (d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+    const runs = [];
+    for (const d of sorted) {
+        const l = runs[runs.length - 1];
+        if (l && next(l.e) === d)
+            l.e = d;
+        else
+            runs.push({ s: d, e: d });
+    }
+    const f = (d, opts) => new Date(d + 'T00:00:00Z').toLocaleDateString('th-TH', { timeZone: 'UTC', ...opts });
+    return runs.map((r, i) => {
+        const last = i === runs.length - 1;
+        const nextMonth = !last && runs[i + 1].s.slice(0, 7) !== r.e.slice(0, 7);
+        const endOpts = last ? { day: 'numeric', month: 'short', year: 'numeric' } : nextMonth ? { day: 'numeric', month: 'short' } : { day: 'numeric' };
+        if (r.s === r.e)
+            return f(r.s, endOpts);
+        const startOpts = r.s.slice(0, 7) === r.e.slice(0, 7) ? { day: 'numeric' } : { day: 'numeric', month: 'short' };
+        return `${f(r.s, startOpts)}–${f(r.e, endOpts)}`;
+    }).join(', ');
 }
 function thaiDateRange(date, endDate) {
     const f = (d, opts) => new Date(d + 'T00:00:00Z').toLocaleDateString('th-TH', { timeZone: 'UTC', ...opts });
@@ -849,7 +875,7 @@ exports.sendJobDetails = (0, https_1.onCall)({ cors: CORS_ORIGINS, secrets: [LIN
     const brand = await getBrandInfo();
     const liffId = await getLiffId();
     const color = brand.primaryColor;
-    const dateText = job.date ? thaiDateRange(job.date, job.endDate) : '-';
+    const dateText = job.dates?.length ? thaiDateRuns(job.dates) : job.date ? thaiDateRange(job.date, job.endDate) : '-';
     const row = (label, value) => ({
         type: 'box', layout: 'baseline', spacing: 'md',
         contents: [

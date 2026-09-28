@@ -21,6 +21,7 @@ import {
 } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
 import { formatCurrency, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
+import { formatJobDates } from '@/lib/job-dates'
 import { SkeletonTableRow } from '@/components/ui/Skeleton'
 import { getCalendarEntries } from '@/lib/calendar'
 import { getAccountingStatuses, setJobAccountingStatus, type AccountingStatusDef } from '@/lib/job-accounting'
@@ -190,9 +191,6 @@ export default function JobsPage() {
               ) : (
                 filtered.map((job) => {
                   const showing = job.showInLiff !== false
-                  const d = new Date(job.date + 'T00:00:00')
-                  const multiDay = !!job.endDate && job.endDate !== job.date
-                  const dEnd = new Date((multiDay ? job.endDate! : job.date) + 'T00:00:00')
                   return (
                     <tr
                       key={job.id}
@@ -203,7 +201,7 @@ export default function JobsPage() {
                       {/* วันงาน */}
                       <td className="px-5 py-4 whitespace-nowrap align-top">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-700">
-                          {jobDateLabel(d, dEnd, multiDay)}
+                          {formatJobDates(job, { shortYear: true })}
                         </span>
                       </td>
 
@@ -344,14 +342,3 @@ export default function JobsPage() {
   )
 }
 
-const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-// วันที่แบบกระชับบรรทัดเดียว: "3 ก.ค. 68" / "3–5 ก.ค. 68" / "28 ก.ค. – 2 ส.ค. 68"
-function jobDateLabel(d: Date, dEnd: Date, multiDay: boolean): string {
-  const yy = (dd: Date) => String((dd.getFullYear() + 543) % 100)
-  if (!multiDay) return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)}`
-  if (d.getFullYear() !== dEnd.getFullYear())
-    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)} – ${dEnd.getDate()} ${THAI_MONTHS[dEnd.getMonth()]} ${yy(dEnd)}`
-  if (d.getMonth() !== dEnd.getMonth())
-    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} – ${dEnd.getDate()} ${THAI_MONTHS[dEnd.getMonth()]} ${yy(d)}`
-  return `${d.getDate()}–${dEnd.getDate()} ${THAI_MONTHS[d.getMonth()]} ${yy(d)}`
-}

@@ -36,23 +36,10 @@ import {
 import { uploadExpenseSlip, uploadProfilePictureFromUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
 import { calcTax, formatCurrency, formatDatePill, formatDate } from '@/lib/utils'
+import { jobDays } from '@/lib/job-dates'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
 
 type PageState = 'loading' | 'not-logged-in' | 'ready' | 'error'
-
-function getDatesInRange(start: string, end?: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(start + 'T00:00:00')
-  const last = new Date((end || start) + 'T00:00:00')
-  while (cur <= last) {
-    const y = cur.getFullYear()
-    const m = String(cur.getMonth() + 1).padStart(2, '0')
-    const d = String(cur.getDate()).padStart(2, '0')
-    dates.push(`${y}-${m}-${d}`)
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
-}
 
 export default function FreelancerPage() {
   const router = useRouter()
@@ -186,7 +173,7 @@ export default function FreelancerPage() {
 
   const jobDates = useMemo(() => {
     if (!selectedJob) return []
-    return getDatesInRange(selectedJob.date, selectedJob.endDate)
+    return jobDays(selectedJob)
   }, [selectedJob])
 
   const openModal = (jobId = '') => {

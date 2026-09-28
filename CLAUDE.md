@@ -48,7 +48,8 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | title | string | |
 | description | string | |
 | date | string | ISO date (YYYY-MM-DD) |
-| endDate | string? | ถ้าเป็นงานหลายวัน |
+| endDate | string? | ถ้าเป็นงานหลายวัน — วันสุดท้ายจริงเสมอ (รวมงานเว้นวัน) |
+| dates | string[]? | **งานเว้นวัน** (เช่น 22, 23, 25) — เก็บเฉพาะเมื่อไม่ติดกัน · `date`/`endDate` = วันแรก/วันสุดท้าย · อ่านวันจริงผ่าน `jobDays()` / แสดงผล `formatJobDates()` (`lib/job-dates.ts`) — ปฏิทินงานแยกแถบตามช่วง, วันที่ทำงานตอนเบิกมีแค่วันงานจริง, ข้อความ LINE ใช้ `thaiDateRuns` (ฝาแฝดฝั่ง functions) · ลิงก์ Google Calendar ได้ช่วงเดียว → คลุมทั้งช่วง + บอกวันจริงในรายละเอียด · ฟอร์มงานเลือกวันด้วย `FormMultiDatePicker` อย่างเดียว (กดทีละวัน ติดกัน/เว้นวันได้) · `updateJob` รับ `dates: []` = ลบ field |
 | location | string | |
 | clientName | string | |
 | docNumber | string? | เลขที่เอกสารอ้างอิง (ใบเสนอราคา/PO) — พิมพ์เองในฟอร์มงาน ค้นหาได้ในหน้ารายการงาน · อยู่ใน jobs doc (LIFF อ่านได้ — ไม่ใช่ข้อมูลลับ) |
@@ -86,6 +87,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | idCardImagePath | string? | **Storage path** (ไม่มี token) เช่น `idCards/{uid}/id_card.jpg` |
 | totalEarned | number | update ด้วย `increment()` เท่านั้น |
 | isActive | boolean | |
+| nickname | string? | ชื่อเล่น — กรอกตอนสมัคร LIFF (ไม่บังคับ), admin แก้ใน FreelancerForm · โชว์ "ชื่อจริง (ชื่อเล่น)" + ค้นหาได้ในรายชื่อทีมงาน/หน้าต่างส่ง LINE |
 | position | string? | ตำแหน่งงานหลัก (ชื่อจาก `positions`) — เลือกตอนสมัคร LIFF (บังคับเมื่อมีตำแหน่งในระบบ), admin แก้ใน FreelancerForm · เป็นค่าตั้งต้นของตำแหน่งตอนขอเบิก |
 | createdAt | string | |
 

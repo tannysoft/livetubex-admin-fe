@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
-import FormDatePicker from '@/components/ui/FormDatePicker'
+import FormMultiDatePicker from '@/components/ui/FormMultiDatePicker'
+import { jobDays, normalizeJobDates } from '@/lib/job-dates'
 import type { Job, JobStatus } from '@/lib/types'
 import { generatePaymentCycleOptions } from '@/lib/utils'
 import type { AccountingStatusDef } from '@/lib/job-accounting'
@@ -12,6 +14,8 @@ type FormData = {
   description: string
   date: string
   endDate?: string
+  /** เว้นวัน = วันงานจริง · [] = ช่วงวันติดกัน (ตอนแก้งาน = ลบ field) */
+  dates?: string[]
   location: string
   clientName: string
   docNumber?: string
@@ -45,8 +49,9 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
   const {
     register,
     control,
-    watch,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormData>({
     defaultValues: {
@@ -65,14 +70,23 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
     },
   })
 
-  const startDateValue = watch('date')
+  // วันงาน = เลือกทีละวัน (ติดกันหรือเว้นวันก็ได้ เช่น 22–23 และ 25) → date/endDate/dates ตอนบันทึก
+  const [days, setDays] = useState<string[]>(() => (defaultValues?.date ? jobDays({ date: defaultValues.date.slice(0, 10), endDate: defaultValues.endDate?.slice(0, 10), dates: defaultValues.dates }) : []))
+
+  const submit = (data: FormData) => {
+    if (!days.length) {
+      setError('date', { message: 'กรุณาเลือกวันงานอย่างน้อย 1 วัน' })
+      return
+    }
+    return onSubmit({ ...data, ...normalizeJobDates(days) })
+  }
 
   const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1'
   const errorCls = 'text-xs text-red-500 mt-1'
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(submit)} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className={labelCls}>ชื่องาน *</label>
@@ -86,47 +100,10 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
           {errors.description && <p className={errorCls}>{errors.description.message}</p>}
         </div>
 
-        <div>
-          <label className={labelCls} htmlFor="job-date-start">
-            วันที่เริ่มงาน *
-          </label>
-          <Controller
-            name="date"
-            control={control}
-            rules={{ required: 'กรุณาเลือกวันที่เริ่มงาน' }}
-            render={({ field }) => (
-              <FormDatePicker
-                id="job-date-start"
-                value={field.value}
-                onChange={field.onChange}
-                placeholder="เลือกวันที่เริ่ม"
-                buttonClassName={inputCls}
-                invalid={!!errors.date}
-              />
-            )}
-          />
+        <div className="sm:col-span-2">
+          <label className={labelCls} htmlFor="job-dates">วันงาน *</label>
+          <FormMultiDatePicker id="job-dates" value={days} onChange={(v) => { setDays(v); if (v.length) clearErrors('date') }} placeholder="เลือกวันงาน (กดได้หลายวัน)" buttonClassName={inputCls} invalid={!!errors.date} />
           {errors.date && <p className={errorCls}>{errors.date.message}</p>}
-        </div>
-
-        <div>
-          <label className={labelCls} htmlFor="job-date-end">
-            วันที่สิ้นสุด
-          </label>
-          <Controller
-            name="endDate"
-            control={control}
-            render={({ field }) => (
-              <FormDatePicker
-                id="job-date-end"
-                value={field.value ?? ''}
-                onChange={field.onChange}
-                placeholder="ไม่บังคับ"
-                buttonClassName={inputCls}
-                minDate={startDateValue || undefined}
-                allowClear
-              />
-            )}
-          />
         </div>
 
         <div className="sm:col-span-2">

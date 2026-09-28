@@ -61,7 +61,7 @@ export default function SendPlanModal({ plan, onClose, onOpenShare, flush }: {
 
   const kw = q.trim().toLowerCase()
   const people = useMemo(
-    () => freelancers.filter((f) => !kw || [f.name, f.lineDisplayName, f.phone].some((v) => v?.toLowerCase().includes(kw))),
+    () => freelancers.filter((f) => !kw || [f.name, f.nickname, f.lineDisplayName, f.phone].some((v) => v?.toLowerCase().includes(kw))),
     [freelancers, kw],
   )
   const toggle = (set: (fn: (s: Set<string>) => Set<string>) => void, id: string) =>
@@ -177,7 +177,7 @@ export default function SendPlanModal({ plan, onClose, onOpenShare, flush }: {
               <div className="mt-2 space-y-2">
                 <label className="relative block">
                   <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อ, ชื่อ LINE, เบอร์โทร" className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อ, ชื่อเล่น, ชื่อ LINE, เบอร์โทร" className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand" />
                 </label>
                 <ul className="max-h-[32vh] overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
                   {people.length === 0 && <li className="px-4 py-6 text-center text-sm text-gray-400">ไม่พบ freelancer</li>}
@@ -195,7 +195,7 @@ export default function SendPlanModal({ plan, onClose, onOpenShare, flush }: {
                           className={`px-4 py-2 ${ok ? 'hover:bg-gray-50' : ''}`}
                           label={<span className="flex items-center gap-3">
                             <span className="flex-1 min-w-0">
-                              <span className="block text-sm text-gray-900 truncate">{f.name || f.lineDisplayName}</span>
+                              <span className="block text-sm text-gray-900 truncate">{f.name || f.lineDisplayName}{f.nickname && <span className="text-gray-500"> ({f.nickname})</span>}</span>
                               {f.position && <span className="block text-xs text-gray-500 truncate">{f.position}</span>}
                             </span>
                             {!ok && <span className="text-[11px] text-gray-400">ไม่มี LINE</span>}

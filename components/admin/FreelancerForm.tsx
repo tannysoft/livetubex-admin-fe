@@ -19,6 +19,7 @@ type FormData = {
   lineDisplayName: string
   isActive: boolean
   position: string
+  nickname: string
 }
 
 interface FreelancerFormProps {
@@ -70,6 +71,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       lineDisplayName: defaultValues?.lineDisplayName ?? '',
       isActive: defaultValues?.isActive ?? true,
       position: defaultValues?.position ?? '',
+      nickname: defaultValues?.nickname ?? '',
     },
   })
 
@@ -92,6 +94,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       idCardImagePath: defaultValues?.idCardImagePath ?? '',
       isActive: data.isActive,
       position: data.position,
+      nickname: data.nickname.trim(),
     })
   }
 
@@ -140,6 +143,12 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
             placeholder="นามสกุล"
           />
           {errors.lastName && <p className={errorCls}>{errors.lastName.message}</p>}
+        </div>
+
+        {/* ชื่อเล่น */}
+        <div className="min-w-0">
+          <label className={labelCls}>ชื่อเล่น</label>
+          <input {...register('nickname')} className={inputCls} placeholder="เช่น ต้น" maxLength={40} />
         </div>
 
         <div>
