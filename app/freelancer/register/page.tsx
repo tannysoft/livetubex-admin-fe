@@ -28,6 +28,7 @@ type FormData = {
   bankName: string
   bankAccount: string
   position: string
+  nickname: string
 }
 
 const bankOptions = [
@@ -89,7 +90,7 @@ export default function FreelancerRegisterPage() {
     reset,
     formState: { errors },
   } = useForm<FormData>({
-    defaultValues: { namePrefix: 'นาย', firstName: '', lastName: '', phone: '', email: '', bankName: '', bankAccount: '', position: '' },
+    defaultValues: { namePrefix: 'นาย', firstName: '', lastName: '', phone: '', email: '', bankName: '', bankAccount: '', position: '', nickname: '' },
   })
 
   useEffect(() => {
@@ -124,6 +125,7 @@ export default function FreelancerRegisterPage() {
             bankName: existing.bankName,
             bankAccount: existing.bankAccount,
             position: existing.position ?? '',
+            nickname: existing.nickname ?? '',
           })
           if (existing.idCardImagePath) {
             setExistingIdCardPath(existing.idCardImagePath)
@@ -205,6 +207,7 @@ export default function FreelancerRegisterPage() {
         bankAccount: data.bankAccount,
         bankName: data.bankName,
         position: data.position,
+        nickname: data.nickname,
         idCardImagePath: idCardFile ? (existingIdCardPath || undefined) : (existingIdCardPath || undefined),
       }, !isEdit ? freelancerDocId : undefined)
 
@@ -380,6 +383,11 @@ export default function FreelancerRegisterPage() {
                   placeholder="นามสกุล"
                 />
                 {errors.lastName && <p className={errorCls}>{errors.lastName.message}</p>}
+              </div>
+
+              <div className="min-w-0">
+                <label className={labelCls}>ชื่อเล่น</label>
+                <input {...register('nickname')} className={inputCls} placeholder="เช่น ต้น" maxLength={40} />
               </div>
 
               <div>

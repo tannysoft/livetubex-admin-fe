@@ -18,6 +18,7 @@ import {
   CALENDAR_COLORS, addCalendarEntry, addJobToCalendar, deleteCalendarEntry, setGoogleAdded, getCalendarEntries, updateCalendarEntry,
 } from '@/lib/calendar'
 import { THAI_MONTHS, formatDate, formatDatePill, jobStatusColor, jobStatusLabel, thaiYear } from '@/lib/utils'
+import { formatJobDates, jobDateRuns } from '@/lib/job-dates'
 import type { CalendarEntry, Job } from '@/lib/types'
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -61,6 +62,8 @@ function ymd(d: Date): string {
 
 /** รายการที่โชว์บนปฏิทิน — งานอ่านชื่อ/วันจาก jobs สด โน้ตใช้ค่าของตัวเอง */
 interface Item {
+  /** entry.id + ช่วงที่ — งานเว้นวัน (22–23, 25) = 1 รายการต่อช่วงวันติดกัน */
+  key: string
   entry: CalendarEntry
   job?: Job
   title: string
@@ -70,14 +73,14 @@ interface Item {
   color?: string
 }
 
-function toItem(entry: CalendarEntry, jobs: Map<string, Job>): Item | null {
+function toItems(entry: CalendarEntry, jobs: Map<string, Job>): Item[] {
   if (entry.type === 'job') {
     const job = entry.jobId ? jobs.get(entry.jobId) : undefined
-    if (!job?.date) return null // งานถูกลบ/ไม่มีวัน — ไม่โชว์บนตาราง (ยังลบออกได้จากรายการด้านล่าง)
-    return { entry, job, title: job.title, start: job.date, end: job.endDate && job.endDate > job.date ? job.endDate : job.date }
+    if (!job?.date) return [] // งานถูกลบ/ไม่มีวัน — ไม่โชว์บนตาราง (ยังลบออกได้จากรายการด้านล่าง)
+    return jobDateRuns(job).map((r, i) => ({ key: `${entry.id}#${i}`, entry, job, title: job.title, start: r.start, end: r.end }))
   }
-  if (!entry.date) return null
-  return { entry, title: entry.title || 'โน้ต', start: entry.date, end: entry.endDate && entry.endDate > entry.date ? entry.endDate : entry.date }
+  if (!entry.date) return []
+  return [{ key: entry.id, entry, title: entry.title || 'โน้ต', start: entry.date, end: entry.endDate && entry.endDate > entry.date ? entry.endDate : entry.date }]
 }
 
 type Editing =
@@ -111,7 +114,7 @@ export default function CalendarPage() {
   const jobById = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs])
   const items = useMemo(() => {
     const acct = new Map(acctStatuses.map((st) => [st.id, st.color]))
-    return entries.map((e) => toItem(e, jobById)).filter((x): x is Item => !!x).map((it) => ({
+    return entries.flatMap((e) => toItems(e, jobById)).map((it) => ({
       ...it,
       // งาน = สีของสถานะบัญชี (ไม่ระบุ = สีแบรนด์) · โน้ต = สีที่เลือก
       color: it.job ? acct.get(it.job.accountingStatus ?? '') : it.entry.color ?? CALENDAR_COLORS[0].value,
@@ -134,8 +137,10 @@ export default function CalendarPage() {
   const onDay = (day: string) => items
     .filter((it) => it.start <= day && day <= it.end)
     .sort((a, b) => (a.entry.type === b.entry.type ? a.start.localeCompare(b.start) : a.entry.type === 'job' ? -1 : 1))
+  // รายการของเดือน — งานเว้นวันโชว์ครั้งเดียว (ช่วงแรกที่อยู่ในเดือนนี้)
   const monthItems = items
     .filter((it) => it.start.slice(0, 7) <= monthKey && it.end.slice(0, 7) >= monthKey)
+    .filter((it, i, arr) => arr.findIndex((x) => x.entry.id === it.entry.id) === i)
     .sort((a, b) => a.start.localeCompare(b.start))
 
   const shift = (n: number) => setCursor(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() } })
@@ -221,7 +226,7 @@ export default function CalendarPage() {
                     )
                   })}
                   {segs.filter((sg) => sg.lane < MAX_CHIPS).map((sg) => (
-                    <SpanBar key={sg.item.entry.id} seg={sg} onClick={() => openItem(sg.item)} />
+                    <SpanBar key={sg.item.key} seg={sg} onClick={() => openItem(sg.item)} />
                   ))}
                 </div>
               )
@@ -241,7 +246,7 @@ export default function CalendarPage() {
               {monthItems.map((it) => (
                 <li key={it.entry.id}>
                   <button onClick={() => openItem(it)} className="w-full flex items-start gap-3 px-5 py-3 text-left hover:bg-gray-50">
-                    <span className="shrink-0 w-24 text-xs text-gray-500 pt-0.5 tabular-nums">{it.start === it.end ? formatDatePill(it.start) : `${formatDatePill(it.start)} – ${formatDatePill(it.end)}`}</span>
+                    <span className="shrink-0 w-24 text-xs text-gray-500 pt-0.5 tabular-nums">{it.job && it.job.dates?.length ? formatJobDates(it.job) : it.start === it.end ? formatDatePill(it.start) : `${formatDatePill(it.start)} – ${formatDatePill(it.end)}`}</span>
                     <span className="shrink-0 w-2.5 h-2.5 rounded-full mt-1.5" style={{ background: it.color ?? 'var(--brand)' }} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2 flex-wrap">
@@ -305,7 +310,7 @@ export default function CalendarPage() {
         <Modal isOpen onClose={() => setDayOpen(null)} title={formatDate(dayOpen)} size="md">
           <div className="space-y-1.5">
             {onDay(dayOpen).map((it) => (
-              <Chip key={it.entry.id} item={it} day={dayOpen} weekday={0} large onClick={() => { setDayOpen(null); openItem(it) }} />
+              <Chip key={it.key} item={it} day={dayOpen} weekday={0} large onClick={() => { setDayOpen(null); openItem(it) }} />
             ))}
             <button onClick={() => { const d = dayOpen; setDayOpen(null); setEditing({ kind: 'note', date: d }) }} className="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-gray-300 text-sm text-gray-600 hover:border-brand hover:text-brand">
               <PlusIcon className="w-4 h-4" /> เพิ่มโน้ตวันนี้
@@ -409,7 +414,7 @@ function JobPicker({ jobs, onCalendar, month, onClose, onAdded }: {
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-medium text-gray-900">{j.title}</span>
                   <span className="block text-xs text-gray-500">
-                    {j.date ? `${formatDate(j.date)}${j.endDate && j.endDate !== j.date ? ` – ${formatDate(j.endDate)}` : ''}` : 'ไม่มีวันที่'}
+                    {j.date ? formatJobDates(j) : 'ไม่มีวันที่'}
                     {j.location ? ` · ${j.location}` : ''}
                   </span>
                 </span>
@@ -486,7 +491,7 @@ function EntryModal({ editing, job, onClose, onSaved, onRemoved, onGoogle, statu
             {job ? (
               <>
                 <p className="font-semibold text-gray-900">{job.title}</p>
-                <p className="text-gray-600">{formatDate(job.date)}{job.endDate && job.endDate !== job.date ? ` – ${formatDate(job.endDate)}` : ''}{job.location ? ` · ${job.location}` : ''}</p>
+                <p className="text-gray-600">{formatJobDates(job)}{job.location ? ` · ${job.location}` : ''}</p>
                 {job.clientName && <p className="text-gray-500 text-xs">ลูกค้า: {job.clientName}</p>}
                 <div className="flex items-center gap-2 pt-1">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${jobStatusColor(job.status)}`}>{jobStatusLabel(job.status)}</span>

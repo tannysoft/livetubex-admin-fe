@@ -6,7 +6,7 @@ import { formatDateTime } from '@/lib/utils'
 import type { Job } from '@/lib/types'
 
 type Props = {
-  job: Job | Pick<Job, 'id' | 'title' | 'date' | 'endDate' | 'location' | 'clientName' | 'description'>
+  job: Job | Pick<Job, 'id' | 'title' | 'date' | 'endDate' | 'dates' | 'location' | 'clientName' | 'description'>
   addedAt?: string
   /** จดป้ายเสร็จ — ส่งเวลาที่ลง (undefined = เอาป้ายออก) */
   onChange?: (addedAt: string | undefined) => void

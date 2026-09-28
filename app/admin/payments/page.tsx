@@ -26,26 +26,13 @@ import { deleteField } from 'firebase/firestore'
 import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { formatJobDates, jobDays } from '@/lib/job-dates'
 import { Skeleton, SkeletonImage, SkeletonTableRow } from '@/components/ui/Skeleton'
 import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
 
 type ViewMode = 'list' | 'grouped'
 
 /** สร้าง array ของวันระหว่าง start → end (inclusive) */
-function getDatesInRange(start: string, end?: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(start + 'T00:00:00')
-  const last = new Date((end || start) + 'T00:00:00')
-  while (cur <= last) {
-    const y = cur.getFullYear()
-    const m = String(cur.getMonth() + 1).padStart(2, '0')
-    const d = String(cur.getDate()).padStart(2, '0')
-    dates.push(`${y}-${m}-${d}`)
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
-}
-
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -126,14 +113,14 @@ export default function PaymentsPage() {
   const newJobDates = useMemo(() => {
     const job = jobsMap.get(newJobId)
     if (!job) return []
-    return getDatesInRange(job.date, job.endDate)
+    return jobDays(job)
   }, [newJobId, jobsMap])
 
   // วันทั้งหมดของงานที่เลือกใน edit form
   const editJobDates = useMemo(() => {
     const job = jobsMap.get(editJobId)
     if (!job) return []
-    return getDatesInRange(job.date, job.endDate)
+    return jobDays(job)
   }, [editJobId, jobsMap])
 
   const getJobTitle = (p: Payment) =>
@@ -683,11 +670,7 @@ export default function PaymentsPage() {
             const jobId = items[0]?.jobId
             const job = jobId ? jobsMap.get(jobId) : undefined
             const jobTitle = items[0] ? getJobTitle(items[0]) || 'ไม่ระบุงาน' : 'ไม่ระบุงาน'
-            const jobDateLabel = job
-              ? job.endDate && job.endDate !== job.date
-                ? `${formatDate(job.date)} – ${formatDate(job.endDate)}`
-                : formatDate(job.date)
-              : undefined
+            const jobDateLabel = job ? formatJobDates(job) : undefined
 
             return (
               <div key={groupKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

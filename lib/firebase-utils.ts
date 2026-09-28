@@ -58,9 +58,10 @@ export async function getJobWithBudget(id: string): Promise<Job | null> {
 }
 
 export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-  const { budget, accountingStatus, ...rest } = data
+  const { budget, accountingStatus, dates, ...rest } = data
   const ref = await addDoc(collection(db, 'jobs'), {
     ...rest,
+    ...(dates?.length ? { dates } : {}), // ติดกัน = ไม่เก็บ dates
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   })
@@ -70,8 +71,13 @@ export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'
 
 export async function updateJob(id: string, data: Partial<Job>): Promise<void> {
   // ข้อมูลเงิน/บัญชีไม่ลง jobs doc · merge = ไม่ทับ field อื่นใน jobFinance (budget ↔ accountingStatus)
-  const { budget, accountingStatus, ...rest } = data
-  await updateDoc(doc(db, 'jobs', id), { ...rest, updatedAt: new Date().toISOString() })
+  const { budget, accountingStatus, dates, ...rest } = data
+  await updateDoc(doc(db, 'jobs', id), {
+    ...rest,
+    // dates: [] = กลับเป็นช่วงวันติดกัน → ลบ field
+    ...(dates !== undefined ? { dates: dates.length ? dates : deleteField() } : {}),
+    updatedAt: new Date().toISOString(),
+  })
   const fin = { ...(budget !== undefined ? { budget } : {}), ...(accountingStatus !== undefined ? { accountingStatus: accountingStatus || deleteField() } : {}) }
   if (Object.keys(fin).length) await setDoc(doc(db, 'jobFinance', id), fin, { merge: true })
 }
@@ -145,6 +151,7 @@ export async function upsertFreelancerByLineId(
     bankName: string
     idCardImagePath?: string  // storage path (ไม่ใช่ URL)
     position?: string
+    nickname?: string
   },
   predefinedId?: string  // ส่งมาเฉพาะกรณีสร้างใหม่ (pre-generated ก่อน upload)
 ): Promise<string> {
@@ -166,6 +173,7 @@ export async function upsertFreelancerByLineId(
       bankAccount: data.bankAccount,
       bankName: data.bankName,
       ...(data.position !== undefined ? { position: data.position } : {}),
+      ...(data.nickname !== undefined ? { nickname: data.nickname.trim() } : {}),
     }
     if (data.idCardImagePath) {
       updateData.idCardImagePath = data.idCardImagePath
@@ -192,6 +200,7 @@ export async function upsertFreelancerByLineId(
     bankName: data.bankName,
     idCardImagePath: data.idCardImagePath ?? '',
     ...(data.position ? { position: data.position } : {}),
+    ...(data.nickname?.trim() ? { nickname: data.nickname.trim() } : {}),
     totalEarned: 0,
     isActive: true,
     createdAt: new Date().toISOString(),

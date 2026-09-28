@@ -195,6 +195,7 @@ export default function FreelancersPage() {
   const filtered = freelancers.filter(
     (f) =>
       f.name.toLowerCase().includes(search.toLowerCase()) ||
+      (f.nickname ?? '').toLowerCase().includes(search.toLowerCase()) ||
       f.phone.includes(search) ||
       (f.email ?? '').toLowerCase().includes(search.toLowerCase())
   )
@@ -235,7 +236,7 @@ export default function FreelancersPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหาชื่อ เบอร์โทร หรืออีเมล..."
+          placeholder="ค้นหาชื่อ ชื่อเล่น เบอร์โทร หรืออีเมล..."
           className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white"
         />
       </div>
@@ -280,7 +281,7 @@ export default function FreelancersPage() {
                   <div className="flex items-center gap-3">
                     <FreelancerAvatar freelancer={f} />
                     <div>
-                      <p className="font-semibold text-gray-900">{f.name}</p>
+                      <p className="font-semibold text-gray-900">{f.name}{f.nickname && <span className="font-normal text-gray-500"> ({f.nickname})</span>}</p>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${f.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {f.isActive ? 'Active' : 'Inactive'}
                       </span>

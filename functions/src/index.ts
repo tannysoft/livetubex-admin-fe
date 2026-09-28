@@ -900,15 +900,35 @@ export const sendPayoutNotification = onCall(
 // ไม่มี budget/ราคา (อยู่ jobFinance) · 1 คน = 1 push = นับโควตา LINE 1 ข้อความ → log ลง lineMessageLogs (kind 'job')
 
 /** ลิงก์ template ของ Google Calendar (งานทั้งวัน — วันสิ้นสุดแบบไม่รวม จึง +1) ฝาแฝดของ googleCalendarUrl ใน lib/calendar.ts */
-function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: string; location?: string; description?: string }): string {
+function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: string; dates?: string[]; location?: string; description?: string }): string {
   const ymd = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
   const start = new Date(job.date + 'T00:00:00Z')
   const end = new Date((job.endDate && job.endDate > job.date ? job.endDate : job.date) + 'T00:00:00Z')
   end.setUTCDate(end.getUTCDate() + 1)
   const q = new URLSearchParams({ action: 'TEMPLATE', text: job.title, dates: `${ymd(start)}/${ymd(end)}` })
   if (job.location) q.set('location', job.location)
-  if (job.description) q.set('details', job.description.slice(0, 1500))
+  // งานเว้นวัน: template ของ Google ได้ช่วงเดียว → คลุมทั้งช่วง + บอกวันงานจริงในรายละเอียด (ฝาแฝด lib/calendar.ts)
+  const gap = job.dates && job.dates.length ? `วันงาน: ${thaiDateRuns(job.dates)} (เว้นวัน)` : ''
+  const details = [gap, job.description?.slice(0, 1500)].filter(Boolean).join('\n\n')
+  if (details) q.set('details', details)
   return `https://calendar.google.com/calendar/render?${q.toString().replace('%2F', '/')}`
+}
+
+/** งานเว้นวัน ["2026-09-22","2026-09-23","2026-09-25"] → "22–23, 25 ก.ย. 2569" (ฝาแฝดแบบย่อของ formatDateRuns ใน lib/job-dates.ts) */
+function thaiDateRuns(days: string[]): string {
+  const sorted = [...new Set(days)].sort()
+  const next = (d: string) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10) }
+  const runs: { s: string; e: string }[] = []
+  for (const d of sorted) { const l = runs[runs.length - 1]; if (l && next(l.e) === d) l.e = d; else runs.push({ s: d, e: d }) }
+  const f = (d: string, opts: Intl.DateTimeFormatOptions) => new Date(d + 'T00:00:00Z').toLocaleDateString('th-TH', { timeZone: 'UTC', ...opts })
+  return runs.map((r, i) => {
+    const last = i === runs.length - 1
+    const nextMonth = !last && runs[i + 1].s.slice(0, 7) !== r.e.slice(0, 7)
+    const endOpts: Intl.DateTimeFormatOptions = last ? { day: 'numeric', month: 'short', year: 'numeric' } : nextMonth ? { day: 'numeric', month: 'short' } : { day: 'numeric' }
+    if (r.s === r.e) return f(r.s, endOpts)
+    const startOpts: Intl.DateTimeFormatOptions = r.s.slice(0, 7) === r.e.slice(0, 7) ? { day: 'numeric' } : { day: 'numeric', month: 'short' }
+    return `${f(r.s, startOpts)}–${f(r.e, endOpts)}`
+  }).join(', ')
 }
 
 function thaiDateRange(date: string, endDate?: string): string {
@@ -936,12 +956,12 @@ export const sendJobDetails = onCall(
     const db = admin.firestore()
     const jobSnap = await db.collection('jobs').doc(jobId).get()
     if (!jobSnap.exists) throw new HttpsError('not-found', 'ไม่พบงาน')
-    const job = jobSnap.data() as { title: string; date: string; endDate?: string; location?: string; clientName?: string; description?: string }
+    const job = jobSnap.data() as { title: string; date: string; endDate?: string; dates?: string[]; location?: string; clientName?: string; description?: string }
 
     const brand = await getBrandInfo()
     const liffId = await getLiffId()
     const color = brand.primaryColor
-    const dateText = job.date ? thaiDateRange(job.date, job.endDate) : '-'
+    const dateText = job.dates?.length ? thaiDateRuns(job.dates) : job.date ? thaiDateRange(job.date, job.endDate) : '-'
     const row = (label: string, value: string) => ({
       type: 'box', layout: 'baseline', spacing: 'md',
       contents: [

@@ -13,6 +13,7 @@ import StatCard from '@/components/admin/StatCard'
 import { getDashboardStats, getJobs, getPayments, getFreelancers } from '@/lib/firebase-utils'
 import type { DashboardStats, Freelancer, Job, Payment } from '@/lib/types'
 import { formatCurrency, formatDate, jobStatusColor, jobStatusLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { formatJobDates } from '@/lib/job-dates'
 import Badge from '@/components/ui/Badge'
 import { Skeleton, SkeletonCard, SkeletonStat } from '@/components/ui/Skeleton'
 import Link from 'next/link'
@@ -137,7 +138,7 @@ export default function AdminDashboard() {
                 <div key={job.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 truncate">{job.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(job.date)} · {job.location}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatJobDates(job)} · {job.location}</p>
                   </div>
                   <Badge label={jobStatusLabel(job.status)} colorClass={jobStatusColor(job.status)} />
                 </div>

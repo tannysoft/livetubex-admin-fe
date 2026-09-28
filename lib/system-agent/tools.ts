@@ -12,6 +12,7 @@ import { effectiveSystemPrompt, getAgentSettings } from '../equipment/agent-sett
 import { createRevision, isModifiedSinceRevision } from '../equipment/revisions'
 import { jobStatusLabel } from '../utils'
 import type { Job, JobStatus } from '../types'
+import { dateRuns, formatDateRuns, formatJobDates, normalizeJobDates } from '../job-dates'
 
 /**
  * tool ของผู้ช่วย AI ทั้งระบบ — นิยาม (ส่งให้ Claude ผ่าน function systemAgent) + ตัวรันที่หน้าเว็บ
@@ -92,6 +93,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         title: { type: 'string' },
         date: date('วันเริ่มงาน'),
         endDate: date('วันสุดท้าย (งานหลายวัน)'),
+        dates: { type: 'array', items: { type: 'string', description: 'YYYY-MM-DD' }, description: 'งานเว้นวัน: วันงานทุกวัน เช่น 22,23,25 (ใช้แทน date/endDate · date = วันแรก) — งานวันติดกันไม่ต้องส่ง' },
         location: { type: 'string' },
         clientName: { type: 'string', description: 'ชื่อลูกค้า / Event' },
         docNumber: { type: 'string', description: 'เลขที่เอกสารอ้างอิง (ใบเสนอราคา/PO) ถ้าผู้ใช้บอก' },
@@ -101,7 +103,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         accountingStatus: { type: 'string', description: 'id หรือชื่อสถานะบัญชี' },
         notes: { type: 'string' },
       },
-      required: ['title', 'date', 'location', 'clientName'],
+      required: ['title', 'location', 'clientName'], // date หรือ dates อย่างใดอย่างหนึ่ง
     },
   },
   {
@@ -112,6 +114,7 @@ export const AGENT_TOOLS: AgentTool[] = [
       properties: {
         jobId: { type: 'string' },
         title: { type: 'string' }, date: date('วันเริ่ม'), endDate: date('วันสุดท้าย ("" = งานวันเดียว)'),
+        dates: { type: 'array', items: { type: 'string', description: 'YYYY-MM-DD' }, description: 'งานเว้นวัน: วันงานทุกวัน เช่น 22,23,25 (ใช้แทน date/endDate · date = วันแรก) — งานวันติดกันไม่ต้องส่ง' },
         location: { type: 'string' }, clientName: { type: 'string' }, docNumber: { type: 'string' }, description: { type: 'string' },
         status: { type: 'string', enum: JOB_STATUSES }, budget: { type: 'number' }, notes: { type: 'string' },
       },
@@ -233,9 +236,18 @@ async function resolveStatus(v: unknown): Promise<string> {
   return hit.id
 }
 
+/** dates จาก AI → YYYY-MM-DD[] (ตัวที่ผิดรูปแบบ = error) */
+function parseDays(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const out = v.map((x) => String(x).trim()).filter(Boolean)
+  const bad = out.find((x) => !ISO.test(x))
+  if (bad) throw new Error(`dates ต้องเป็น YYYY-MM-DD (${bad})`)
+  return out
+}
+
 function jobRow(j: Job, st: AccountingStatusDef[]) {
   return {
-    id: j.id, title: j.title, date: j.date, ...(j.endDate && j.endDate !== j.date ? { endDate: j.endDate } : {}),
+    id: j.id, title: j.title, date: j.date, ...(j.endDate && j.endDate !== j.date ? { endDate: j.endDate } : {}), ...(j.dates?.length ? { days: formatJobDates(j), dates: j.dates } : {}),
     location: j.location, client: j.clientName, ...(j.docNumber ? { docNumber: j.docNumber } : {}), status: jobStatusLabel(j.status),
     accounting: st.find((x) => x.id === j.accountingStatus)?.label ?? 'ไม่ระบุ',
     ...(j.budget ? { budget: j.budget } : {}),
@@ -320,12 +332,14 @@ export async function executeTool(name: string, input: In, ctx: ToolContext): Pr
     }
 
     case 'create_job': {
-      const d = needDate(input.date, 'date')
+      const days = parseDays(input.dates)
+      const d = days.length ? [...days].sort()[0] : needDate(input.date, 'date')
       const end = optStr(input.endDate)
       if (end && !ISO.test(end)) throw new Error('endDate ต้องเป็น YYYY-MM-DD')
       const accountingStatus = await resolveStatus(input.accountingStatus)
       const data = {
-        title: str(input.title), date: d, ...(end && end > d ? { endDate: end } : {}),
+        title: str(input.title),
+        ...(days.length ? normalizeJobDates(days) : { date: d, ...(end && end > d ? { endDate: end } : {}) }),
         location: str(input.location), clientName: str(input.clientName), description: str(input.description),
         status: (JOB_STATUSES.includes(input.status as JobStatus) ? input.status : 'draft') as JobStatus,
         budget: typeof input.budget === 'number' ? input.budget : 0,
@@ -350,6 +364,9 @@ export async function executeTool(name: string, input: In, ctx: ToolContext): Pr
         if (e && !ISO.test(e)) throw new Error('endDate ต้องเป็น YYYY-MM-DD')
         patch.endDate = e && e > (patch.date ?? cur.date) ? e : ''
       }
+      const days = parseDays(input.dates)
+      if (days.length) Object.assign(patch, normalizeJobDates(days))
+      else if ((patch.date !== undefined || patch.endDate !== undefined) && cur.dates?.length) patch.dates = [] // แก้เป็นช่วงวันติดกัน → เลิกเว้นวัน
       if (JOB_STATUSES.includes(input.status as JobStatus)) patch.status = input.status as JobStatus
       if (typeof input.budget === 'number') patch.budget = input.budget
       if (!Object.keys(patch).length) throw new Error('ไม่มี field ที่จะแก้')
@@ -442,10 +459,10 @@ export async function executeTool(name: string, input: In, ctx: ToolContext): Pr
 
 /** ข้อความสั้นๆ ของ action สำหรับการ์ดอนุมัติ */
 export function describeAction(name: string, input: In): string {
-  const f = (k: string, label: string) => (input[k] !== undefined && input[k] !== '' ? `${label}: ${Array.isArray(input[k]) ? (input[k] as unknown[]).length + ' คน' : String(input[k])}` : '')
+  const f = (k: string, label: string) => (input[k] !== undefined && input[k] !== '' ? `${label}: ${k === 'dates' && Array.isArray(input[k]) ? formatDateRuns(dateRuns(parseDays(input[k]))) : Array.isArray(input[k]) ? (input[k] as unknown[]).length + ' คน' : String(input[k])}` : '')
   const lines = (arr: string[]) => arr.filter(Boolean).join('\n')
   switch (name) {
-    case 'create_job': return lines(['สร้างงานใหม่', f('title', 'ชื่องาน'), f('date', 'วันที่'), f('endDate', 'ถึง'), f('location', 'สถานที่'), f('clientName', 'ลูกค้า'), f('docNumber', 'เลขที่เอกสาร'), f('status', 'สถานะ'), f('budget', 'ราคาขาย'), f('accountingStatus', 'สถานะบัญชี')])
+    case 'create_job': return lines(['สร้างงานใหม่', f('title', 'ชื่องาน'), f('date', 'วันที่'), f('endDate', 'ถึง'), f('dates', 'วันงาน (เว้นวัน)'), f('location', 'สถานที่'), f('clientName', 'ลูกค้า'), f('docNumber', 'เลขที่เอกสาร'), f('status', 'สถานะ'), f('budget', 'ราคาขาย'), f('accountingStatus', 'สถานะบัญชี')])
     case 'update_job': return lines(['แก้ไขงาน', ...Object.keys(input).filter((k) => k !== 'jobId').map((k) => f(k, k))])
     case 'set_job_accounting_status': return lines(['ตั้งสถานะบัญชี', f('status', 'สถานะ')])
     case 'add_calendar_note': return lines(['เพิ่มโน้ตในปฏิทิน', f('title', 'หัวข้อ'), f('date', 'วันที่'), f('endDate', 'ถึง'), f('note', 'รายละเอียด')])
