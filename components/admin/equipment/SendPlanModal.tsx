@@ -92,6 +92,8 @@ export default function SendPlanModal({ plan, onClose, onOpenShare, flush }: {
   const layoutCount = (plan.layouts ?? []).filter((l) => l.objects.length > 0).length
   const dateText = plan.date ? `${formatDate(plan.date)}${plan.endDate && plan.endDate !== plan.date ? ` – ${formatDate(plan.endDate)}` : ''}` : '-'
   const webhook = lineWebhookUrl()
+  // ตัวอย่างคำทัก — ส่งรายคนใส่ชื่อเล่นของแต่ละคน · เข้ากลุ่มไม่ใส่
+  const previewNick = freelancers.find((f) => pickedPeople.has(f.id) && f.nickname?.trim())?.nickname?.trim()
   const nameOf = (id: string) => {
     const g = groups.find((x) => x.id === id)
     return g ? lineGroupName(g) : freelancers.find((f) => f.id === id)?.name ?? id
@@ -219,6 +221,7 @@ export default function SendPlanModal({ plan, onClose, onOpenShare, flush }: {
               <p className="font-bold">แผนจัดอุปกรณ์ / ผังระบบ 📋</p>
             </div>
             <div className="px-4 py-3 space-y-1.5">
+              {previewNick && <p className="text-xs text-gray-500">สวัสดี {previewNick} 👋 <span className="text-gray-400">(ส่งรายคน)</span></p>}
               <p className="font-bold text-gray-900">{plan.title || 'แผนงาน'}</p>
               {plan.jobTitle && <p className="text-xs"><span className="text-gray-500">งาน </span>{plan.jobTitle}</p>}
               <p className="text-xs"><span className="text-gray-500">วันที่ </span>{dateText}</p>

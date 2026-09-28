@@ -87,7 +87,8 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | idCardImagePath | string? | **Storage path** (ไม่มี token) เช่น `idCards/{uid}/id_card.jpg` |
 | totalEarned | number | update ด้วย `increment()` เท่านั้น |
 | isActive | boolean | |
-| nickname | string? | ชื่อเล่น — กรอกตอนสมัคร LIFF (ไม่บังคับ), admin แก้ใน FreelancerForm · โชว์ "ชื่อจริง (ชื่อเล่น)" + ค้นหาได้ในรายชื่อทีมงาน/หน้าต่างส่ง LINE |
+| nickname | string? | ชื่อเล่น — กรอกตอนสมัคร LIFF (ไม่บังคับ), admin แก้ใน FreelancerForm · โชว์ "ชื่อจริง (ชื่อเล่น)" + ค้นหาได้ในรายชื่อทีมงาน/หน้าต่างส่ง LINE · **ข้อความ LINE รายคน** (sendJobDetails, sendPlanToLine, sendPayoutNotification) ขึ้นต้น "สวัสดี {ชื่อเล่น} 👋" + ต่อหน้า altText ผ่าน `withNickname()` — ส่งเข้ากลุ่มไม่ใส่ |
+| ratePerQueue | number? | ราคาต่อคิว (บาท) — แอดมินตั้งใน FreelancerForm · เติมให้ในฟอร์มเบิก (LIFF 2 หน้า + สร้างการเบิกของแอดมินเมื่อเลือกคน) แก้ตอนเบิกได้ · **rules: freelancer สร้าง/แก้ field นี้เองไม่ได้** |
 | position | string? | ตำแหน่งงานหลัก (ชื่อจาก `positions`) — เลือกตอนสมัคร LIFF (บังคับเมื่อมีตำแหน่งในระบบ), admin แก้ใน FreelancerForm · เป็นค่าตั้งต้นของตำแหน่งตอนขอเบิก |
 | createdAt | string | |
 
@@ -100,6 +101,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | lineUserId | string | LINE userId (ใช้ใน Firestore rules) |
 | jobId | string | **required** → join `jobs` collection |
 | amount | number | ยอดขอเบิก (gross) |
+| queueCount / ratePerQueue | number? | จำนวนคิว × ราคาต่อคิว — ฟอร์มเบิก LIFF กรอก 2 ช่องนี้แล้วคำนวณ amount ให้ (`components/payments/QueueAmountInput` ใช้ทั้ง LIFF 2 หน้า + ฟอร์มสร้าง/แก้ของแอดมิน, จำนวนคิวเริ่มที่ 1, ปุ่ม +/− ทีละ 0.5) · แอดมินแก้ amount ทีหลังได้ ค่านี้คงเป็น "ที่ขอ" · ข้อมูลเก่าไม่มี |
 | status | 'pending' \| 'approved' \| 'paid' \| 'rejected' | |
 | position | string? | ตำแหน่งงาน |
 | workDates | string[]? | วันที่ทำงาน (ISO date) |
@@ -518,7 +520,7 @@ jobs:           read: authenticated, write: admin
 jobFinance:     admin เท่านั้น (budget/ราคาขายของงาน)
 freelancers:    admin: all | freelancer: read/create/update ของตัวเอง
                   create: ต้องมี totalEarned=0, isActive=true
-                  update: ห้ามแก้ totalEarned, createdAt, isActive
+                  update: ห้ามแก้ totalEarned, createdAt, isActive, ratePerQueue
 jobAssignments: admin: all | freelancer: read เฉพาะที่ตัวเองถูก assign
 payments:       admin: all | freelancer: read เฉพาะของตัวเอง
                   create: status=pending, amount>0

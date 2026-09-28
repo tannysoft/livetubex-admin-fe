@@ -27,12 +27,19 @@ import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage
 import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { formatJobDates, jobDays } from '@/lib/job-dates'
+import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonImage, SkeletonTableRow } from '@/components/ui/Skeleton'
 import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
 
 type ViewMode = 'list' | 'grouped'
 
 /** สร้าง array ของวันระหว่าง start → end (inclusive) */
+/** "2 คิว × ฿1,500" — ยอดที่ freelancer ขอจาก LIFF (แอดมินแก้ยอดทีหลังได้ บรรทัดนี้ยังเป็นที่ขอ) */
+function queueLabel(p: Payment): string {
+  if (!p.queueCount || !p.ratePerQueue) return ''
+  return `${p.queueCount.toLocaleString('th-TH')} คิว × ${formatCurrency(p.ratePerQueue)}`
+}
+
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -46,7 +53,9 @@ export default function PaymentsPage() {
   const [newJobId, setNewJobId] = useState('')
   const [newPosition, setNewPosition] = useState('')
   const [newWorkDates, setNewWorkDates] = useState<string[]>([])
-  const [newAmount, setNewAmount] = useState('')
+  // ยอด = จำนวนคิว × ราคาต่อคิว (เหมือนฟอร์มเบิกใน LIFF)
+  const [newQueues, setNewQueues] = useState('1')
+  const [newRate, setNewRate] = useState('')
   const [newNotes, setNewNotes] = useState('')
   const [newStatus, setNewStatus] = useState<'pending' | 'approved' | 'paid'>('pending')
   const [newShowExpense, setNewShowExpense] = useState(false)
@@ -62,7 +71,8 @@ export default function PaymentsPage() {
   const [editJobId, setEditJobId] = useState('')
   const [editPosition, setEditPosition] = useState('')
   const [editWorkDates, setEditWorkDates] = useState<string[]>([])
-  const [editAmountVal, setEditAmountVal] = useState('')
+  const [editQueues, setEditQueues] = useState('')
+  const [editRate, setEditRate] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editShowExpense, setEditShowExpense] = useState(false)
   const [editExpenseAmount, setEditExpenseAmount] = useState('')
@@ -195,7 +205,16 @@ export default function PaymentsPage() {
     setEditJobId(payment.jobId ?? '')
     setEditPosition(payment.position ?? '')
     setEditWorkDates(payment.workDates ?? [])
-    setEditAmountVal(String(payment.amount))
+    // ข้อมูลเก่าไม่มีคิว → ตั้งจากวันที่ทำงาน (ถ้าหารลงตัว) ไม่งั้น 1 คิว × ยอดเดิม — ยอดรวมเท่าเดิมเสมอ
+    if (payment.queueCount && payment.ratePerQueue) {
+      setEditQueues(String(payment.queueCount))
+      setEditRate(String(payment.ratePerQueue))
+    } else {
+      const n = payment.workDates?.length ?? 0
+      const q = n > 1 && payment.amount % n === 0 ? n : 1
+      setEditQueues(String(q))
+      setEditRate(String(payment.amount / q))
+    }
     setEditNotes(payment.notes ?? '')
     const hasExpense = !!(payment.expenseAmount && payment.expenseAmount > 0)
     setEditShowExpense(hasExpense)
@@ -209,8 +228,9 @@ export default function PaymentsPage() {
 
   const handleEdit = async () => {
     if (!editPayment) return
-    const amount = parseFloat(editAmountVal)
-    if (!amount || amount <= 0) return setEditError('กรุณากรอกจำนวนเงิน')
+    const { queues, rate, amount } = queueTotal(editQueues, editRate)
+    if (!(queues > 0)) return setEditError('กรุณากรอกจำนวนคิว')
+    if (!(rate > 0)) return setEditError('กรุณากรอกราคาต่อคิว')
     if (editShowExpense) {
       const expAmt = parseFloat(editExpenseAmount)
       if (!expAmt || expAmt <= 0) return setEditError('กรุณากรอกจำนวนค่าใช้จ่าย')
@@ -230,6 +250,8 @@ export default function PaymentsPage() {
         position: editPosition || deleteField(),
         workDates: editWorkDates.length > 0 ? editWorkDates : deleteField(),
         amount,
+        queueCount: queues,
+        ratePerQueue: rate,
         notes: editNotes.trim() || deleteField(),
       }
       if (editShowExpense) {
@@ -256,7 +278,8 @@ export default function PaymentsPage() {
     setNewJobId('')
     setNewPosition('')
     setNewWorkDates([])
-    setNewAmount('')
+    setNewQueues('1')
+    setNewRate('')
     setNewNotes('')
     setNewStatus('pending')
     setNewShowExpense(false)
@@ -274,10 +297,11 @@ export default function PaymentsPage() {
   }
 
   const handleCreate = async () => {
-    const amount = parseFloat(newAmount)
+    const { queues, rate, amount } = queueTotal(newQueues, newRate)
     if (!newFreelancerId) return setCreateError('กรุณาเลือก Freelancer')
     if (!newJobId) return setCreateError('กรุณาเลือกงาน')
-    if (!amount || amount <= 0) return setCreateError('กรุณากรอกจำนวนเงิน')
+    if (!(queues > 0)) return setCreateError('กรุณากรอกจำนวนคิว')
+    if (!(rate > 0)) return setCreateError('กรุณากรอกราคาต่อคิว')
     const expAmt = newShowExpense ? parseFloat(newExpenseAmount) : undefined
     if (newShowExpense && (!expAmt || expAmt <= 0)) return setCreateError('กรุณากรอกจำนวนค่าใช้จ่าย')
     if (newShowExpense && !newExpenseFile) return setCreateError('กรุณาแนบรูปสลิปค่าใช้จ่าย')
@@ -295,6 +319,8 @@ export default function PaymentsPage() {
           freelancerId: newFreelancerId,
           jobId: newJobId,
           amount,
+          queueCount: queues,
+          ratePerQueue: rate,
           status: 'pending' as const,
           position: newPosition || undefined,
           workDates,
@@ -634,6 +660,7 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <p className="font-semibold text-gray-900 text-sm">{formatCurrency(payment.amount)}</p>
+{queueLabel(payment) && <p className="text-xs text-gray-500 tabular-nums">{queueLabel(payment)}</p>}
                       {payment.expenseAmount && (
                         <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                       )}
@@ -754,6 +781,7 @@ export default function PaymentsPage() {
                       {/* col 5: amount + tax */}
                       <div className="text-right">
                         <p className="font-semibold text-gray-900 text-sm">{formatCurrency(payment.amount)}</p>
+{queueLabel(payment) && <p className="text-xs text-gray-500 tabular-nums">{queueLabel(payment)}</p>}
                         {payment.expenseAmount && (
                           <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                         )}
@@ -826,6 +854,7 @@ export default function PaymentsPage() {
                 </div>
               )}
             </div>
+            {queueLabel(selectedPayment) && <p className="text-xs text-gray-500">ที่ขอเบิก: {queueLabel(selectedPayment)} = {formatCurrency(selectedPayment.queueCount! * selectedPayment.ratePerQueue!)}</p>}
             {/* Amount editor */}
             {actionType !== 'unapprove' && actionType !== 'unpay' && (() => {
               const amt = parseFloat(editAmount) || 0
@@ -928,7 +957,13 @@ export default function PaymentsPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Freelancer <span className="text-red-500">*</span></label>
             <FormListbox
               value={newFreelancerId}
-              onChange={setNewFreelancerId}
+              onChange={(id) => {
+                setNewFreelancerId(id)
+                // ค่าตั้งต้นจากโปรไฟล์ freelancer: ราคาต่อคิว + ตำแหน่ง (ถ้ายังมีในรายการตำแหน่ง)
+                const f = freelancersMap.get(id)
+                setNewRate(f?.ratePerQueue ? String(f.ratePerQueue) : '')
+                setNewPosition(f?.position && positions.some((p) => p.name === f.position) ? f.position : '')
+              }}
               options={freelancers.map((f) => ({ value: f.id, label: f.name }))}
               placeholder="เลือก Freelancer…"
             />
@@ -992,25 +1027,15 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Amount */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
-            <input
-              type="number"
-              value={newAmount}
-              onChange={(e) => setNewAmount(e.target.value)}
-              min="1"
-              inputMode="numeric"
-              placeholder="0"
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            {newAmount && parseFloat(newAmount) > 0 && (() => {
-              const { tax, net } = calcTax(parseFloat(newAmount))
-              return (
-                <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-brand font-medium">{formatCurrency(net)}</span></p>
-              )
-            })()}
-          </div>
+          {/* จำนวนคิว × ราคาต่อคิว */}
+          <QueueAmountInput
+            queues={newQueues}
+            onQueues={setNewQueues}
+            rate={newRate}
+            onRate={setNewRate}
+                        inputCls="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            labelCls="block text-sm font-medium text-gray-700 mb-1"
+          />
 
           {/* Expense */}
           <div>
@@ -1201,25 +1226,15 @@ export default function PaymentsPage() {
               />
             </div>
 
-            {/* Amount */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
-              <input
-                type="number"
-                value={editAmountVal}
-                onChange={(e) => setEditAmountVal(e.target.value)}
-                min="1"
-                inputMode="numeric"
-                placeholder="0"
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              {editAmountVal && parseFloat(editAmountVal) > 0 && (() => {
-                const { tax, net } = calcTax(parseFloat(editAmountVal))
-                return (
-                  <p className="text-xs text-gray-400 mt-1">ภาษี 3% {formatCurrency(tax)} · โอนสุทธิ <span className="text-brand font-medium">{formatCurrency(net)}</span></p>
-                )
-              })()}
-            </div>
+            {/* จำนวนคิว × ราคาต่อคิว */}
+            <QueueAmountInput
+              queues={editQueues}
+              onQueues={setEditQueues}
+              rate={editRate}
+              onRate={setEditRate}
+                            inputCls="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              labelCls="block text-sm font-medium text-gray-700 mb-1"
+            />
 
             {/* Expense */}
             <div>

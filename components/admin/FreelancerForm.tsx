@@ -20,6 +20,7 @@ type FormData = {
   isActive: boolean
   position: string
   nickname: string
+  ratePerQueue: string
 }
 
 interface FreelancerFormProps {
@@ -72,6 +73,7 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       isActive: defaultValues?.isActive ?? true,
       position: defaultValues?.position ?? '',
       nickname: defaultValues?.nickname ?? '',
+      ratePerQueue: defaultValues?.ratePerQueue ? String(defaultValues.ratePerQueue) : '',
     },
   })
 
@@ -95,6 +97,8 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
       isActive: data.isActive,
       position: data.position,
       nickname: data.nickname.trim(),
+      // ว่าง = ไม่มีราคาตั้งต้น (หน้าแก้ส่ง deleteField ต่อเอง)
+      ratePerQueue: Number(data.ratePerQueue) > 0 ? Number(data.ratePerQueue) : undefined,
     })
   }
 
@@ -183,6 +187,19 @@ export default function FreelancerForm({ defaultValues, onSubmit, onCancel, isLo
             )}
           />
           <p className="text-xs text-gray-400 mt-1">เป็นค่าตั้งต้นตอนขอเบิกเงินใน LINE</p>
+        </div>
+
+        <div>
+          <label className={labelCls}>ราคาต่อคิว (บาท)</label>
+          <input
+            {...register('ratePerQueue', { validate: (v) => !v || Number(v) > 0 || 'ต้องมากกว่า 0' })}
+            type="number"
+            min="1"
+            inputMode="numeric"
+            placeholder="ไม่ระบุ"
+            className={`${inputCls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+          />
+          {errors.ratePerQueue ? <p className={errorCls}>{errors.ratePerQueue.message}</p> : <p className="text-xs text-gray-400 mt-1">ใส่ไว้ = เติมให้ในฟอร์มเบิกอัตโนมัติ (แก้ตอนเบิกได้)</p>}
         </div>
 
         <div>

@@ -37,6 +37,7 @@ import { uploadExpenseSlip, uploadProfilePictureFromUrl } from '@/lib/firebase-s
 import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
 import { calcTax, formatCurrency, formatDatePill, formatDate } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
+import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
 
 type PageState = 'loading' | 'not-logged-in' | 'ready' | 'error'
@@ -59,7 +60,9 @@ export default function FreelancerPage() {
   const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [selectedPosition, setSelectedPosition] = useState('')
-  const [requestAmount, setRequestAmount] = useState('')
+  // ยอดเบิก = จำนวนคิว × ราคาต่อคิว (เริ่มที่ 1 คิว)
+  const [requestQueues, setRequestQueues] = useState('1')
+  const [requestRate, setRequestRate] = useState('')
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
@@ -135,6 +138,7 @@ export default function FreelancerPage() {
           const selectable = !!job && job.showInLiff !== false && !p.some((x) => x.jobId === claim && x.status !== 'rejected')
           setSelectedJobId(selectable ? claim : '')
           setSelectedPosition(f.position && pos.some((x) => x.name === f.position) ? f.position : '')
+          setRequestRate(f.ratePerQueue ? String(f.ratePerQueue) : '')
           if (!selectable) setClaimNotice(job ? `งาน "${job.title}" ขอเบิกไปแล้ว หรือยังไม่เปิดให้เบิก` : 'ไม่พบงานที่ลิงก์ระบุ')
           setRequestOpen(true)
         }
@@ -182,7 +186,8 @@ export default function FreelancerPage() {
     setSelectedDates([])
     // ตำแหน่งตั้งต้นจากโปรไฟล์ (ถ้ายังมีในรายการตำแหน่ง)
     setSelectedPosition(freelancer?.position && positions.some((p) => p.name === freelancer.position) ? freelancer.position : '')
-    setRequestAmount('')
+    setRequestQueues('1')
+    setRequestRate(freelancer?.ratePerQueue ? String(freelancer.ratePerQueue) : '') // ราคาต่อคิวที่แอดมินตั้งไว้
     setRequestNotes('')
     setModalError('')
     setSubmitSuccess(false)
@@ -212,8 +217,9 @@ export default function FreelancerPage() {
       setModalError('กรุณาเลือกวันที่ทำงานอย่างน้อย 1 วัน'); return
     }
     if (!selectedPosition) { setModalError('กรุณาเลือกตำแหน่ง'); return }
-    const amount = parseFloat(requestAmount)
-    if (isNaN(amount) || amount <= 0) { setModalError('กรุณากรอกจำนวนเงินที่ถูกต้อง'); return }
+    const { queues, rate, amount } = queueTotal(requestQueues, requestRate)
+    if (!(queues > 0)) { setModalError('กรุณากรอกจำนวนคิว'); return }
+    if (!(rate > 0)) { setModalError('กรุณากรอกราคาต่อคิว'); return }
     if (showExpense) {
       const expAmt = parseFloat(expenseAmount)
       if (isNaN(expAmt) || expAmt <= 0) { setModalError('กรุณากรอกจำนวนค่าใช้จ่ายให้ถูกต้อง'); return }
@@ -236,6 +242,8 @@ export default function FreelancerPage() {
         freelancerId: freelancer.id,
         jobId: selectedJob.id,
         amount,
+        queueCount: queues,
+        ratePerQueue: rate,
         status: 'pending',
         workDates,
         position: selectedPosition,
@@ -504,19 +512,15 @@ export default function FreelancerPage() {
               />
             </div>
 
-            {/* จำนวนเงินทั้งหมด */}
-            <div>
-              <label className={labelCls}>จำนวนเงินทั้งหมด (บาท) *</label>
-              <input
-                type="number"
-                value={requestAmount}
-                onChange={(e) => setRequestAmount(e.target.value)}
-                className={inputCls}
-                min="1"
-                inputMode="numeric"
-                placeholder="0"
-              />
-            </div>
+            {/* จำนวนคิว × ราคาต่อคิว = ยอดรวม */}
+            <QueueAmountInput
+              queues={requestQueues}
+              onQueues={setRequestQueues}
+              rate={requestRate}
+              onRate={setRequestRate}
+                            inputCls={inputCls}
+              labelCls={labelCls}
+            />
 
             {/* ค่าใช้จ่ายเพิ่มเติม */}
             <div>
