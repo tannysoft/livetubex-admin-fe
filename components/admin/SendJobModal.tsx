@@ -112,6 +112,8 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
   }
 
   const dateText = formatJobDates(job) || '-'
+  // ตัวอย่างคำทัก — ส่งจริงใส่ชื่อเล่นของแต่ละคน (คนที่ไม่มีชื่อเล่นไม่มีบรรทัดนี้)
+  const previewNick = freelancers.find((f) => picked.has(f.id) && f.nickname?.trim())?.nickname?.trim()
 
   return (
     <Modal isOpen onClose={onClose} title={done ? `งานเสร็จสิ้น — แจ้ง Freelancer เบิกเงิน` : 'ส่งรายละเอียดงานให้ Freelancer'} size="2xl">
@@ -181,6 +183,7 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
               <p className="font-bold">{done ? 'งานเสร็จสิ้น ✅' : 'รายละเอียดงาน 🎬'}</p>
             </div>
             <div className="px-4 py-3 space-y-1.5">
+              {previewNick && <p className="text-xs text-gray-500">สวัสดี {previewNick} 👋</p>}
               <p className="font-bold text-gray-900">{job.title}</p>
               <p className="text-xs"><span className="text-gray-500">วันที่ </span>{dateText}</p>
               <p className="text-xs"><span className="text-gray-500">สถานที่ </span>{job.location || '-'}</p>

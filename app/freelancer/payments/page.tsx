@@ -21,6 +21,7 @@ import { uploadExpenseSlip, getStorageDownloadUrl } from '@/lib/firebase-storage
 import type { Freelancer, Job, Payment, Position } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
+import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonImage, SkeletonPaymentCard } from '@/components/ui/Skeleton'
 import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
 
@@ -73,7 +74,9 @@ export default function FreelancerPaymentsPage() {
   const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [selectedPosition, setSelectedPosition] = useState('')
-  const [requestAmount, setRequestAmount] = useState('')
+  // ยอดเบิก = จำนวนคิว × ราคาต่อคิว (เริ่มที่ 1 คิว)
+  const [requestQueues, setRequestQueues] = useState('1')
+  const [requestRate, setRequestRate] = useState('')
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -155,8 +158,10 @@ export default function FreelancerPaymentsPage() {
   const openModal = () => {
     setSelectedJobId('')
     setSelectedDates([])
-    setSelectedPosition('')
-    setRequestAmount('')
+    // ตำแหน่งตั้งต้นจากโปรไฟล์ (ถ้ายังมีในรายการตำแหน่ง) — เหมือนหน้าแรกของ LIFF
+    setSelectedPosition(freelancer?.position && positions.some((p) => p.name === freelancer.position) ? freelancer.position : '')
+    setRequestQueues('1')
+    setRequestRate(freelancer?.ratePerQueue ? String(freelancer.ratePerQueue) : '') // ราคาต่อคิวที่แอดมินตั้งไว้
     setRequestNotes('')
     setError('')
     setShowExpense(false)
@@ -192,8 +197,9 @@ export default function FreelancerPaymentsPage() {
       return
     }
     if (!selectedPosition) { setError('กรุณาเลือกตำแหน่ง'); return }
-    const amount = parseFloat(requestAmount)
-    if (isNaN(amount) || amount <= 0) { setError('กรุณากรอกจำนวนเงินที่ถูกต้อง'); return }
+    const { queues, rate, amount } = queueTotal(requestQueues, requestRate)
+    if (!(queues > 0)) { setError('กรุณากรอกจำนวนคิว'); return }
+    if (!(rate > 0)) { setError('กรุณากรอกราคาต่อคิว'); return }
     if (showExpense) {
       const expAmt = parseFloat(expenseAmount)
       if (isNaN(expAmt) || expAmt <= 0) { setError('กรุณากรอกจำนวนค่าใช้จ่ายให้ถูกต้อง'); return }
@@ -217,6 +223,8 @@ export default function FreelancerPaymentsPage() {
         freelancerId: freelancer.id,
         jobId: selectedJob.id,
         amount,
+        queueCount: queues,
+        ratePerQueue: rate,
         status: 'pending',
         workDates,
         position: selectedPosition,
@@ -367,6 +375,7 @@ export default function FreelancerPaymentsPage() {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
+{p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
                     <p className="text-xs text-gray-400 mt-0.5">
                       ภาษี {formatCurrency(calcTax(p.amount).tax)} · สุทธิ{' '}
                       <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
@@ -406,6 +415,7 @@ export default function FreelancerPaymentsPage() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
+{p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
                         <p className="text-xs text-gray-400 mt-0.5">
                           สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
                         </p>
@@ -455,6 +465,7 @@ export default function FreelancerPaymentsPage() {
                             </div>
                             <div className="text-right flex-shrink-0">
                               <p className="text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</p>
+{p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
                               <p className="text-xs text-gray-400">สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span></p>
                             </div>
                           </div>
@@ -556,19 +567,15 @@ export default function FreelancerPaymentsPage() {
             />
           </div>
 
-          {/* จำนวนเงินทั้งหมด */}
-          <div>
-            <label className={labelCls}>จำนวนเงินทั้งหมด (บาท) *</label>
-            <input
-              type="number"
-              value={requestAmount}
-              onChange={(e) => setRequestAmount(e.target.value)}
-              className={inputCls}
-              min="1"
-              inputMode="numeric"
-              placeholder="0"
-            />
-          </div>
+          {/* จำนวนคิว × ราคาต่อคิว = ยอดรวม */}
+          <QueueAmountInput
+            queues={requestQueues}
+            onQueues={setRequestQueues}
+            rate={requestRate}
+            onRate={setRequestRate}
+                        inputCls={inputCls}
+            labelCls={labelCls}
+          />
 
           {/* ค่าใช้จ่ายเพิ่มเติม */}
           <div>

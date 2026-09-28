@@ -85,6 +85,7 @@ export interface Freelancer {
   createdAt: string
   isActive: boolean
   nickname?: string         // ชื่อเล่น — กรอกตอนสมัคร LIFF / admin แก้ได้ · โชว์คู่ชื่อจริงในรายชื่อทีมงาน
+  ratePerQueue?: number     // ราคาต่อคิว (บาท) — แอดมินตั้งใน FreelancerForm · ค่าตั้งต้นของฟอร์มเบิก (LIFF + แอดมิน) · freelancer แก้เองไม่ได้ (rules)
   position?: string         // ตำแหน่งงานหลัก (ชื่อจาก positions) — เลือกตอนสมัคร LIFF / admin แก้ได้ · เป็นค่าตั้งต้นตอนขอเบิก
 }
 
@@ -108,7 +109,9 @@ export interface Payment {
   freelancerId: string
   jobAssignmentId?: string    // optional — ถ้าผูกกับ assignment
   jobId: string               // relation → jobs collection
-  amount: number
+  amount: number              // ยอดขอเบิก (gross) — ขอจาก LIFF = queueCount × ratePerQueue (แอดมินแก้ยอดทีหลังได้)
+  queueCount?: number         // จำนวนคิว (ขอจาก LIFF — ข้อมูลเก่าไม่มี)
+  ratePerQueue?: number       // ราคาต่อคิว
   status: PaymentStatus
   workDates?: string[]        // วันที่ทำงาน (ISO date strings) เลือกได้หลายวัน
   requestedAt: string

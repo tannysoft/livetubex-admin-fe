@@ -57,6 +57,7 @@ service cloud.firestore {
                     && request.auth.uid == request.resource.data.lineUserId
                     && request.resource.data.totalEarned == 0
                     && request.resource.data.isActive == true
+                    && !('ratePerQueue' in request.resource.data)   // ราคาต่อคิว = แอดมินตั้งเท่านั้น
                     && request.resource.data.keys().hasAll([
                         'lineUserId','lineDisplayName',
                         'namePrefix','firstName','lastName','name',
@@ -69,7 +70,8 @@ service cloud.firestore {
                     && request.resource.data.lineUserId == resource.data.lineUserId
                     && request.resource.data.totalEarned == resource.data.totalEarned
                     && request.resource.data.createdAt == resource.data.createdAt
-                    && request.resource.data.isActive == resource.data.isActive;
+                    && request.resource.data.isActive == resource.data.isActive
+                    && request.resource.data.get('ratePerQueue', null) == resource.data.get('ratePerQueue', null);
     }
 
     // ── positions: Admin เขียนได้, Freelancer อ่านได้ ───────────────────────

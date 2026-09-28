@@ -25,6 +25,7 @@ import { getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import { Skeleton, SkeletonImage } from '@/components/ui/Skeleton'
+import { deleteField } from 'firebase/firestore'
 
 export default function FreelancersPage() {
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
@@ -51,7 +52,7 @@ export default function FreelancersPage() {
       const result = await migrateProfilePictures()
       setMigrateResult(result)
       // โหลดรายการใหม่เพื่อให้ profileImagePath ที่เพิ่ง update โผล่ขึ้นมา
-      load()
+      load(true)
     } catch (err) {
       setMigrateResult({
         total: 0,
@@ -157,8 +158,9 @@ export default function FreelancersPage() {
     )
   }
 
-  const load = async () => {
-    setLoading(true)
+  // silent = โหลดใหม่หลังบันทึก — ไม่สลับเป็น skeleton (หน้าหดแล้วจอเด้งขึ้นบน) คงรายการเดิมไว้จนข้อมูลใหม่มา
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const data = await getFreelancers()
       setFreelancers(data)
@@ -172,9 +174,9 @@ export default function FreelancersPage() {
   const handleCreate = async (data: Omit<Freelancer, 'id' | 'createdAt' | 'totalEarned'>) => {
     setSaving(true)
     try {
-      await createFreelancer({ ...data, linePictureUrl: '' })
+      await createFreelancer(Object.fromEntries(Object.entries({ ...data, linePictureUrl: '' }).filter(([, v]) => v !== undefined)) as typeof data)
       setCreateOpen(false)
-      load()
+      load(true)
     } finally {
       setSaving(false)
     }
@@ -184,9 +186,10 @@ export default function FreelancersPage() {
     if (!editFreelancer) return
     setSaving(true)
     try {
-      await updateFreelancer(editFreelancer.id, data)
+      // ล้างราคาต่อคิว = ลบ field (updateDoc ไม่รับ undefined)
+      await updateFreelancer(editFreelancer.id, { ...data, ratePerQueue: data.ratePerQueue ?? (deleteField() as unknown as number) })
       setEditFreelancer(null)
-      load()
+      load(true)
     } finally {
       setSaving(false)
     }
@@ -307,6 +310,9 @@ export default function FreelancersPage() {
                     <BanknotesIcon className="w-4 h-4 flex-shrink-0" />
                     <span className="truncate">{f.bankName} · {f.bankAccount}</span>
                   </div>
+                  {f.ratePerQueue ? (
+                    <p className="text-gray-500 pl-6">{formatCurrency(f.ratePerQueue)} / คิว{f.position ? ` · ${f.position}` : ''}</p>
+                  ) : null}
                   {f.lineDisplayName && (
                     <div className="flex items-center gap-2 text-gray-500">
                       <svg className="w-4 h-4 flex-shrink-0 text-green-500" viewBox="0 0 24 24" fill="currentColor">

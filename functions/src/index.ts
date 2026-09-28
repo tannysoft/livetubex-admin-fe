@@ -182,6 +182,22 @@ function abbrevBank(name: string): string {
 }
 
 // ── LINE push message helper ──────────────────────────────────────────────
+/**
+ * ใส่ชื่อเล่นของคนรับในข้อความ LINE (ส่งรายคนเท่านั้น — เข้ากลุ่มไม่ใส่)
+ * "สวัสดี ต้น 👋" บรรทัดแรกของ body + ต่อหน้า altText (ข้อความที่โชว์ในแจ้งเตือน) · ไม่มีชื่อเล่น = ข้อความเดิม
+ */
+function withNickname(flex: object, nickname?: unknown): object {
+  const nick = typeof nickname === 'string' ? nickname.trim().slice(0, 40) : ''
+  if (!nick) return flex
+  const f = JSON.parse(JSON.stringify(flex)) as { altText?: string; contents?: { body?: { contents?: object[] } } }
+  if (f.altText) f.altText = `${nick} · ${f.altText}`.slice(0, 400)
+  const body = f.contents?.body
+  if (body && Array.isArray(body.contents)) {
+    body.contents = [{ type: 'text', text: `สวัสดี ${nick} 👋`, size: 'sm', color: '#6b7280', margin: 'none' }, ...body.contents]
+  }
+  return f
+}
+
 function sendLineMessage(to: string, token: string, messages: object[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ to, messages })
@@ -355,6 +371,7 @@ export const sendPaymentNotification = onCall(
         ${row('วันที่ทำงาน', workDatesText)}
         ${row('บัญชีธนาคาร', `${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span>`)}
         ${payment.notes ? row('หมายเหตุ', payment.notes as string) : ''}
+        ${payment.queueCount && payment.ratePerQueue ? row('จำนวนคิว', `${Number(payment.queueCount).toLocaleString('th-TH')} คิว × ${formatCurrency(Number(payment.ratePerQueue))}`) : ''}
         ${row('จำนวนขอเบิก', formatCurrency(amount), { big: true })}
         ${row('ภาษีหัก ณ ที่จ่าย 3%', `−${formatCurrency(tax)}`, { muted: true })}
         ${row('ยอดโอนสุทธิ', formatCurrency(net), { bold: true, big: true, last: true })}
@@ -390,6 +407,7 @@ export const sendPaymentNotification = onCall(
       <table style="width:100%;border-collapse:collapse;font-size:14px">
         ${row('รายละเอียดงาน', jobTitle)}
         ${row('วันที่ทำงาน', workDatesText)}
+        ${payment.queueCount && payment.ratePerQueue ? row('จำนวนคิว', `${Number(payment.queueCount).toLocaleString('th-TH')} คิว × ${formatCurrency(Number(payment.ratePerQueue))}`) : ''}
         ${row('จำนวนขอเบิก', formatCurrency(amount))}
         ${row('ภาษีหัก ณ ที่จ่าย 3%', `−${formatCurrency(tax)}`, { muted: true })}
         ${row('ยอดที่จะได้รับ', formatCurrency(net), { bold: true, big: true, last: true })}
@@ -870,7 +888,7 @@ export const sendPayoutNotification = onCall(
           },
         }
 
-        await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [flexMessage])
+        await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [withNickname(flexMessage, fl.nickname)])
         lineSent = true
         console.log(`[sendPayoutNotification] LINE ✅ sent to ${lineUserId}`)
 
@@ -1041,7 +1059,7 @@ export const sendJobDetails = onCall(
       if (!fl) { failed.push({ id: snap.id, name, reason: 'ไม่พบ freelancer' }); continue }
       if (!lineUserId) { failed.push({ id: snap.id, name, reason: 'ไม่มี LINE' }); continue }
       try {
-        await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [flexMessage])
+        await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [withNickname(flexMessage, fl.nickname)])
         sent.push(snap.id)
         await db.collection('lineMessageLogs').add({
           sentAt: new Date().toISOString(), month, kind: template === 'completed' ? 'job_done' : 'job', jobId, jobTitle: job.title ?? '',
@@ -1193,7 +1211,7 @@ export const sendPlanToLine = onCall(
         if (!fl) { failed.push({ id: snap.id, name, reason: 'ไม่พบ freelancer' }); continue }
         if (!lineUserId) { failed.push({ id: snap.id, name, reason: 'ไม่มี LINE' }); continue }
         try {
-          await sendLineMessage(lineUserId, lineToken, [flexMessage])
+          await sendLineMessage(lineUserId, lineToken, [withNickname(flexMessage, fl.nickname)])
           sent.push(snap.id)
           await db.collection('lineMessageLogs').add({ ...logBase, sentAt: new Date().toISOString(), target: 'user', freelancerId: snap.id, freelancerName: name, lineUserId })
         } catch (e) {
