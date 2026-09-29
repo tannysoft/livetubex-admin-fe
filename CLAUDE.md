@@ -51,6 +51,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | endDate | string? | ถ้าเป็นงานหลายวัน — วันสุดท้ายจริงเสมอ (รวมงานเว้นวัน) |
 | dates | string[]? | **งานเว้นวัน** (เช่น 22, 23, 25) — เก็บเฉพาะเมื่อไม่ติดกัน · `date`/`endDate` = วันแรก/วันสุดท้าย · อ่านวันจริงผ่าน `jobDays()` / แสดงผล `formatJobDates()` (`lib/job-dates.ts`) — ปฏิทินงานแยกแถบตามช่วง, วันที่ทำงานตอนเบิกมีแค่วันงานจริง, ข้อความ LINE ใช้ `thaiDateRuns` (ฝาแฝดฝั่ง functions) · ลิงก์ Google Calendar ได้ช่วงเดียว → คลุมทั้งช่วง + บอกวันจริงในรายละเอียด · ฟอร์มงานเลือกวันด้วย `FormMultiDatePicker` อย่างเดียว (กดทีละวัน ติดกัน/เว้นวันได้) · `updateJob` รับ `dates: []` = ลบ field |
 | location | string | |
+| mapUrl | string? | ลิงก์แชร์ Google Maps ที่แอดมินวางในฟอร์มงาน (ไม่ใช้ Maps API/ไม่ต้องมี key) — ปุ่ม "ค้นหา" เปิด `MapSearchModal`: แผนที่ Google ฝัง iframe (`mapsEmbedUrl` = `google.com/maps/embed?pb=` ตรงๆ เพราะ `maps?output=embed` redirect พร้อม X-Frame-Options) → "ใช้ตำแหน่งนี้" = ลิงก์ค้นหา `mapsSearchUrl` หรือวางลิงก์แชร์เอง · iframe ข้ามโดเมน อ่านจุดที่จิ้มไม่ได้ (ผู้ใช้เลือก Google มากกว่า Leaflet/OSM ที่ปักหมุดได้) · ลิงก์หน้าสถานที่ `/maps/place/…` (คัดลอกจาก address bar — ไม่มี API ไหนสร้างได้) → `cleanMapUrl` ตัด entry/g_ep/g_st ทิ้ง, `placeFromMapUrl` อ่านชื่อ + หมุด (!3d!4d) มาโชว์ตัวอย่างและเติมช่องสถานที่เมื่อว่าง · ปุ่ม "เปิดแผนที่" ในข้อความ LINE ส่งรายละเอียดงาน + ลิงก์ในรายการงาน/ปฏิทิน/Google Calendar · อ่านผ่าน `safeMapUrl()` (`lib/job-map.ts` + ฝาแฝดใน functions — http(s) ≤1000 ตัว) |
 | clientName | string | |
 | docNumber | string? | เลขที่เอกสารอ้างอิง (ใบเสนอราคา/PO) — พิมพ์เองในฟอร์มงาน ค้นหาได้ในหน้ารายการงาน · อยู่ใน jobs doc (LIFF อ่านได้ — ไม่ใช่ข้อมูลลับ) |
 | status | 'draft' \| 'published' \| 'in_progress' \| 'completed' \| 'cancelled' | |
@@ -203,6 +204,16 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 > LINE ไม่มี API รายการกลุ่ม → จดจาก webhook เท่านั้น (กลุ่มที่บอทอยู่ก่อนตั้ง webhook ต้องมีข้อความในกลุ่ม 1 ครั้ง)
 > จัดการที่ `/admin/settings/line` (`LineGroupsSection`) · Webhook URL = `https://asia-southeast1-{projectId}.cloudfunctions.net/lineWebhook`
 
+### `jobPlaces` (admin-only — สถานที่ที่เคยใช้)
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| name | string | doc id = ชื่อที่ normalize (ตัวเล็ก + ช่องว่างเดียว, `/` → `∕`) |
+| mapUrl | string? | ลิงก์ Google Maps ล่าสุดของที่นี่ (บันทึกงานโดยไม่มีลิงก์ = ไม่ทับของเดิม) |
+| useCount / lastUsedAt | number / string | `increment()` ทุกครั้งที่บันทึกงาน · เรียงตัวเลือกใช้บ่อยก่อน |
+
+> จดอัตโนมัติใน `createJob`/`updateJob` (ที่มี location) ผ่าน `rememberJobPlace()` — `lib/job-places.ts`
+> ช่องสถานที่ในฟอร์มงาน = `SuggestInput` ตัวเลือก = jobPlaces + สถานที่ของงานเก่า (`placeSuggestions`) · เลือกแล้วเติม mapUrl (📍 = มีลิงก์)
+
 ### `settings/app`
 | Field | Type | หมายเหตุ |
 |---|---|---|
@@ -321,7 +332,7 @@ sendJobDetails(onCall)
 // UI: ปุ่ม "งานเสร็จสิ้น" (หน้างาน/หน้าแก้งาน) = SendJobModal mode completed — เปลี่ยนสถานะเป็นเสร็จสิ้น, เปิด showInLiff ถ้าซ่อน, เลือกทีม (คนที่เคยได้ log 'job') ไว้ให้ ยกเว้นคนที่ขอเบิกแล้ว
 // Admin only — ส่งรายละเอียดงานให้ freelancer ทาง LINE push (flex: ชื่องาน/วัน/สถานที่/ลูกค้า/รายละเอียด + ข้อความแอดมิน + ปุ่มเพิ่มลงปฏิทิน)
 // ปุ่ม "ดูแผนงาน" = แผน (equipmentPlans.jobId) ที่เปิดลิงก์แชร์อยู่ ≤3 แผน → ลิงก์ LIFF /plan?s= (freelancer ไม่ต้องใส่รหัส) · includePlans=false ปิดได้
-// รับ: { jobId, freelancerIds (≤100), message?, includePlans? } — อ่านงานจาก jobs เอง **ไม่ส่งราคา** · log ต่อคนลง lineMessageLogs (kind 'job', jobId, jobTitle)
+// รับ: { jobId, freelancerIds (≤100), groupIds? (≤20 — lineGroups, ไม่มีคำทักชื่อเล่น, log target 'group'), message?, includePlans? } — ต้องมีคนหรือกลุ่มอย่างน้อย 1 — อ่านงานจาก jobs เอง **ไม่ส่งราคา** · log ต่อคนลง lineMessageLogs (kind 'job', jobId, jobTitle)
 // คืน: { sent: id[], failed: {id,name,reason}[] } · UI: components/admin/SendJobModal (หน้างาน, หน้าแก้งาน, ปฏิทินงาน) โชว์ "ส่งแล้ว" จาก log
 // Secret: LINE_CHANNEL_ACCESS_TOKEN
 

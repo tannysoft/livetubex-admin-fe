@@ -13,6 +13,7 @@ import { createRevision, isModifiedSinceRevision } from '../equipment/revisions'
 import { jobStatusLabel } from '../utils'
 import type { Job, JobStatus } from '../types'
 import { dateRuns, formatDateRuns, formatJobDates, normalizeJobDates } from '../job-dates'
+import { cleanMapUrl, safeMapUrl } from '../job-map'
 
 /**
  * tool ของผู้ช่วย AI ทั้งระบบ — นิยาม (ส่งให้ Claude ผ่าน function systemAgent) + ตัวรันที่หน้าเว็บ
@@ -95,6 +96,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         endDate: date('วันสุดท้าย (งานหลายวัน)'),
         dates: { type: 'array', items: { type: 'string', description: 'YYYY-MM-DD' }, description: 'งานเว้นวัน: วันงานทุกวัน เช่น 22,23,25 (ใช้แทน date/endDate · date = วันแรก) — งานวันติดกันไม่ต้องส่ง' },
         location: { type: 'string' },
+        mapUrl: { type: 'string', description: 'ลิงก์ Google Maps ของสถานที่ (ถ้าผู้ใช้ให้มา)' },
         clientName: { type: 'string', description: 'ชื่อลูกค้า / Event' },
         docNumber: { type: 'string', description: 'เลขที่เอกสารอ้างอิง (ใบเสนอราคา/PO) ถ้าผู้ใช้บอก' },
         description: { type: 'string' },
@@ -115,7 +117,7 @@ export const AGENT_TOOLS: AgentTool[] = [
         jobId: { type: 'string' },
         title: { type: 'string' }, date: date('วันเริ่ม'), endDate: date('วันสุดท้าย ("" = งานวันเดียว)'),
         dates: { type: 'array', items: { type: 'string', description: 'YYYY-MM-DD' }, description: 'งานเว้นวัน: วันงานทุกวัน เช่น 22,23,25 (ใช้แทน date/endDate · date = วันแรก) — งานวันติดกันไม่ต้องส่ง' },
-        location: { type: 'string' }, clientName: { type: 'string' }, docNumber: { type: 'string' }, description: { type: 'string' },
+        location: { type: 'string' }, mapUrl: { type: 'string', description: 'ลิงก์ Google Maps ("" = ลบ)' }, clientName: { type: 'string' }, docNumber: { type: 'string' }, description: { type: 'string' },
         status: { type: 'string', enum: JOB_STATUSES }, budget: { type: 'number' }, notes: { type: 'string' },
       },
       required: ['jobId'],
@@ -248,7 +250,7 @@ function parseDays(v: unknown): string[] {
 function jobRow(j: Job, st: AccountingStatusDef[]) {
   return {
     id: j.id, title: j.title, date: j.date, ...(j.endDate && j.endDate !== j.date ? { endDate: j.endDate } : {}), ...(j.dates?.length ? { days: formatJobDates(j), dates: j.dates } : {}),
-    location: j.location, client: j.clientName, ...(j.docNumber ? { docNumber: j.docNumber } : {}), status: jobStatusLabel(j.status),
+    location: j.location, ...(j.mapUrl ? { mapUrl: j.mapUrl } : {}), client: j.clientName, ...(j.docNumber ? { docNumber: j.docNumber } : {}), status: jobStatusLabel(j.status),
     accounting: st.find((x) => x.id === j.accountingStatus)?.label ?? 'ไม่ระบุ',
     ...(j.budget ? { budget: j.budget } : {}),
   }
@@ -341,6 +343,7 @@ export async function executeTool(name: string, input: In, ctx: ToolContext): Pr
         title: str(input.title),
         ...(days.length ? normalizeJobDates(days) : { date: d, ...(end && end > d ? { endDate: end } : {}) }),
         location: str(input.location), clientName: str(input.clientName), description: str(input.description),
+        ...(cleanMapUrl(optStr(input.mapUrl)) ? { mapUrl: cleanMapUrl(optStr(input.mapUrl)) } : {}),
         status: (JOB_STATUSES.includes(input.status as JobStatus) ? input.status : 'draft') as JobStatus,
         budget: typeof input.budget === 'number' ? input.budget : 0,
         ...(accountingStatus ? { accountingStatus } : {}),
@@ -358,6 +361,11 @@ export async function executeTool(name: string, input: In, ctx: ToolContext): Pr
       if (!cur) throw new Error('ไม่พบงาน')
       const patch: Partial<Job> = {}
       for (const k of ['title', 'location', 'clientName', 'docNumber', 'description', 'notes'] as const) if (typeof input[k] === 'string') patch[k] = str(input[k])
+      if (typeof input.mapUrl === 'string') {
+        const m = str(input.mapUrl)
+        if (m && !safeMapUrl(m)) throw new Error('mapUrl ต้องเป็นลิงก์ https://')
+        patch.mapUrl = cleanMapUrl(m)
+      }
       if (input.date !== undefined) patch.date = needDate(input.date, 'date')
       if (typeof input.endDate === 'string') {
         const e = str(input.endDate)

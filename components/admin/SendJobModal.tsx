@@ -2,14 +2,16 @@
 
 import FormCheckbox from '@/components/ui/FormCheckbox'
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircleIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
+import { CheckCircleIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, PaperAirplaneIcon, UserGroupIcon, UserIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import Modal from '@/components/ui/Modal'
 import { getPlansByJob } from '@/lib/equipment/plans'
 import { getPlanShareStatus } from '@/lib/equipment/plan-share'
 import { getFreelancers, getJobSendLogs, getPaymentsByJob, sendJobDetails, updateJob, type SendJobDetailsResult } from '@/lib/firebase-utils'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { formatDateTime } from '@/lib/utils'
 import { formatJobDates } from '@/lib/job-dates'
+import { safeMapUrl } from '@/lib/job-map'
+import { getLineGroups, lineGroupName, type LineGroup } from '@/lib/line-groups'
 import type { Freelancer, Job } from '@/lib/types'
 
 /**
@@ -34,6 +36,16 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  // กลุ่ม LINE ที่บอทอยู่ (lineGroups) — ส่งเข้ากลุ่มได้พร้อมกับรายคน
+  const [groups, setGroups] = useState<LineGroup[]>([])
+  const [pickedGroups, setPickedGroups] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let alive = true
+    getLineGroups().then((g) => { if (alive) setGroups(g.filter((x) => !x.hidden)) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+  const toggleGroup = (id: string) => setPickedGroups((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const total = picked.size + pickedGroups.size
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<SendJobDetailsResult | null>(null)
@@ -59,13 +71,17 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
         // ป้าย "ส่งแล้ว" นับเฉพาะข้อความชนิดเดียวกับที่กำลังส่ง
         const kind = done ? 'job_done' : 'job'
         const m = new Map<string, string>()
-        for (const l of logs) if ((l.kind ?? 'payout') === kind && (!m.has(l.freelancerId) || m.get(l.freelancerId)! < l.sentAt)) m.set(l.freelancerId, l.sentAt)
+        for (const l of logs) {
+          if ((l.kind ?? 'payout') !== kind) continue
+          const key = l.target === 'group' ? l.groupId ?? '' : l.freelancerId // กลุ่ม = groupId
+          if (key && (!m.has(key) || m.get(key)! < l.sentAt)) m.set(key, l.sentAt)
+        }
         setSentAt(m)
         if (done) {
           const claimedIds = new Set(pays.filter((p) => p.status !== 'rejected').map((p) => p.freelancerId))
           setClaimed(claimedIds)
           // คนที่เคยได้รายละเอียดงานนี้ = ทีมงานของงาน → เลือกไว้ให้ (ยกเว้นเบิกแล้ว/แจ้งไปแล้ว/ไม่มี LINE)
-          const team = new Set(logs.filter((l) => l.kind === 'job').map((l) => l.freelancerId))
+          const team = new Set(logs.filter((l) => l.kind === 'job' && l.target !== 'group').map((l) => l.freelancerId))
           setPicked(new Set(active.filter((f) => team.has(f.id) && f.lineUserId && !claimedIds.has(f.id) && !m.has(f.id)).map((f) => f.id)))
         }
       })
@@ -98,11 +114,13 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
     setErr('')
     try {
       await applyJobChanges()
-      const r = await sendJobDetails(job.id, [...picked], message, { includePlans, template: mode })
+      const r = await sendJobDetails(job.id, [...picked], message, { includePlans, template: mode, groupIds: [...pickedGroups] })
       setResult(r)
       const now = new Date().toISOString()
       setSentAt((m) => { const n = new Map(m); for (const id of r.sent) n.set(id, now); return n })
-      setPicked(new Set(r.failed.map((f) => f.id)))
+      const failedIds = new Set(r.failed.map((f) => f.id))
+      setPicked((s) => new Set([...s].filter((id) => failedIds.has(id))))
+      setPickedGroups((s) => new Set([...s].filter((id) => failedIds.has(id))))
     } catch (e) {
       console.error(e)
       setErr(e instanceof Error ? e.message : 'ส่งไม่สำเร็จ')
@@ -131,6 +149,42 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
       )}
       <div className="grid gap-4 md:grid-cols-[1fr_300px]">
         <div className="space-y-3 min-w-0">
+          {/* กลุ่ม LINE — ส่งเข้ากลุ่ม (ไม่มีคำทักชื่อเล่น) */}
+          {groups.length > 0 ? (
+            <div>
+              <p className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5"><UserGroupIcon className="w-4 h-4" /> กลุ่ม LINE</p>
+              <ul className="max-h-40 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
+                {groups.map((g) => {
+                  const last = sentAt.get(g.id)
+                  return (
+                    <li key={g.id}>
+                      <FormCheckbox
+                        size="sm"
+                        align="center"
+                        disabled={!g.active}
+                        checked={pickedGroups.has(g.id)}
+                        onChange={() => toggleGroup(g.id)}
+                        className={`px-4 py-2 gap-3 ${g.active ? 'hover:bg-gray-50' : ''}`}
+                        label={<span className="flex items-center gap-3">
+                          {g.pictureUrl
+                            // eslint-disable-next-line @next/next/no-img-element
+                            ? <img src={g.pictureUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                            : <span className="w-7 h-7 rounded-full bg-green-50 text-green-700 flex items-center justify-center shrink-0"><UserGroupIcon className="w-4 h-4" /></span>}
+                          <span className="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">{lineGroupName(g)}</span>
+                          {!g.active && <span className="text-[11px] text-gray-400">บอทออกจากกลุ่มแล้ว</span>}
+                          {last && <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-green-50 text-green-700" title={formatDateTime(last)}>{done ? 'แจ้งแล้ว' : 'ส่งแล้ว'}</span>}
+                        </span>}
+                      />
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400">ส่งเข้ากลุ่ม LINE ได้ — เชิญบอทเข้ากลุ่มก่อน (ดู <Link href="/admin/settings/line" className="text-brand hover:underline">ตั้งค่า LINE</Link>)</p>
+          )}
+          {/* หัวข้อเว้นจากกลุ่มด้านบน ให้เห็นเป็นคนละส่วน */}
+          <p className="text-xs font-medium text-gray-700 pt-3 flex items-center gap-1.5"><UserIcon className="w-4 h-4" /> รายคน (Freelancer)</p>
           <label className="relative block">
             <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อ, ชื่อเล่น, ชื่อ LINE, เบอร์โทร" className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand" />
@@ -206,6 +260,7 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
                     <span className="block text-[10px]">{plans.length === 0 ? 'ยังไม่มีแผนที่ผูกกับงานนี้' : 'แผนยังไม่เปิดลิงก์แชร์'}</span>
                   </div>
                 )}
+                {safeMapUrl(job.mapUrl) && <div className="text-center text-xs rounded-md bg-gray-100 text-gray-700 py-1.5">เปิดแผนที่</div>}
                 <div className={`text-center text-xs rounded-md py-1.5 ${includePlans && sharedPlans.length ? 'bg-gray-100 text-gray-700' : 'bg-brand text-white'}`}>เพิ่มลงปฏิทิน</div>
               </div>
               )}
@@ -234,13 +289,13 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
               <p className="text-[11px] text-gray-400">เปิดใน LINE แล้ว Freelancer ที่ลงทะเบียนดูได้เลย ไม่ต้องใส่รหัส</p>
             </div>
           )}
-          <p className="text-[11px] text-gray-400">ไม่ส่งราคางาน · ส่ง 1 คน = ใช้โควตา LINE 1 ข้อความ</p>
+          <p className="text-[11px] text-gray-400">ไม่ส่งราคางาน · ส่ง 1 คน = โควตา LINE 1 ข้อความ · ส่งเข้ากลุ่มนับตามจำนวนสมาชิก</p>
         </div>
       </div>
 
       {result && (
         <div className="mt-4 space-y-1.5 text-sm">
-          {result.sent.length > 0 && <p className="flex items-center gap-1.5 text-green-700"><CheckCircleIcon className="w-5 h-5" /> ส่งแล้ว {result.sent.length} คน</p>}
+          {result.sent.length > 0 && <p className="flex items-center gap-1.5 text-green-700"><CheckCircleIcon className="w-5 h-5" /> ส่งแล้ว {result.sent.length} ปลายทาง</p>}
           {result.failed.map((f) => (
             <p key={f.id} className="flex items-center gap-1.5 text-red-600"><ExclamationTriangleIcon className="w-5 h-5 shrink-0" /> {f.name}: {f.reason}</p>
           ))}
@@ -259,9 +314,9 @@ export default function SendJobModal({ job, onClose, mode = 'details', onJobChan
             เสร็จสิ้นโดยไม่ส่ง LINE
           </button>
         )}
-        <button onClick={send} disabled={picked.size === 0 || sending} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-brand text-white hover:bg-brand-dark disabled:opacity-40">
+        <button onClick={send} disabled={total === 0 || sending} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-brand text-white hover:bg-brand-dark disabled:opacity-40">
           <PaperAirplaneIcon className="w-4 h-4" />
-          {sending ? 'กำลังส่ง…' : `ส่งทาง LINE${picked.size ? ` (${picked.size} คน)` : ''}`}
+          {sending ? 'กำลังส่ง…' : `ส่งทาง LINE${total ? ` (${[pickedGroups.size ? `${pickedGroups.size} กลุ่ม` : '', picked.size ? `${picked.size} คน` : ''].filter(Boolean).join(' + ')})` : ''}`}
         </button>
       </div>
     </Modal>

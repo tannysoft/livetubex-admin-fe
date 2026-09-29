@@ -918,7 +918,7 @@ export const sendPayoutNotification = onCall(
 // ไม่มี budget/ราคา (อยู่ jobFinance) · 1 คน = 1 push = นับโควตา LINE 1 ข้อความ → log ลง lineMessageLogs (kind 'job')
 
 /** ลิงก์ template ของ Google Calendar (งานทั้งวัน — วันสิ้นสุดแบบไม่รวม จึง +1) ฝาแฝดของ googleCalendarUrl ใน lib/calendar.ts */
-function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: string; dates?: string[]; location?: string; description?: string }): string {
+function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: string; dates?: string[]; location?: string; mapUrl?: string; description?: string }): string {
   const ymd = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
   const start = new Date(job.date + 'T00:00:00Z')
   const end = new Date((job.endDate && job.endDate > job.date ? job.endDate : job.date) + 'T00:00:00Z')
@@ -927,9 +927,22 @@ function jobGoogleCalendarUrl(job: { title: string; date: string; endDate?: stri
   if (job.location) q.set('location', job.location)
   // งานเว้นวัน: template ของ Google ได้ช่วงเดียว → คลุมทั้งช่วง + บอกวันงานจริงในรายละเอียด (ฝาแฝด lib/calendar.ts)
   const gap = job.dates && job.dates.length ? `วันงาน: ${thaiDateRuns(job.dates)} (เว้นวัน)` : ''
-  const details = [gap, job.description?.slice(0, 1500)].filter(Boolean).join('\n\n')
+  const map = safeMapUrl(job.mapUrl)
+  const details = [gap, map && `แผนที่: ${map}`, job.description?.slice(0, 1500)].filter(Boolean).join('\n\n')
   if (details) q.set('details', details)
   return `https://calendar.google.com/calendar/render?${q.toString().replace('%2F', '/')}`
+}
+
+/** ลิงก์แผนที่ของงาน — รับเฉพาะ http(s) ≤1000 ตัว (ขีดจำกัด uri ของปุ่ม LINE) · ฝาแฝดของ lib/job-map.ts */
+function safeMapUrl(v: unknown): string {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s || s.length > 1000) return ''
+  try {
+    const u = new URL(s)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : ''
+  } catch {
+    return ''
+  }
 }
 
 /** งานเว้นวัน ["2026-09-22","2026-09-23","2026-09-25"] → "22–23, 25 ก.ย. 2569" (ฝาแฝดแบบย่อของ formatDateRuns ใน lib/job-dates.ts) */
@@ -963,18 +976,21 @@ export const sendJobDetails = onCall(
     const token = request.auth.token as { firebase?: { sign_in_provider?: string } }
     if (token.firebase?.sign_in_provider !== 'password') throw new HttpsError('permission-denied', 'Admin only')
 
-    const { jobId, freelancerIds, message, includePlans, template: rawTemplate } = (request.data ?? {}) as { jobId?: string; freelancerIds?: string[]; message?: string; includePlans?: boolean; template?: string }
+    const { jobId, freelancerIds: rawFreelancerIds, groupIds: rawGroupIds, message, includePlans, template: rawTemplate } = (request.data ?? {}) as { jobId?: string; freelancerIds?: string[]; groupIds?: string[]; message?: string; includePlans?: boolean; template?: string }
+    const freelancerIds = Array.isArray(rawFreelancerIds) ? rawFreelancerIds : []
+    // กลุ่ม LINE (lineGroups) — ข้อความเดียวกัน ไม่มีคำทักชื่อเล่น
+    const groupIds = [...new Set((Array.isArray(rawGroupIds) ? rawGroupIds : []).filter((x) => typeof x === 'string' && x))]
     // details = รายละเอียดงาน (ก่อนงาน) · completed = งานเสร็จสิ้น ชวนเบิกเงิน (ปุ่มเปิด LIFF พร้อมเลือกงานให้ ?claim=)
     const template: 'details' | 'completed' = rawTemplate === 'completed' ? 'completed' : 'details'
     if (!jobId || typeof jobId !== 'string') throw new HttpsError('invalid-argument', 'Missing jobId')
-    if (!Array.isArray(freelancerIds) || freelancerIds.length === 0) throw new HttpsError('invalid-argument', 'Missing freelancerIds')
-    if (freelancerIds.length > 100) throw new HttpsError('invalid-argument', 'ส่งได้ครั้งละไม่เกิน 100 คน')
+    if (freelancerIds.length + groupIds.length === 0) throw new HttpsError('invalid-argument', 'เลือกคนหรือกลุ่มที่จะส่งก่อน')
+    if (freelancerIds.length > 100 || groupIds.length > 20) throw new HttpsError('invalid-argument', 'ส่งได้ครั้งละไม่เกิน 100 คน / 20 กลุ่ม')
     const extra = typeof message === 'string' ? message.trim().slice(0, 1000) : ''
 
     const db = admin.firestore()
     const jobSnap = await db.collection('jobs').doc(jobId).get()
     if (!jobSnap.exists) throw new HttpsError('not-found', 'ไม่พบงาน')
-    const job = jobSnap.data() as { title: string; date: string; endDate?: string; dates?: string[]; location?: string; clientName?: string; description?: string }
+    const job = jobSnap.data() as { title: string; date: string; endDate?: string; dates?: string[]; location?: string; mapUrl?: string; clientName?: string; description?: string }
 
     const brand = await getBrandInfo()
     const liffId = await getLiffId()
@@ -1028,8 +1044,10 @@ export const sendJobDetails = onCall(
       }
     }
     const hasPlan = buttons.length > 0
+    // ปุ่มแผนที่ (ลิงก์ Google Maps ที่แอดมินวางในฟอร์มงาน) — เฉพาะส่งรายละเอียดงาน ไม่มีลิงก์ = ไม่แสดง
+    const mapUri = safeMapUrl(job.mapUrl)
+    if (mapUri && template === 'details') buttons.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: 'เปิดแผนที่', uri: mapUri } })
     if (template === 'details' && job.date) buttons.push({ type: 'button', style: hasPlan ? 'secondary' : 'primary', ...(hasPlan ? {} : { color }), height: 'sm', action: { type: 'uri', label: 'เพิ่มลงปฏิทิน', uri: jobGoogleCalendarUrl(job) } })
-    if (liffId && template === 'details') buttons.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: `เปิด ${brand.appName}`.slice(0, 40), uri: `https://liff.line.me/${liffId}` } })
 
     const flexMessage: object = {
       type: 'flex',
@@ -1050,8 +1068,29 @@ export const sendJobDetails = onCall(
     const month = `${bangkokNow.getFullYear()}-${String(bangkokNow.getMonth() + 1).padStart(2, '0')}`
     const sent: string[] = []
     const failed: { id: string; name: string; reason: string }[] = []
+    const kind = template === 'completed' ? 'job_done' : 'job'
+    if (groupIds.length) {
+      const gSnaps = await db.getAll(...groupIds.map((id) => db.collection('lineGroups').doc(id)))
+      for (const snap of gSnaps) {
+        const g = snap.data() as { name?: string; label?: string; active?: boolean } | undefined
+        const name = g?.label || g?.name || snap.id
+        if (!g) { failed.push({ id: snap.id, name, reason: 'ไม่พบกลุ่ม' }); continue }
+        if (g.active === false) { failed.push({ id: snap.id, name, reason: 'บอทออกจากกลุ่มแล้ว' }); continue }
+        try {
+          await sendLineMessage(snap.id, LINE_CHANNEL_ACCESS_TOKEN.value(), [flexMessage])
+          sent.push(snap.id)
+          await db.collection('lineMessageLogs').add({
+            sentAt: new Date().toISOString(), month, kind, jobId, jobTitle: job.title ?? '',
+            target: 'group', groupId: snap.id, freelancerId: '', freelancerName: name, lineUserId: snap.id, paymentCount: 0,
+          })
+        } catch (e) {
+          console.warn('[sendJobDetails] group ❌', snap.id, e)
+          failed.push({ id: snap.id, name, reason: e instanceof Error ? e.message.slice(0, 200) : 'ส่งไม่สำเร็จ' })
+        }
+      }
+    }
     const uniqueIds = [...new Set(freelancerIds.filter((x) => typeof x === 'string' && x))]
-    const snaps = await db.getAll(...uniqueIds.map((id) => db.collection('freelancers').doc(id)))
+    const snaps = uniqueIds.length ? await db.getAll(...uniqueIds.map((id) => db.collection('freelancers').doc(id))) : []
     for (const snap of snaps) {
       const fl = snap.data()
       const name = (fl?.name as string | undefined) ?? snap.id
@@ -1062,7 +1101,7 @@ export const sendJobDetails = onCall(
         await sendLineMessage(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value(), [withNickname(flexMessage, fl.nickname)])
         sent.push(snap.id)
         await db.collection('lineMessageLogs').add({
-          sentAt: new Date().toISOString(), month, kind: template === 'completed' ? 'job_done' : 'job', jobId, jobTitle: job.title ?? '',
+          sentAt: new Date().toISOString(), month, kind, jobId, jobTitle: job.title ?? '', target: 'user',
           freelancerId: snap.id, freelancerName: name, lineUserId, paymentCount: 0,
         })
       } catch (e) {

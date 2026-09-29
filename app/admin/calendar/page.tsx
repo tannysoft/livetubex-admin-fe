@@ -20,6 +20,7 @@ import {
 import { THAI_MONTHS, formatDate, formatDatePill, jobStatusColor, jobStatusLabel, thaiYear } from '@/lib/utils'
 import { formatJobDates, jobDateRuns } from '@/lib/job-dates'
 import type { CalendarEntry, Job } from '@/lib/types'
+import { safeMapUrl } from '@/lib/job-map'
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
 const MAX_CHIPS = 3
@@ -491,7 +492,7 @@ function EntryModal({ editing, job, onClose, onSaved, onRemoved, onGoogle, statu
             {job ? (
               <>
                 <p className="font-semibold text-gray-900">{job.title}</p>
-                <p className="text-gray-600">{formatJobDates(job)}{job.location ? ` · ${job.location}` : ''}</p>
+                <p className="text-gray-600">{formatJobDates(job)}{job.location ? ` · ${job.location}` : ''}{safeMapUrl(job.mapUrl) && <> · <a href={safeMapUrl(job.mapUrl)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-brand hover:underline"><MapPinIcon className="w-3.5 h-3.5" />แผนที่</a></>}</p>
                 {job.clientName && <p className="text-gray-500 text-xs">ลูกค้า: {job.clientName}</p>}
                 <div className="flex items-center gap-2 pt-1">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${jobStatusColor(job.status)}`}>{jobStatusLabel(job.status)}</span>

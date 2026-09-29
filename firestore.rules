@@ -86,6 +86,11 @@ service cloud.firestore {
     }
 
     // ── lineMessageLogs: Admin อ่านได้, Cloud Function เขียน (Admin SDK bypass rules) ─
+    // สถานที่ที่เคยใช้ในงาน (autocomplete ฟอร์มงาน + ลิงก์ Google Maps)
+    match /jobPlaces/{placeId} {
+      allow read, write: if isAdmin();
+    }
+
     match /lineMessageLogs/{logId} {
       allow read: if isAdmin();
       allow write: if isAdmin();

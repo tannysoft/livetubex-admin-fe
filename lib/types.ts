@@ -32,6 +32,7 @@ export interface Job {
   endDate?: string // วันสุดท้าย (งานเว้นวันก็เป็นวันสุดท้ายจริง)
   dates?: string[] // วันงานจริงเมื่อเว้นวัน (เช่น 22,23,25) — ไม่มี = ทุกวันใน date..endDate · อ่านผ่าน jobDays() (lib/job-dates.ts)
   location: string
+  mapUrl?: string // ลิงก์ Google Maps ของสถานที่ (แชร์จากแอป Maps) — ปุ่ม "เปิดแผนที่" ในข้อความ LINE · อ่านผ่าน safeMapUrl()
   clientName: string
   docNumber?: string // เลขที่เอกสารอ้างอิงของงาน (เช่น เลขใบเสนอราคา/PO) — พิมพ์เอง ไม่ auto
   accountingStatus?: string // สถานะทางบัญชี (id จาก settings/jobAccounting) — ลับ เก็บที่ jobFinance/{jobId} เหมือน budget
