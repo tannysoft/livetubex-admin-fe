@@ -2,6 +2,7 @@ import { collection, doc, addDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteF
 import { db } from './firebase'
 import type { CalendarEntry, Job } from './types'
 import { formatJobDates, hasDateGaps } from './job-dates'
+import { safeMapUrl } from './job-map'
 
 const COL = 'calendarEntries'
 
@@ -57,14 +58,15 @@ export async function setGoogleAdded(jobId: string, added: boolean): Promise<str
  * ลิงก์ "เพิ่มลง Google Calendar" — เปิดหน้าสร้างนัดของ Google ที่กรอกให้แล้ว ผู้ใช้กดบันทึกเองในบัญชีตัวเอง
  * (ไม่ต้องใช้ API/สิทธิ์ใดๆ) · งานทั้งวัน: วันสิ้นสุดของ Google เป็นแบบไม่รวม จึง +1 วัน
  */
-export function googleCalendarUrl(job: Pick<Job, 'title' | 'date' | 'endDate' | 'dates' | 'location' | 'clientName' | 'description'>): string {
+export function googleCalendarUrl(job: Pick<Job, 'title' | 'date' | 'endDate' | 'dates' | 'location' | 'mapUrl' | 'clientName' | 'description'>): string {
   const ymd = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   const start = new Date(job.date + 'T00:00:00')
   const end = new Date((job.endDate && job.endDate > job.date ? job.endDate : job.date) + 'T00:00:00')
   end.setDate(end.getDate() + 1)
   // งานเว้นวัน: ลิงก์ template ของ Google ทำได้ช่วงเดียว → นัดคลุมทั้งช่วง + บอกวันงานจริงในรายละเอียด
   const gapNote = hasDateGaps(job) && `วันงาน: ${formatJobDates(job)} (เว้นวัน)`
-  const details = [gapNote, job.clientName && `ลูกค้า: ${job.clientName}`, job.description].filter(Boolean).join('\n\n')
+  const map = safeMapUrl(job.mapUrl)
+  const details = [gapNote, map && `แผนที่: ${map}`, job.clientName && `ลูกค้า: ${job.clientName}`, job.description].filter(Boolean).join('\n\n')
   const q = new URLSearchParams({ action: 'TEMPLATE', text: job.title, dates: `${ymd(start)}/${ymd(end)}` })
   if (job.location) q.set('location', job.location)
   if (details) q.set('details', details)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import FormListbox from '@/components/ui/FormListbox'
 import FormMultiDatePicker from '@/components/ui/FormMultiDatePicker'
@@ -8,6 +8,12 @@ import { jobDays, normalizeJobDates } from '@/lib/job-dates'
 import type { Job, JobStatus } from '@/lib/types'
 import { generatePaymentCycleOptions } from '@/lib/utils'
 import type { AccountingStatusDef } from '@/lib/job-accounting'
+import { MagnifyingGlassIcon, MapPinIcon } from '@heroicons/react/24/outline'
+import { cleanMapUrl, placeFromMapUrl, safeMapUrl } from '@/lib/job-map'
+import MapSearchModal from '@/components/admin/MapSearchModal'
+import SuggestInput from '@/components/ui/SuggestInput'
+import { getJobPlaces, placeMapFor, placeSuggestions } from '@/lib/job-places'
+import { getJobs } from '@/lib/firebase-utils'
 
 type FormData = {
   title: string
@@ -17,6 +23,7 @@ type FormData = {
   /** เว้นวัน = วันงานจริง · [] = ช่วงวันติดกัน (ตอนแก้งาน = ลบ field) */
   dates?: string[]
   location: string
+  mapUrl?: string
   clientName: string
   docNumber?: string
   budget: number
@@ -49,6 +56,9 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
   const {
     register,
     control,
+    watch,
+    setValue,
+    getValues,
     handleSubmit,
     setError,
     clearErrors,
@@ -60,6 +70,7 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
       date: defaultValues?.date?.slice(0, 10) ?? '',
       endDate: defaultValues?.endDate?.slice(0, 10) ?? '',
       location: defaultValues?.location ?? '',
+      mapUrl: defaultValues?.mapUrl ?? '',
       clientName: defaultValues?.clientName ?? '',
       docNumber: defaultValues?.docNumber ?? '',
       budget: defaultValues?.budget ?? 0,
@@ -71,6 +82,21 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
   })
 
   // วันงาน = เลือกทีละวัน (ติดกันหรือเว้นวันก็ได้ เช่น 22–23 และ 25) → date/endDate/dates ตอนบันทึก
+  // eslint-disable-next-line react-hooks/incompatible-library -- watch() ของ react-hook-form (โชว์ปุ่มเปิดลิงก์/ค้นใน Maps)
+  const [mapUrlValue, locationValue] = watch(['mapUrl', 'location'])
+  // สถานที่ที่เคยใช้ (บันทึกไว้ + งานเก่า) สำหรับ autocomplete
+  const [places, setPlaces] = useState<{ names: string[]; mapOf: Map<string, string> }>({ names: [], mapOf: new Map() })
+  useEffect(() => {
+    let alive = true
+    Promise.all([getJobPlaces().catch(() => []), getJobs().catch(() => [])])
+      .then(([pl, jobs]) => { if (alive) setPlaces(placeSuggestions(pl, jobs)) })
+    return () => { alive = false }
+  }, [])
+  const [mapSearch, setMapSearch] = useState(false)
+  const fillLocationFrom = (url: string, name?: string) => {
+    const n = name ?? placeFromMapUrl(url).name
+    if (n && !getValues('location')?.trim()) setValue('location', n, { shouldDirty: true })
+  }
   const [days, setDays] = useState<string[]>(() => (defaultValues?.date ? jobDays({ date: defaultValues.date.slice(0, 10), endDate: defaultValues.endDate?.slice(0, 10), dates: defaultValues.dates }) : []))
 
   const submit = (data: FormData) => {
@@ -108,8 +134,61 @@ export default function JobForm({ defaultValues, onSubmit, onCancel, isLoading, 
 
         <div className="sm:col-span-2">
           <label className={labelCls}>สถานที่ *</label>
-          <input {...register('location')} className={inputCls} placeholder="เช่น อิมแพค อารีน่า เมืองทองธานี" />
+          <Controller
+            name="location"
+            control={control}
+            render={({ field }) => (
+              <SuggestInput
+                value={field.value}
+                onChange={field.onChange}
+                // เลือกสถานที่ที่เคยใช้ → เติมลิงก์ Google Maps ที่บันทึกไว้ให้
+                onPick={(name) => { const m = placeMapFor(places.mapOf, name); if (m) setValue('mapUrl', m, { shouldDirty: true }) }}
+                options={places.names}
+                badge={(name) => (placeMapFor(places.mapOf, name) ? <MapPinIcon className="w-3.5 h-3.5 shrink-0 text-brand" aria-label="มีลิงก์แผนที่" /> : null)}
+                placeholder="เช่น อิมแพค อารีน่า เมืองทองธานี"
+                className={inputCls}
+                hint="สถานที่ที่เคยใช้ · 📍 = มีลิงก์ Google Maps เลือกแล้วเติมให้"
+              />
+            )}
+          />
           {errors.location && <p className={errorCls}>{errors.location.message}</p>}
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className={labelCls}>ลิงก์ Google Maps</label>
+          <div className="flex gap-2">
+            <input
+              {...register('mapUrl', {
+                // เก็บแบบตัดพารามิเตอร์ติดตาม · ไม่ใช่ลิงก์ = คงค่าเดิมให้ validate ฟ้อง
+                setValueAs: (v: string) => cleanMapUrl(v) || (v ?? '').trim(),
+                validate: (v) => !v || !!safeMapUrl(v) || 'ลิงก์ไม่ถูกต้อง (ต้องขึ้นต้นด้วย https://)',
+                // วางลิงก์หน้าสถานที่ แล้วช่องสถานที่ยังว่าง → เติมชื่อจากลิงก์
+                onBlur: (e) => fillLocationFrom(e.target.value),
+              })}
+              className={`${inputCls} min-w-0 flex-1`}
+              placeholder="วางลิงก์แชร์จาก Google Maps เช่น https://maps.app.goo.gl/..."
+              inputMode="url"
+            />
+            {safeMapUrl(mapUrlValue) ? (
+              <a href={safeMapUrl(mapUrlValue)} target="_blank" rel="noopener noreferrer" className="shrink-0 flex items-center gap-1 px-3 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">
+                <MapPinIcon className="w-4 h-4" /> เปิดดู
+              </a>
+            ) : null}
+            {/* ค้นบนแผนที่ในหน้าต่าง (iframe) แล้วเลือกตำแหน่ง → เติมลิงก์ให้ */}
+            <button type="button" onClick={() => setMapSearch(true)} className="shrink-0 flex items-center gap-1 px-3 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">
+              <MagnifyingGlassIcon className="w-4 h-4" /> ค้นหา
+            </button>
+          </div>
+          {errors.mapUrl
+            ? <p className={errorCls}>{errors.mapUrl.message}</p>
+            : <p className="text-xs text-gray-400 mt-1">ส่งรายละเอียดงานทาง LINE จะมีปุ่ม “เปิดแผนที่” ให้ทีมงานกดนำทาง</p>}
+          {mapSearch && (
+            <MapSearchModal
+              initialQuery={locationValue ?? ''}
+              onPick={(url, name) => { setValue('mapUrl', url, { shouldDirty: true, shouldValidate: true }); fillLocationFrom(url, name) }}
+              onClose={() => setMapSearch(false)}
+            />
+          )}
         </div>
 
         <div>

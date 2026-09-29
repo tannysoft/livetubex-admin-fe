@@ -16,6 +16,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
 import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings, LineMessageLog } from './types'
+import { rememberJobPlace } from './job-places'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ export async function createJob(data: Omit<Job, 'id' | 'createdAt' | 'updatedAt'
     updatedAt: new Date().toISOString(),
   })
   await setDoc(doc(db, 'jobFinance', ref.id), { budget: budget ?? 0, ...(accountingStatus ? { accountingStatus } : {}) })
+  rememberJobPlace(rest.location, rest.mapUrl).catch(() => {}) // autocomplete สถานที่ครั้งหน้า
   return ref.id
 }
 
@@ -78,6 +80,7 @@ export async function updateJob(id: string, data: Partial<Job>): Promise<void> {
     ...(dates !== undefined ? { dates: dates.length ? dates : deleteField() } : {}),
     updatedAt: new Date().toISOString(),
   })
+  if (rest.location) rememberJobPlace(rest.location, rest.mapUrl).catch(() => {})
   const fin = { ...(budget !== undefined ? { budget } : {}), ...(accountingStatus !== undefined ? { accountingStatus: accountingStatus || deleteField() } : {}) }
   if (Object.keys(fin).length) await setDoc(doc(db, 'jobFinance', id), fin, { merge: true })
 }
@@ -359,9 +362,9 @@ export interface SendJobDetailsResult {
 }
 export async function sendJobDetails(
   jobId: string, freelancerIds: string[], message?: string,
-  opts: { includePlans?: boolean; template?: 'details' | 'completed' } = {},
+  opts: { includePlans?: boolean; template?: 'details' | 'completed'; groupIds?: string[] } = {},
 ): Promise<SendJobDetailsResult> {
-  const r = await httpsCallable<unknown, SendJobDetailsResult>(functions, 'sendJobDetails')({ jobId, freelancerIds, message, includePlans: opts.includePlans ?? true, template: opts.template ?? 'details' })
+  const r = await httpsCallable<unknown, SendJobDetailsResult>(functions, 'sendJobDetails')({ jobId, freelancerIds, groupIds: opts.groupIds ?? [], message, includePlans: opts.includePlans ?? true, template: opts.template ?? 'details' })
   return r.data
 }
 

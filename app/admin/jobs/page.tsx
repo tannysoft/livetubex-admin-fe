@@ -11,6 +11,7 @@ import {
   MagnifyingGlassIcon,
   EyeIcon,
   EyeSlashIcon,
+  MapPinIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import Badge from '@/components/ui/Badge'
@@ -29,6 +30,7 @@ import AccountingStatusMenu from '@/components/admin/AccountingStatusMenu'
 import AccountingStatusManager from '@/components/admin/AccountingStatusManager'
 import SendJobModal from '@/components/admin/SendJobModal'
 import GoogleCalendarButton, { GoogleAddedBadge } from '@/components/admin/GoogleCalendarButton'
+import { safeMapUrl } from '@/lib/job-map'
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -223,7 +225,11 @@ export default function JobsPage() {
 
                       {/* สถานที่ */}
                       <td className="px-5 py-4 align-top hidden md:table-cell max-w-[180px]">
-                        <span className="text-gray-600 truncate block">{job.location || '—'}</span>
+                        {safeMapUrl(job.mapUrl) ? (
+                          <a href={safeMapUrl(job.mapUrl)} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-brand truncate flex items-center gap-1" title="เปิด Google Maps"><MapPinIcon className="w-3.5 h-3.5 shrink-0 text-brand" /><span className="truncate">{job.location || 'แผนที่'}</span></a>
+                        ) : (
+                          <span className="text-gray-600 truncate block">{job.location || '—'}</span>
+                        )}
                       </td>
 
                       {/* สถานะ */}

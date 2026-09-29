@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 interface SuggestInputProps {
   value: string
@@ -13,6 +13,11 @@ interface SuggestInputProps {
   onEnter?: () => void
   /** ข้อความท้ายรายการ เช่น บอกที่มาของตัวเลือก */
   hint?: string
+  /** เลือกจากรายการ (ไม่ใช่พิมพ์) — เช่น เติมช่องอื่นที่ผูกกับตัวเลือกนั้น */
+  onPick?: (v: string) => void
+  /** ป้ายท้ายตัวเลือก เช่น 📍 มีลิงก์แผนที่ */
+  badge?: (option: string) => ReactNode
+  id?: string
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
@@ -33,7 +38,7 @@ type ListPos = { left: number; width: number; top?: number; bottom?: number; max
  * โฟกัสแล้วเห็นตัวเลือกทั้งหมดทันที พิมพ์แล้วกรองแบบ "มีคำนี้อยู่ตรงไหนก็ได้" · ↑↓ Enter Esc ใช้ได้
  * พิมพ์ค่าใหม่ที่ไม่มีในรายการก็ได้ — เป็นแค่ตัวช่วยให้สะกดตรงกันทุกครั้ง
  */
-export default function SuggestInput({ value, onChange, options, placeholder, className = '', disabled, onEnter, hint }: SuggestInputProps) {
+export default function SuggestInput({ value, onChange, options, placeholder, className = '', disabled, onEnter, hint, onPick, badge, id }: SuggestInputProps) {
   const [open, setOpen] = useState(false)
   const [idx, setIdx] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -84,6 +89,7 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
 
   const pick = (v: string) => {
     onChange(v)
+    onPick?.(v)
     setOpen(false)
   }
 
@@ -103,6 +109,7 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
     <div ref={boxRef} className="relative">
       <input
         ref={inputRef}
+        id={id}
         className={className}
         value={value}
         disabled={disabled}
@@ -123,9 +130,10 @@ export default function SuggestInput({ value, onChange, options, placeholder, cl
                 type="button"
                 onMouseEnter={() => setIdx(i)}
                 onClick={() => pick(o)}
-                className={`w-full px-3 py-1.5 text-left truncate ${i === idx ? 'bg-brand-soft text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${i === idx ? 'bg-brand-soft text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}
               >
-                {o}
+                <span className="flex-1 min-w-0 truncate">{o}</span>
+                {badge?.(o)}
               </button>
             </li>
           ))}
