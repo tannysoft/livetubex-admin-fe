@@ -254,7 +254,7 @@ export default function ExpenseReportPage() {
                 {items.map((e) => (
                   <tr key={e.id}>
                     <td className="px-5 py-2 text-gray-700 whitespace-nowrap">{formatDate(e.date)}</td>
-                    <td className="px-5 py-2 font-mono">{e.code}</td>
+                    <td className="px-5 py-2">{e.code}</td>
                     <td className="px-5 py-2">
                       <div className="text-gray-900">{e.categoryName}</div>
                       <div className="text-xs text-gray-500 truncate max-w-md">{e.description}</div>

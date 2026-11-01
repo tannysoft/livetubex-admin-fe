@@ -90,7 +90,7 @@ const SAMPLE_BODY: Record<EmailKey, string> = {
     row('Freelancer', `<strong>${v.freelancerName}</strong>`) +
       row('รายละเอียดงาน', v.jobTitle) +
       row('วันที่ทำงาน', v.workDates) +
-      row('บัญชีธนาคาร', `${v.bankName}<br><span style="font-family:monospace">${v.bankAccount}</span>`) +
+      row('บัญชีธนาคาร', `${v.bankName}<br>${v.bankAccount}`) +
       row('จำนวนขอเบิก', v.amount) +
       row('ภาษีหัก ณ ที่จ่าย 3%', `−${v.tax}`) +
       row('ยอดโอนสุทธิ', `<strong>${v.net}</strong>`, true),

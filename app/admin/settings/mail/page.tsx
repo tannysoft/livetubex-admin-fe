@@ -281,13 +281,13 @@ export default function MailSettingsPage() {
               onChange={(e) => setData({ ...data, adminRecipients: e.target.value.split('\n').map((s) => s.trim()) })}
               rows={3}
               placeholder={'admin@example.com\naccount@example.com'}
-              className={`${inputCls} font-mono text-xs`}
+              className={`${inputCls} text-xs`}
             />
             <p className="text-xs text-gray-500 mt-1">บรรทัดละ 1 อีเมล</p>
           </Field>
         </div>
         <p className="text-xs text-gray-500">
-          ผู้รับจะเห็นผู้ส่งเป็น <span className="font-mono text-gray-700">{fromPreview}</span>
+          ผู้รับจะเห็นผู้ส่งเป็น <span className="text-gray-700">{fromPreview}</span>
         </p>
       </section>
 
@@ -368,7 +368,7 @@ export default function MailSettingsPage() {
                             key={varName}
                             type="button"
                             onClick={() => navigator.clipboard.writeText(`{{${varName}}}`)}
-                            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-mono text-gray-700 transition-colors"
+                            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-gray-700 transition-colors"
                           >
                             {`{{${varName}}}`}
                           </button>
@@ -468,7 +468,7 @@ export default function MailSettingsPage() {
             <dl className="text-sm rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
               <div className="flex gap-3 px-3 py-2">
                 <dt className="w-16 shrink-0 text-gray-500">จาก</dt>
-                <dd className="min-w-0 flex-1 text-gray-900 font-mono text-xs break-all">{fromPreview}</dd>
+                <dd className="min-w-0 flex-1 text-gray-900 text-xs break-all">{fromPreview}</dd>
               </div>
               <div className="flex gap-3 px-3 py-2">
                 <dt className="w-16 shrink-0 text-gray-500">หัวข้อ</dt>

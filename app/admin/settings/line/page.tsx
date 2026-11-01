@@ -31,7 +31,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <div className="flex items-center gap-2">
-        <code className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono text-gray-700 truncate">
+        <code className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-700 truncate">
           {value}
         </code>
         <button
@@ -145,7 +145,7 @@ export default function LineSettingsPage() {
               })
             }}
             placeholder="2009681467-TEcRBohh"
-            className={`${inputCls} font-mono ${data.liffId && !liffValid ? 'border-red-400' : ''}`}
+            className={`${inputCls} ${data.liffId && !liffValid ? 'border-red-400' : ''}`}
           />
           {data.liffId && !liffValid && (
             <p className="text-xs text-red-500 mt-1.5">
@@ -182,7 +182,7 @@ export default function LineSettingsPage() {
             value={data.loginChannelId}
             onChange={(e) => setData({ ...data, loginChannelId: e.target.value })}
             placeholder={channelIdFromLiffId(data.liffId) || '2009681467'}
-            className={`${inputCls} font-mono ${
+            className={`${inputCls} ${
               data.loginChannelId && !isValidChannelId(data.loginChannelId) ? 'border-red-400' : ''
             }`}
           />

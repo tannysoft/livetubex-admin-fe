@@ -71,9 +71,7 @@ export default function ReportPage() {
           const cycle = settings.billingCycle ?? 'end'
           setSettingCycle(cycle)
           setSettingPeriod(buildPeriodLabel(settings.reportPeriodMonth, settings.reportPeriodYear, cycle))
-          // ตั้ง filter ให้ตรงกับ setting ด้วย
-          setSelectedMonth(settings.reportPeriodMonth)
-          setSelectedYear(settings.reportPeriodYear)
+          // ตัวกรองเริ่มที่เดือน/ปีปัจจุบันเสมอ — ไม่ดึงตามงวดในหน้าตั้งค่า (ผู้ใช้ขอ ต.ค. 2569)
         }
       } finally {
         setLoading(false)

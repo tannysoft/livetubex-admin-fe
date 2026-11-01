@@ -230,6 +230,14 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ไฟล์โมเดล 3D ของสถานที่ (.glb / สแกน) หั่นเป็นชิ้น — หน้าแชร์อ่านผ่าน function getSharedVenueModel
+    match /equipmentVenueModels/{modelId} {
+      allow read, write: if isAdmin();
+      match /chunks/{chunkId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
     // ผู้ใช้แอดมิน + role — admin อ่านได้ (ใช้ resolve role ตัวเอง + แสดงรายการ)
     // เขียนผ่าน Cloud Functions (admin SDK) เท่านั้น — client เขียนไม่ได้
     match /adminUsers/{uid} {

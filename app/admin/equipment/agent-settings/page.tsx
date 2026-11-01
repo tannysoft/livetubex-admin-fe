@@ -125,7 +125,7 @@ export default function AgentSettingsPage() {
           ))}
         </RadioGroup>
         {model === 'custom' && (
-          <input className={`${inputCls} font-mono`} value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="เช่น claude-sonnet-5" />
+          <input className={`${inputCls}`} value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="เช่น claude-sonnet-5" />
         )}
       </section>
 
@@ -180,7 +180,7 @@ export default function AgentSettingsPage() {
             </button>
           )}
         </div>
-        <textarea className={`${inputCls} font-mono text-[13px] leading-relaxed`} rows={8} value={rules} onChange={(e) => setRules(e.target.value)} placeholder="- กล้อง … ต้องต่อผ่าน … ก่อนเข้าสวิตเชอร์" />
+        <textarea className={`${inputCls} text-[13px] leading-relaxed`} rows={8} value={rules} onChange={(e) => setRules(e.target.value)} placeholder="- กล้อง … ต้องต่อผ่าน … ก่อนเข้าสวิตเชอร์" />
         <p className="text-[11px] text-gray-400 text-right">{rules.length.toLocaleString()} / {MAX_RULES.toLocaleString()}</p>
       </section>
 
@@ -202,7 +202,7 @@ export default function AgentSettingsPage() {
             </button>
           )}
         </div>
-        <textarea className={`${inputCls} font-mono text-[13px] leading-relaxed`} rows={28} value={prompt} onChange={(e) => setPrompt(e.target.value)} spellCheck={false} />
+        <textarea className={`${inputCls} text-[13px] leading-relaxed`} rows={28} value={prompt} onChange={(e) => setPrompt(e.target.value)} spellCheck={false} />
         <div className="flex items-start justify-between gap-3 text-[11px]">
           {/* ชื่อ tool ติดกันไม่มีช่องว่าง = คำเดียวยาวทั้งแถว ตัดบรรทัดไม่ได้ → ต้องเป็น flex-wrap */}
           <div className="flex flex-wrap items-center gap-1 min-w-0 text-gray-400">
@@ -247,7 +247,7 @@ function RadioCard({ value, label, hint, mono }: { value: string; label: string;
       <span className="min-w-0">
         <span className="block text-sm font-medium text-gray-900">{label}</span>
         <span className="block text-xs text-gray-500">{hint}</span>
-        {mono && <span className="block text-[11px] text-gray-400 font-mono mt-0.5">{mono}</span>}
+        {mono && <span className="block text-[11px] text-gray-400 mt-0.5">{mono}</span>}
       </span>
     </Radio>
   )

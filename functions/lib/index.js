@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSharedPlan = exports.setPlanShare = exports.systemAgent = exports.equipmentAgent = exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPlanToLine = exports.lineWebhook = exports.sendJobDetails = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
+exports.getSharedVenueModel = exports.getSharedPlan = exports.setPlanShare = exports.systemAgent = exports.equipmentAgent = exports.adminResetUserPassword = exports.adminDeleteUser = exports.adminSetUserDisabled = exports.adminUpdateUserRole = exports.adminCreateUser = exports.adminListUsers = exports.sendTestEmail = exports.migrateProfilePictures = exports.sendPaymentReport = exports.sendPlanToLine = exports.lineWebhook = exports.sendJobDetails = exports.sendPayoutNotification = exports.lineAuth = exports.sendPaymentNotification = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
@@ -351,7 +351,7 @@ exports.sendPaymentNotification = (0, https_1.onCall)({
         ${row('Freelancer', `<strong>${freelancerName}</strong>`)}
         ${row('รายละเอียดงาน', jobTitle)}
         ${row('วันที่ทำงาน', workDatesText)}
-        ${row('บัญชีธนาคาร', `${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span>`)}
+        ${row('บัญชีธนาคาร', `${freelancerBankName}<br>${maskAccount(freelancerBankAccount)}`)}
         ${payment.notes ? row('หมายเหตุ', payment.notes) : ''}
         ${payment.queueCount && payment.ratePerQueue ? row('จำนวนคิว', `${Number(payment.queueCount).toLocaleString('th-TH')} คิว × ${formatCurrency(Number(payment.ratePerQueue))}`) : ''}
         ${row('จำนวนขอเบิก', formatCurrency(amount), { big: true })}
@@ -1621,5 +1621,10 @@ exports.setPlanShare = (0, https_1.onCall)({ cors: CORS_ORIGINS }, async (reques
 exports.getSharedPlan = (0, https_1.onCall)({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
     const { handleGetSharedPlan } = await Promise.resolve().then(() => __importStar(require('./plan-share')));
     return handleGetSharedPlan(request.data, request.auth);
+});
+// ไฟล์โมเดล 3D ของสถานที่ให้หน้าแชร์ (ทีละชิ้น ~900KB) — ตรวจลิงก์/รหัสเหมือน getSharedPlan
+exports.getSharedVenueModel = (0, https_1.onCall)({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
+    const { handleGetSharedVenueModel } = await Promise.resolve().then(() => __importStar(require('./plan-share')));
+    return handleGetSharedVenueModel(request.data, request.auth);
 });
 //# sourceMappingURL=index.js.map

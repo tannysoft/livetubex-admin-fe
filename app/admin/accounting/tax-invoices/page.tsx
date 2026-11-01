@@ -101,7 +101,7 @@ export default function TaxInvoicesPage() {
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((t) => (
                   <tr key={t.id} className={`hover:bg-gray-50 ${t.status === 'void' ? 'opacity-50' : ''}`}>
-                    <td className="px-5 py-3 font-mono text-gray-900">{t.docNumber}</td>
+                    <td className="px-5 py-3 text-gray-900">{t.docNumber}</td>
                     <td className="px-5 py-3">
                       <div className="font-medium text-gray-900">{t.customerSnapshot?.name ?? '—'}</div>
                       {t.customerSnapshot?.taxId && (
@@ -112,7 +112,7 @@ export default function TaxInvoicesPage() {
                     <td className="px-5 py-3">
                       <Link
                         href={`/admin/accounting/invoices/new?id=${t.invoiceId}`}
-                        className="text-brand hover:underline text-xs font-mono"
+                        className="text-brand hover:underline text-xs"
                       >
                         ดูใบแจ้งหนี้
                       </Link>

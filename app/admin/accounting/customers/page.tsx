@@ -163,7 +163,7 @@ export default function CustomersPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
-                    <span className="text-xs text-gray-400 font-mono">{c.code}</span>
+                    <span className="text-xs text-gray-400">{c.code}</span>
                     {!c.isActive && (
                       <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
                         ไม่ใช้งาน

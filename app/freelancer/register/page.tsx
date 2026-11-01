@@ -483,7 +483,7 @@ export default function FreelancerRegisterPage() {
                     required: 'กรุณากรอกเลขที่บัญชี',
                     pattern: { value: /^[0-9\-]{10,}$/, message: 'เลขบัญชีไม่ถูกต้อง' },
                   })}
-                  className={`${inputCls} font-mono tracking-wider`}
+                  className={`${inputCls} tracking-wider`}
                   placeholder="000-0-00000-0"
                   inputMode="numeric"
                 />

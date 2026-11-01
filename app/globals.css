@@ -15,6 +15,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-noto-sans-thai), 'Noto Sans Thai', sans-serif;
+  /* ไม่ใช้ฟอนต์ monospace ทั้งแอป (ผู้ใช้ขอ) — <code>/<pre>/<kbd> ของ preflight ใช้ --font-mono → ชี้กลับเป็นฟอนต์หลัก */
+  --font-mono: var(--font-noto-sans-thai), 'Noto Sans Thai', sans-serif;
 
   /* brand palette — derive จาก --brand ตัวเดียว */
   --color-brand: var(--brand);

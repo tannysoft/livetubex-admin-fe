@@ -61,7 +61,8 @@ export default function FreelancerPage() {
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [selectedPosition, setSelectedPosition] = useState('')
   // ยอดเบิก = จำนวนคิว × ราคาต่อคิว (เริ่มที่ 1 คิว)
-  const [requestQueues, setRequestQueues] = useState('1')
+  // จำนวนคิว: null = ตามจำนวนวันที่เลือก (อัตโนมัติ) · กด +/− หรือพิมพ์เอง = ค่าที่ผู้ใช้ตั้ง
+  const [queuesOverride, setQueuesOverride] = useState<string | null>(null)
   const [requestRate, setRequestRate] = useState('')
   const [requestNotes, setRequestNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -179,6 +180,9 @@ export default function FreelancerPage() {
     if (!selectedJob) return []
     return jobDays(selectedJob)
   }, [selectedJob])
+  // วันที่เลือก × ราคาต่อคิว — งานวันเดียว = 1 คิว
+  const workDayCount = jobDates.length === 1 ? 1 : selectedDates.length
+  const requestQueues = queuesOverride ?? String(Math.max(1, workDayCount))
 
   const openModal = (jobId = '') => {
     setClaimNotice('')
@@ -186,7 +190,7 @@ export default function FreelancerPage() {
     setSelectedDates([])
     // ตำแหน่งตั้งต้นจากโปรไฟล์ (ถ้ายังมีในรายการตำแหน่ง)
     setSelectedPosition(freelancer?.position && positions.some((p) => p.name === freelancer.position) ? freelancer.position : '')
-    setRequestQueues('1')
+    setQueuesOverride(null)
     setRequestRate(freelancer?.ratePerQueue ? String(freelancer.ratePerQueue) : '') // ราคาต่อคิวที่แอดมินตั้งไว้
     setRequestNotes('')
     setModalError('')
@@ -463,7 +467,7 @@ export default function FreelancerPage() {
               <label className={labelCls}>งาน *</label>
               <FormListbox
                 value={selectedJobId}
-                onChange={(id) => { setSelectedJobId(id); setSelectedDates([]); setModalError('') }}
+                onChange={(id) => { setSelectedJobId(id); setSelectedDates([]); setQueuesOverride(null); setModalError('') }}
                 options={jobOptions}
                 placeholder="-- เลือกงาน --"
               />
@@ -515,7 +519,8 @@ export default function FreelancerPage() {
             {/* จำนวนคิว × ราคาต่อคิว = ยอดรวม */}
             <QueueAmountInput
               queues={requestQueues}
-              onQueues={setRequestQueues}
+              onQueues={setQueuesOverride}
+              autoHint={queuesOverride === null && workDayCount > 1 ? `คิดจากวันที่เลือก ${workDayCount} วัน — กด + / − ถ้าวันเดียวทำหลายคิว` : undefined}
               rate={requestRate}
               onRate={setRequestRate}
                             inputCls={inputCls}

@@ -96,6 +96,7 @@ export const SYSTEM_PROMPT = `คุณคือผู้ช่วยวาง�
      กล้องที่ติดเลนส์ tele แบบถือ/ENG (ราว 40x–46x เช่น Canon CJ45, Fujinon UA46x — ไม่ใช่กล่อง) → kind tele_lens
      กล้องที่ติด box lens (ชื่อเลนส์มี "Box Lens" หรือเลนส์กล่องซูมมาก เช่น 76x, 86x, 100x) → kind box_lens
    - กล้อง mirrorless / DSLR (Sony FX3, A7, Lumix GH, Canon R ฯลฯ) บนขาตั้ง → kind mirrorless
+   - กล้องบนราง dolly (รางเลื่อน/track) → kind dolly · ไม่บอกโซน → stage_front_center หรือ floor_left / floor_right
    - handheld / gimbal / Ronin / steadicam → kind gimbal · โซน stage_front_center หรือ floor_left / floor_right
    - remote head (หัว Jimmy Jib ไม่มีตัวเครน ห้อยหัวลงจาก truss/เพดาน คุมจากห้องคอนโทรล) → kind remote_head · โซนตามจุดที่ผู้ใช้บอก ไม่บอก → on_stage
    - ขา Micro (กล้องเล็กเช่น Micro Studio Camera บนเสาสูง/ขาตั้งไฟ ไม่มีคนประจำ) → kind micro_stand · ไม่บอกโซน → back_left / back_right

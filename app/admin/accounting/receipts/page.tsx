@@ -109,7 +109,7 @@ export default function ReceiptsPage() {
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((r) => (
                   <tr key={r.id} className={`hover:bg-gray-50 ${r.status === 'void' ? 'opacity-50' : ''}`}>
-                    <td className="px-5 py-3 font-mono text-gray-900">{r.docNumber}</td>
+                    <td className="px-5 py-3 text-gray-900">{r.docNumber}</td>
                     <td className="px-5 py-3">
                       <div className="font-medium text-gray-900">{r.customerSnapshot?.name ?? '—'}</div>
                       <Link

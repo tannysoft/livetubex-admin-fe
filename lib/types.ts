@@ -577,10 +577,37 @@ export interface VenueConfig {
   floorImageWidth?: number    // ความกว้างจริงของรูป (เมตร) — ใช้คุมสเกล
   floorImageOffsetX?: number
   floorImageOffsetZ?: number
+  /** สีเก้าอี้บนอัฒจันทร์ (โหมดสมจริง) — ไม่มี = ค่าตั้งต้น */
+  seatColor?: string
+  /** หลังคาคลุมอัฒจันทร์ / โครง truss เพดาน (โหมดสมจริง) — ซ่อนเองในมุมบน */
+  roof?: boolean
+  /** โมเดล 3D ของสถานที่จริง (.glb ที่ปั้นไว้ หรือไฟล์สแกน Gaussian splat) — ดู lib/equipment/venue-models.ts */
+  model?: VenueModelConfig
+}
+
+/**
+ * mesh = .glb (พื้น/อัฒจันทร์ในโมเดลเป็นผิววางของ แทนสถานที่จากตัวเลข)
+ * splat = ไฟล์สแกน (.spz/.ply/.splat/.ksplat) — เป็นภาพอย่างเดียว คลิกวางของบนสแกนไม่ได้
+ *         ผิววางของยังเป็นสถานที่จากตัวเลข (ซ่อนไว้) จึงต้องปรับขนาดให้ตรงกับสแกน
+ */
+export type VenueModelKind = 'mesh' | 'splat'
+
+export interface VenueModelConfig {
+  assetId: string             // → equipmentVenueModels/{id}
+  kind: VenueModelKind
+  fileName: string
+  scale: number
+  x: number; y: number; z: number
+  rotation: number            // หมุนรอบแกนตั้ง (องศา ตามเข็มเมื่อมองจากบน — เหมือน LayoutObject)
+  tiltX?: number              // เอียงแกน X/Z (องศา) — ไฟล์สแกนบางตัวแกนตั้งไม่ตรง
+  tiltZ?: number
+  flip?: boolean              // พลิกกลับหัว (ไฟล์สแกนหลายตัวใช้แกน y ชี้ลง)
+  cutHeight?: number          // mesh: ตัดส่วนที่สูงกว่านี้ทิ้ง (หลังคา) ทั้งภาพและการวางของ — 0/ไม่มี = ไม่ตัด
+  showVenue?: boolean         // วาดสถานที่จากตัวเลขให้เห็นด้วย (mesh = เส้นโปร่งไว้เทียบตำแหน่ง, splat = พื้น/อัฒจันทร์ทึบ)
 }
 
 export type LayoutObjectKind =
-  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'micro_stand' | 'action_cam' | 'ptz' | 'tele_lens' | 'box_lens' | 'mirrorless' | 'control_room' | 'rack' | 'generic'
+  | 'camera' | 'jib' | 'ob_truck' | 'desk' | 'screen' | 'speaker' | 'riser' | 'podium' | 'gimbal' | 'remote_head' | 'micro_stand' | 'action_cam' | 'ptz' | 'tele_lens' | 'box_lens' | 'mirrorless' | 'dolly' | 'control_room' | 'rack' | 'generic'
 
 export interface LayoutObject {
   id: string

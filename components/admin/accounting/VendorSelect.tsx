@@ -105,7 +105,7 @@ export default function VendorSelect({ value, onChange, onCreateNew, reloadKey, 
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 truncate">{v.name}</div>
                     <div className="text-xs text-gray-500 flex items-center gap-2 truncate">
-                      <span className="font-mono">{v.code}</span>
+                      <span>{v.code}</span>
                       {v.taxId && <span>· {v.taxId}</span>}
                     </div>
                   </div>

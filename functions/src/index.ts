@@ -369,7 +369,7 @@ export const sendPaymentNotification = onCall(
         ${row('Freelancer', `<strong>${freelancerName}</strong>`)}
         ${row('รายละเอียดงาน', jobTitle)}
         ${row('วันที่ทำงาน', workDatesText)}
-        ${row('บัญชีธนาคาร', `${freelancerBankName}<br><span style="font-family:monospace">${maskAccount(freelancerBankAccount)}</span>`)}
+        ${row('บัญชีธนาคาร', `${freelancerBankName}<br>${maskAccount(freelancerBankAccount)}`)}
         ${payment.notes ? row('หมายเหตุ', payment.notes as string) : ''}
         ${payment.queueCount && payment.ratePerQueue ? row('จำนวนคิว', `${Number(payment.queueCount).toLocaleString('th-TH')} คิว × ${formatCurrency(Number(payment.ratePerQueue))}`) : ''}
         ${row('จำนวนขอเบิก', formatCurrency(amount), { big: true })}
@@ -1747,4 +1747,10 @@ export const setPlanShare = onCall({ cors: CORS_ORIGINS }, async (request) => {
 export const getSharedPlan = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
   const { handleGetSharedPlan } = await import('./plan-share')
   return handleGetSharedPlan(request.data, request.auth)
+})
+
+// ไฟล์โมเดล 3D ของสถานที่ให้หน้าแชร์ (ทีละชิ้น ~900KB) — ตรวจลิงก์/รหัสเหมือน getSharedPlan
+export const getSharedVenueModel = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
+  const { handleGetSharedVenueModel } = await import('./plan-share')
+  return handleGetSharedVenueModel(request.data, request.auth)
 })

@@ -147,11 +147,11 @@ export default function InvoicesPage() {
                   const overdue = isOverdue(inv)
                   return (
                     <tr key={inv.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 font-mono text-gray-900">{inv.docNumber}</td>
+                      <td className="px-5 py-3 text-gray-900">{inv.docNumber}</td>
                       <td className="px-5 py-3">
                         <div className="font-medium text-gray-900">{inv.customerSnapshot?.name ?? '—'}</div>
                         {inv.customerSnapshot?.code && (
-                          <div className="text-xs text-gray-400 font-mono">{inv.customerSnapshot.code}</div>
+                          <div className="text-xs text-gray-400">{inv.customerSnapshot.code}</div>
                         )}
                       </td>
                       <td className="px-5 py-3 text-gray-700">{formatDate(inv.issueDate)}</td>

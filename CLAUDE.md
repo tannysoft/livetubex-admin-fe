@@ -102,7 +102,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | lineUserId | string | LINE userId (ใช้ใน Firestore rules) |
 | jobId | string | **required** → join `jobs` collection |
 | amount | number | ยอดขอเบิก (gross) |
-| queueCount / ratePerQueue | number? | จำนวนคิว × ราคาต่อคิว — ฟอร์มเบิก LIFF กรอก 2 ช่องนี้แล้วคำนวณ amount ให้ (`components/payments/QueueAmountInput` ใช้ทั้ง LIFF 2 หน้า + ฟอร์มสร้าง/แก้ของแอดมิน, จำนวนคิวเริ่มที่ 1, ปุ่ม +/− ทีละ 0.5) · แอดมินแก้ amount ทีหลังได้ ค่านี้คงเป็น "ที่ขอ" · ข้อมูลเก่าไม่มี |
+| queueCount / ratePerQueue | number? | จำนวนคิว × ราคาต่อคิว — ฟอร์มเบิก LIFF กรอก 2 ช่องนี้แล้วคำนวณ amount ให้ (`components/payments/QueueAmountInput` ใช้ทั้ง LIFF 2 หน้า + ฟอร์มสร้าง/แก้ของแอดมิน, จำนวนคิวตั้งต้น = จำนวนวันที่เลือก (state `…QueuesOverride` null = อัตโนมัติ, กด +/− ทีละ 0.5 หรือพิมพ์ = ล็อกค่าที่ตั้ง, เปลี่ยนงาน = กลับเป็นอัตโนมัติ)) · แอดมินแก้ amount ทีหลังได้ ค่านี้คงเป็น "ที่ขอ" · ข้อมูลเก่าไม่มี |
 | status | 'pending' \| 'approved' \| 'paid' \| 'rejected' | |
 | position | string? | ตำแหน่งงาน |
 | workDates | string[]? | วันที่ทำงาน (ISO date) |
@@ -353,6 +353,7 @@ systemAgent(onCall)
 // tool เขียนข้อมูล (WRITE_TOOLS) = การ์ดอนุมัติ · send_job_details อนุมัติเสมอ · content ของ assistant (thinking+signature) ต้องส่งกลับครบทุกรอบ
 // เพิ่ม tool = เพิ่มนิยามใน AGENT_TOOLS + case ใน executeTool (+ WRITE_TOOLS ถ้าเขียน) · Secret: ANTHROPIC_API_KEY
 
+getSharedVenueModel(onCall) // สาธารณะ — { shareId, password, assetId, index } → { data: base64 ชิ้นที่ index, count } (ไฟล์โมเดลสถานที่ให้หน้าแชร์)
 setPlanShare(onCall)   // Admin — { planId, enabled?, password?, regenerate? } → { shareId, enabled } (hash รหัสด้วย scrypt)
 getSharedPlan(onCall)  // สาธารณะ — { shareId, password } → แผนที่ตัดข้อมูลการเงิน (ดู planShares)
 
@@ -843,7 +844,7 @@ components/admin/accounting/
 Phase 1: companySettings, customers, documentCounters, quotations,
          invoices, taxInvoices, receipts
 Phase 2: vendors, expenseCategories, expenses
-Equipment: equipment, equipmentPlans (+ subcollection revisions), equipmentPlanAssets
+Equipment: equipment, equipmentPlans (+ subcollection revisions), equipmentPlanAssets, equipmentVenueModels (+ chunks)
 ทั้งหมด: admin-only (isAdmin)
 ```
 
@@ -917,6 +918,12 @@ server เช็ก `trustedCaller()` = freelancer (custom token `lineUser`) ท
 ปุ่ม **PDF** บนหัวหน้าแชร์ = `SharePrintView` ใช้ `PlanPrintDocument` ตัวเดียวกับหน้าพิมพ์แอดมิน (showCosts ปิดเสมอ, `window.print()`) · ในแอป LINE พิมพ์ไม่ได้ → เปิดเบราว์เซอร์ภายนอก (`openExternal`) ที่ `/share/plan?s=&print=1`
 `/share/plan` เปิดในแอป LINE (UA `Line/`) → redirect ไป LIFF ให้เอง · admin ที่ login อยู่ในเบราว์เซอร์เปิดได้เลย · ตัวหน้าอยู่ที่ `components/share/SharedPlanScreen.tsx` (`via: 'link' | 'liff'`) ใช้ร่วม 2 route
 ⚠️ เพิ่ม field ที่ทีมหน้างานต้องเห็น → เพิ่มใน allowlist ของ `functions/src/plan-share.ts` + type `SharedPlan` (`lib/equipment/plan-share.ts`)
+
+#### `equipmentVenueModels` (admin-only) + `chunks/{0000}` — โมเดล 3D ของสถานที่จริง
+ไฟล์ .glb (ปั้นเอง/Sketchfab) หรือไฟล์สแกน Gaussian splat (.spz/.ply/.splat/.ksplat) ≤40 MB หั่นเป็นชิ้น 900 KB เก็บเป็น `Bytes` (ไม่ใช้ Storage — เหตุผลเดียวกับรูป floor plan: ต้องตั้ง CORS ทีละ tenant)
+meta: `name, fileName, kind ('mesh'|'splat'), size, chunkCount, createdAt` เขียน**หลัง**ชิ้นครบ · ไฟล์ไม่เคยแก้ → cache ในเบราว์เซอร์ (Cache Storage) · โค้ด `lib/equipment/venue-models.ts`
+ผังวางอ้างผ่าน `VenueConfig.model` (`VenueModelConfig`: assetId, kind, scale, x/y/z, rotation, tiltX/Z, flip, cutHeight, showVenue) — แผงตั้งค่า `VenueModelPanel` (แท็บ "สถานที่")
+หน้าแชร์ (ไม่ได้ login) อ่านผ่าน function `getSharedVenueModel` ทีละชิ้น — ตรวจลิงก์/รหัสด้วย `authorizeShare()` ตัวเดียวกับ `getSharedPlan` + ต้องเป็นไฟล์ที่ผังของแผนนั้นอ้างอยู่จริง
 
 #### `equipmentPlanAssets` (admin-only)
 รูป floor plan ที่ปูพื้นในผัง 3D เก็บเป็น **data URL ใน Firestore** (ย่อ ≤900KB ฝั่ง client) —
@@ -1021,6 +1028,22 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
   `layout-scene.ts` ดึง three.js ทั้งก้อน → **ห้าม import แบบ static จากหน้า/‌component ที่ prerender**
   (ใช้ `next/dynamic` หรือ `await import`) mesh ที่ `userData.ground = true` คือผิวที่วางของได้ —
   ลากวัตถุแล้ว `y` ตั้งตามผิวที่ ray ชนเอง (พื้น/เวที/ขั้นอัฒจันทร์)
+- **ผังวาง 3D โหมดสมจริง** (ปุ่ม "สมจริง" — `useRealistic()` จำใน localStorage เหมือนแนวเลนส์ ใช้ทั้งหน้าแก้ผัง + หน้าแชร์ · หน้าพิมพ์ไม่ใช้ เพราะพิมพ์ขาวดำ):
+  `buildVenue(v, { realistic, shell, floorImage })` เพิ่มเก้าอี้ (InstancedMesh ก้อนเดียว ≤ `MAX_SEATS`, ray ไม่ชน — ผิววางของยังเป็นขั้นอัฒจันทร์) สี `venue.seatColor`,
+  ราวกระจกหน้าแถวแรก, ลายหญ้า+เส้นสนาม, พื้นรอบสถานที่, หลังคา `venue.roof` (มีสนาม = หลังคาคลุมอัฒจันทร์ / ไม่มี = โครง truss — `userData.roof` ซ่อนในมุมบนด้วย `setRoofVisible`)
+  · ฟ้า/แสง/เงาตั้งที่ `applyAtmosphere()` (แทน `addLights` ในหน้าที่มีโหมดสมจริง) · ของประกอบฉากใช้ `decor()` = ไม่ใช่ผิววางของ
+  · ภาพแบบเกม: วาดผ่าน `createRealisticPipeline()` (`lib/equipment/realistic-render.ts` — MSAA + GTAO เงาตามซอก + ACES) โหมดปกติยัง `renderer.render()` ตรง
+    GTAO วาด normal ทับทุกอย่าง → ของโปร่ง/ป้าย/เส้น/`userData.noAO` (splat, ผนัง) ถูกซ่อนตอนวาด normal ไม่งั้นเป็นก้อนดำ
+    ฟ้า = `Sky` shader อบเป็น PMREM (พื้นหลัง + แสงสะท้อน) แดดทิศเดียวกับดวงอาทิตย์บนฟ้า (`SUN_DIR`) · exposure 0.5 (ฟ้าฟิสิกส์สว่างระดับ HDR)
+    วัสดุ Lambert → Standard ตอนสร้าง (`convertMaterials`, `userData.rough`) · อุปกรณ์ใช้ `realisticObject()` (กล่องขอบมน + PBR + เงา) ไม่ต้องแก้โค้ดวาดแต่ละชนิด
+    ฮอลล์ในร่ม = ผนังแบบบ้านตุ๊กตา (BackSide — ฝั่งใกล้กล้องหายเอง, `noShadow`) · สนามมีหญ้า+ชามโค้ง = ลู่วิ่ง · หลังคาสนาม = เมมเบรนทึบครึ่งบน + เสาค้ำ · เวที = จอ LED + truss + line array
+- **โมเดลสถานที่จริงในผังวาง** (`lib/equipment/venue-model-scene.ts` — dynamic import เท่านั้น): `.glb` = ทุก mesh เป็นผิววางของ + BVH (`three-mesh-bvh`) ให้ลากของบนโมเดลหลักล้านเหลี่ยมไม่หน่วง
+  Draco decoder อยู่ `public/draco/` (คัดลอกจาก `three/examples/jsm/libs/draco/gltf` ⚠️ อัปเกรด three แล้วคัดลอกใหม่) + Meshopt
+  · `cutHeight` = clipping plane ตัดหลังคา (ต้อง `renderer.localClippingEnabled`) และ ray ที่ชนเหนือระดับนั้นไม่นับ (`userData.maxY`) → **ทุกจุดที่ยิง ray หาผิวต้องผ่าน `firstGroundHit()`** ไม่ใช่ `[0]`
+  · ไฟล์สแกน (splat) วาดด้วย Spark (`@sparkjsdev/spark` + `SparkRenderer` `onDirty` → render เพราะฉากวาดเฉพาะตอนเปลี่ยน) เป็นภาพอย่างเดียว ผิววางของ = สถานที่จากตัวเลขที่ซ่อนไว้
+  · `venueShell()`: ไม่มีโมเดล/โหลดไม่ได้ = normal · glb = none (หรือ ghost ถ้า showVenue) · สแกน = hidden (หรือ normal) — เวทีมีเสมอ (เป็นของงาน)
+  · โมเดลถูกใช้ซ้ำข้ามการสร้างฉากใหม่: root มี `userData.keep` → `disposeGroup()` ข้าม ทิ้งจริงด้วย `LoadedVenueModel.dispose()`
+  · หน้าพิมพ์ใส่โมเดล .glb ในรูป + วัดความยาวสายบนโมเดล (`snapshotLayout(..., model)`, `measureCables(layout, model)`) ไฟล์สแกนไม่ลงกระดาษ
 - **ทางเดินอัฒจันทร์** (เฉพาะแบบเหลี่ยม): `tiers.aisleWidth/sectionWidth` แบ่งที่นั่งเป็นบล็อก (ตำแหน่งคิดจากขอบพื้นราบ ใช้ทุกขั้น = แนวตรง),
   `tiers.crossAisle` = ขั้นที่เป็นทางเดินขวาง — ทางเดินยังเป็นผิววางของได้ · ค่าอยู่ใน venue ของแต่ละผัง แก้ preset แล้วผังเก่าไม่เปลี่ยนตาม
 - **แนวสายในผังวาง 3D** (`PlanLayout.cables: LayoutCable[]` — from/to = LayoutObject.id + จุดหักเลี้ยว {x,z}): `cableRuns()` สุ่มจุดทุก 0.5 ม. แล้วยิง ray ลงหาผิว
@@ -1078,7 +1101,7 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
   กติกาเลนส์ → โซน (16x/left/right = หน้าเวทีซ้ายขวา, tele/half tele = foh_center) อยู่ใน `DEFAULT_SYSTEM_PROMPT` แก้ได้จากหน้าตั้งค่า
   รายการโซนต้องตรงกันระหว่าง `LayoutZone` (เว็บ) และ `LAYOUT_ZONES` (functions/types.ts)
   ชนิดวัตถุ (`LayoutObjectKind`) ต้องตรงกับ `LAYOUT_KINDS` เช่นกัน · ชนิดที่เป็นกล้อง (กรวยภาพ/มุมมองกล้อง/คอลัมน์เลนส์) เช็กผ่าน `isCameraKind()` เท่านั้น
-  (camera, jib, gimbal = โรนิน/กิมบอลถือมือ, remote_head = หัว Jimmy Jib ห้อยจาก truss, micro_stand = ขา Micro เสาสูงฐานสามขา, action_cam = action cam บนไม้ถือสั้น, ptz = กล้อง PTZ บนขาตั้ง, tele_lens = กล้อง + เลนส์ tele ENG ~40x บนขาตั้ง, box_lens = กล้อง + box lens บนขาตั้งงานหนัก, mirrorless = กล้อง mirrorless บนขาตั้งถ่ายภาพ) · `control_room` = ห้องคอนโทรล (ผนังโปร่ง ประตูด้านหน้า โต๊ะ+จอข้างใน — ปลายทางแรกของปุ่มสายกล้องอัตโนมัติ) · `LayoutObject.underTier` = อยู่ใต้อัฒจันทร์: ลากแล้ว y = 0 เสมอ, วาด x-ray (depthTest false) ทะลุขั้นที่นั่ง, สายจากห้องวิ่งบนพื้นจริงใต้ที่นั่งจนโผล่พื้นโล่ง (x-ray ด้วย) · ห้องคอนโทรลมาพร้อมตู้ Rack ในห้องเสมอ (`rackInRoom` ใน venues.ts — ตอนเพิ่ม/เปลี่ยนชนิดในตัวแก้, ตอนผู้ช่วย AI วางห้อง และ `ensureRoomRacks` ตอนเปิดหน้าแก้แผน (ห้องเก่า/ตู้ถูกลบ → ใส่คืนแล้ว autosave)) · `rack` = ตู้ Rack OB: ลากเข้าห้องคอนโทรล → ตั้งบนพื้นห้อง + underTier ตามห้อง (`insideFootprint`), ย้ายห้อง = rack ในห้องตามไป · ปุ่มสายกล้องอัตโนมัติเลือก rack ก่อน (rack → control_room → ob_truck → desk) — มี `podium` (แท่นพูด หมุน 180° หาผู้ชมเป็นค่าตั้งต้น)
+  (camera, jib, gimbal = โรนิน/กิมบอลถือมือ, remote_head = หัว Jimmy Jib ห้อยจาก truss, micro_stand = ขา Micro เสาสูงฐานสามขา, action_cam = action cam บนไม้ถือสั้น, ptz = กล้อง PTZ บนขาตั้ง, tele_lens = กล้อง + เลนส์ tele ENG ~40x บนขาตั้ง, box_lens = กล้อง + box lens บนขาตั้งงานหนัก, mirrorless = กล้อง mirrorless บนขาตั้งถ่ายภาพ, dolly = กล้องบนรถ dolly กลางราง — `w` = ความยาวราง (แนวซ้าย-ขวา ตั้งในแผง "ความยาวราง") ไม่ขยายโมเดลเหมือน jib) · `control_room` = ห้องคอนโทรล (ผนังโปร่ง ประตูด้านหน้า โต๊ะ+จอข้างใน — ปลายทางแรกของปุ่มสายกล้องอัตโนมัติ) · `LayoutObject.underTier` = อยู่ใต้อัฒจันทร์: ลากแล้ว y = 0 เสมอ, วาด x-ray (depthTest false) ทะลุขั้นที่นั่ง, สายจากห้องวิ่งบนพื้นจริงใต้ที่นั่งจนโผล่พื้นโล่ง (x-ray ด้วย) · ห้องคอนโทรลมาพร้อมตู้ Rack ในห้องเสมอ (`rackInRoom` ใน venues.ts — ตอนเพิ่ม/เปลี่ยนชนิดในตัวแก้, ตอนผู้ช่วย AI วางห้อง และ `ensureRoomRacks` ตอนเปิดหน้าแก้แผน (ห้องเก่า/ตู้ถูกลบ → ใส่คืนแล้ว autosave)) · `rack` = ตู้ Rack OB: ลากเข้าห้องคอนโทรล → ตั้งบนพื้นห้อง + underTier ตามห้อง (`insideFootprint`), ย้ายห้อง = rack ในห้องตามไป · ปุ่มสายกล้องอัตโนมัติเลือก rack ก่อน (rack → control_room → ob_truck → desk) — มี `podium` (แท่นพูด หมุน 180° หาผู้ชมเป็นค่าตั้งต้น)
 - **สายส่ง FOH** (`buildFohDiagram`): ปุ่ม "วาดลงผังระบบ" วาด **ลงผังหลัก** (ไม่สร้างผังแยกแล้ว) กล่องที่สร้างติด `DiagramNode.generated = 'foh'`
   → กดซ้ำ = ยืนยันแล้ว `stripFoh` ชุดเดิมก่อนวาดใหม่ กล่องอื่นไม่แตะ · ผังแยกแบบเก่า (`FOH_DIAGRAM_NAME`) ถูกเอาออกตอนวาดใหม่ · bump `agentApplied` ให้ DiagramEditor remount
   · ต้นทาง = กล่องสวิตเชอร์ที่อยู่ในผังแล้ว (port ขาออกที่มีเส้นอยู่ไม่แย่ง) ไม่มี = กล่องของแถว switcher แรก · จับ port ตามชื่อสัญญาณ 2 รอบ: ชื่อตรงก่อนแล้วค่อยตัวสำรอง
@@ -1132,6 +1155,8 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
 6. **Payment flow**: Freelancer ไม่ต้องมี JobAssignment — เลือก Job จาก dropdown แล้วขอเบิกได้เลย ชื่องานดึงจาก `jobId` → `jobs` collection
 
 7. **Logo white mode**: บนพื้นสีแบรนด์ ต้องส่ง `white` prop → ระบบแทน `fill` ทุกตัวด้วย `currentColor` ให้เอง ไม่ต้องทำโลโก้เวอร์ชันขาวแยก
+
+7.2 **ไม่ใช้ฟอนต์ monospace** — ห้าม `font-mono` / `font-family: monospace` (รวมในอีเมล) · `--font-mono` ใน `globals.css` ชี้เป็นฟอนต์หลัก เพื่อให้ `<code>/<pre>` ไม่เป็น mono ด้วย · ตัวเลขให้ตรงคอลัมน์ใช้ `tabular-nums`
 
 7.1 **ฟอร์มใช้ HeadlessUI เท่านั้น** — ห้าม `<select>` / `<input type="checkbox|radio">` ของเบราว์เซอร์
     dropdown = `FormListbox` (`optionsClassName` ขยายรายการเมื่อปุ่มแคบ) · checkbox = `FormCheckbox` (แถวรายการ: ส่งเนื้อหาทั้งแถวเป็น `label` ทั้งแถวกดติ๊กได้;
