@@ -286,7 +286,7 @@ function InvoiceEditor() {
                   <tbody className="divide-y divide-gray-100">
                     {taxInvoices.map((t) => (
                       <tr key={t.id} className={t.status === 'void' ? 'opacity-50' : ''}>
-                        <td className="px-3 py-2 font-mono">{t.docNumber}</td>
+                        <td className="px-3 py-2">{t.docNumber}</td>
                         <td className="px-3 py-2 text-gray-700">{formatDate(t.issueDate)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(t.grandTotal)}</td>
                         <td className="px-3 py-2 text-center">
@@ -326,7 +326,7 @@ function InvoiceEditor() {
                   <tbody className="divide-y divide-gray-100">
                     {receipts.map((r) => (
                       <tr key={r.id} className={r.status === 'void' ? 'opacity-50' : ''}>
-                        <td className="px-3 py-2 font-mono">{r.docNumber}</td>
+                        <td className="px-3 py-2">{r.docNumber}</td>
                         <td className="px-3 py-2 text-gray-700">{formatDate(r.issueDate)}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatCurrency(r.amount)}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-gray-600">

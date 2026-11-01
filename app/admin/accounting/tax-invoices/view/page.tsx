@@ -147,7 +147,7 @@ function TaxInvoiceViewer() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">ใบแจ้งหนี้:</span>
-              <Link href={`/admin/accounting/invoices/new?id=${doc.invoiceId}`} className="text-brand hover:underline font-mono text-xs">
+              <Link href={`/admin/accounting/invoices/new?id=${doc.invoiceId}`} className="text-brand hover:underline text-xs">
                 ดูใบแจ้งหนี้ ↗
               </Link>
             </div>

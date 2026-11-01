@@ -47,3 +47,20 @@ export function setLabelSize(size: LabelSize) {
 export function useLabelSize(): [LabelSize, (s: LabelSize) => void] {
   return [useSyncExternalStore(subscribe, readSize, () => 'M' as LabelSize), setLabelSize]
 }
+
+// ── โหมดสมจริงของผังวาง 3D (เก้าอี้ ราว หลังคา ฟ้า เงา) — ปิดเป็นค่าตั้งต้น: ผังแบบแผนผังอ่านตำแหน่งง่ายกว่าและเบากว่าบนมือถือ ──
+const REAL_KEY = 'layout:realistic'
+
+function readRealistic(): boolean {
+  try { return localStorage.getItem(REAL_KEY) === '1' } catch { return false }
+}
+
+export function setRealistic(on: boolean) {
+  try { localStorage.setItem(REAL_KEY, on ? '1' : '0') } catch { /* private mode */ }
+  listeners.forEach((cb) => cb())
+}
+
+/** [เปิดอยู่ไหม, ตั้งค่า] — ตอน prerender = ปิด */
+export function useRealistic(): [boolean, (on: boolean) => void] {
+  return [useSyncExternalStore(subscribe, readRealistic, () => false), setRealistic]
+}

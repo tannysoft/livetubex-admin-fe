@@ -148,7 +148,7 @@ function ExpensesPageInner() {
         </div>
         {paymentIdFilter && (
           <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 text-purple-700 text-xs rounded-xl">
-            <span>🔗 กรองด้วย paymentId: <code className="font-mono">{paymentIdFilter.slice(0, 8)}…</code></span>
+            <span>🔗 กรองด้วย paymentId: <code>{paymentIdFilter.slice(0, 8)}…</code></span>
             <Link href="/admin/accounting/expenses" className="hover:bg-purple-100 rounded-md p-1">
               <XMarkIcon className="w-3.5 h-3.5" />
             </Link>
@@ -256,7 +256,7 @@ function ExpensesPageInner() {
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 font-mono text-gray-900">{e.code}</td>
+                    <td className="px-5 py-3 text-gray-900">{e.code}</td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(e.date)}</td>
                     <td className="px-5 py-3">
                       <div className="font-medium text-gray-900">{categoryNameById.get(e.categoryId) ?? e.categoryName}</div>

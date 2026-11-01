@@ -98,7 +98,7 @@ export default function CustomerSelect({ value, onChange, onCreateNew, reloadKey
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-gray-900 truncate">{c.name}</div>
                   <div className="text-xs text-gray-500 flex items-center gap-2 truncate">
-                    <span className="font-mono">{c.code}</span>
+                    <span>{c.code}</span>
                     {c.taxId && <span>· {c.taxId}</span>}
                   </div>
                 </div>

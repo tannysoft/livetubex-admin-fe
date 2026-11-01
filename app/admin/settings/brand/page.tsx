@@ -179,7 +179,7 @@ export default function BrandSettingsPage() {
           <input
             value={data.primaryColor}
             onChange={(e) => update('primaryColor', e.target.value)}
-            className={`${inputCls} w-36 font-mono`}
+            className={`${inputCls} w-36`}
           />
           {!colorValid && <span className="text-xs text-red-500">ต้องเป็น hex เช่น #2563eb</span>}
           <div className="flex gap-1.5">

@@ -158,7 +158,7 @@ export default function VendorsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-900 truncate">{v.name}</span>
-                      <span className="text-xs text-gray-400 font-mono">{v.code}</span>
+                      <span className="text-xs text-gray-400">{v.code}</span>
                       <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{typeLabel[v.type]}</span>
                       {!v.isActive && (
                         <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">ไม่ใช้งาน</span>

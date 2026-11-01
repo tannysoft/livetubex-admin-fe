@@ -139,11 +139,11 @@ export default function QuotationsPage() {
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((q) => (
                   <tr key={q.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 font-mono text-gray-900">{q.docNumber}</td>
+                    <td className="px-5 py-3 text-gray-900">{q.docNumber}</td>
                     <td className="px-5 py-3">
                       <div className="font-medium text-gray-900">{q.customerSnapshot?.name ?? '—'}</div>
                       {q.customerSnapshot?.code && (
-                        <div className="text-xs text-gray-400 font-mono">{q.customerSnapshot.code}</div>
+                        <div className="text-xs text-gray-400">{q.customerSnapshot.code}</div>
                       )}
                     </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(q.issueDate)}</td>

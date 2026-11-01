@@ -9,6 +9,7 @@ import { uploadPayoutSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate } from '@/lib/utils'
 import { SkeletonCard } from '@/components/ui/Skeleton'
+import FormCheckbox from '@/components/ui/FormCheckbox'
 
 interface FreelancerGroup {
   freelancer: Freelancer
@@ -26,6 +27,10 @@ export default function PayoutPage() {
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [slipPreview, setSlipPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // แบ่งโอน: รายการที่เอาติ๊กออก = ยังไม่โอนรอบนี้ (ค่าเริ่มต้นติ๊กครบ) · อยู่ในหน่วยความจำ รีเฟรชแล้วกลับมาติ๊กครบ
+  const [skipped, setSkipped] = useState<Set<string>>(new Set())
+  const toggleSkip = (id: string) => setSkipped((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const netOf = (p: Payment) => calcTax(p.amount).net + (p.expenseAmount ?? 0)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'warning' | 'error' } | null>(null)
   const lastToast = useRef(toast)
   if (toast) lastToast.current = toast
@@ -73,10 +78,18 @@ export default function PayoutPage() {
       .sort((a, b) => b.totalNet - a.totalNet)
   }, [payments, freelancersMap])
 
-  const grandTotal = groups.reduce((s, g) => s + g.totalNet, 0)
+  // สรุปด้านบนนับเฉพาะรายการที่ติ๊ก (ที่เอาติ๊กออก = รอโอนรอบหน้า ไม่นับ)
+  const selected = groups.map((g) => g.payments.filter((p) => !skipped.has(p.id)))
+  const selectedCount = selected.reduce((s, list) => s + list.length, 0)
+  const selectedPeople = selected.filter((list) => list.length > 0).length
+  const grandTotal = selected.reduce((s, list) => s + list.reduce((t, p) => t + netOf(p), 0), 0)
+  const allCount = groups.reduce((s, g) => s + g.payments.length, 0)
 
   const openConfirm = (group: FreelancerGroup) => {
-    setConfirmGroup(group)
+    // โอนเฉพาะรายการที่ติ๊ก
+    const pmts = group.payments.filter((p) => !skipped.has(p.id))
+    if (!pmts.length) return
+    setConfirmGroup({ ...group, payments: pmts, totalNet: pmts.reduce((s, p) => s + netOf(p), 0) })
     setSlipFile(null)
     setSlipPreview(null)
   }
@@ -111,6 +124,8 @@ export default function PayoutPage() {
         )
       ).catch((err) => console.error('syncExpenseFromPayment batch failed:', err))
       setConfirmGroup(null)
+      // รายการที่เหลือของคนนี้ (ที่เอาติ๊กออกไว้) กลับมาติ๊กครบ พร้อมโอนรอบหน้า
+      setSkipped((cur) => new Set([...cur].filter((id) => payments.find((x) => x.id === id)?.freelancerId !== freelancerId)))
       showToast(`โอนเงินให้ ${confirmGroup.freelancer.name} แล้ว`)
       load(true)
       // ส่งอีเมลแจ้ง freelancer (ไม่ block UI ถ้า fail)
@@ -141,8 +156,9 @@ export default function PayoutPage() {
           <div>
             <p className="text-xs text-gray-500">รายการรอโอน</p>
             <p className="text-xl font-bold text-gray-900 mt-0.5">
-              {groups.reduce((s, g) => s + g.payments.length, 0)} รายการ · {groups.length} คน
+              {selectedCount} รายการ · {selectedPeople} คน
             </p>
+            {selectedCount < allCount && <p className="text-xs text-gray-400 mt-0.5">เลือกไว้ {selectedCount} จาก {allCount} รายการ</p>}
           </div>
           <div>
             <p className="text-xs text-gray-500">ยอดโอนรวม</p>
@@ -163,7 +179,12 @@ export default function PayoutPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {groups.map(({ freelancer, payments: pmts, totalNet }) => (
+          {groups.map(({ freelancer, payments: pmts, totalNet: allNet }) => {
+            const split = pmts.length > 1
+            const chosen = pmts.filter((p) => !skipped.has(p.id))
+            const totalNet = chosen.reduce((s, p) => s + netOf(p), 0)
+            const partial = chosen.length < pmts.length
+            return (
             <div key={freelancer.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
@@ -177,26 +198,47 @@ export default function PayoutPage() {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-xs text-gray-400">ยอดโอนรวม</p>
-                    <p className="text-lg font-bold text-brand">{formatCurrency(totalNet)}</p>
+                    <p className="text-xs text-gray-400 whitespace-nowrap">{partial ? `โอนรอบนี้ ${chosen.length}/${pmts.length}` : 'ยอดโอนรวม'}</p>
+                    <p className="text-lg font-bold text-brand tabular-nums whitespace-nowrap">{formatCurrency(totalNet)}</p>
                   </div>
                   <button
-                    onClick={() => openConfirm({ freelancer, payments: pmts, totalNet })}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-xl transition-colors"
+                    onClick={() => openConfirm({ freelancer, payments: pmts, totalNet: allNet })}
+                    disabled={chosen.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-xl transition-colors whitespace-nowrap disabled:opacity-40 disabled:hover:bg-green-500"
                   >
                     <BanknotesIcon className="w-4 h-4" />
-                    โอนแล้ว
+                    {partial ? `โอนแล้ว (${chosen.length})` : 'โอนแล้ว'}
                   </button>
                 </div>
               </div>
 
+              {split && (
+                <div className="px-5 py-2 bg-gray-50/60 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <FormCheckbox
+                    size="sm"
+                    align="center"
+                    checked={!partial}
+                    onChange={(on) => setSkipped((s) => { const n = new Set(s); for (const p of pmts) { if (on) n.delete(p.id); else n.add(p.id) } return n })}
+                    label={<span className="text-xs text-gray-600">เลือกทั้งหมด — เอาติ๊กออกเพื่อแบ่งโอน (ที่ไม่ติ๊กรอโอนรอบหน้า)</span>}
+                  />
+                </div>
+              )}
               <div className="divide-y divide-gray-50">
                 {pmts.map((p) => {
                   const job = p.jobId ? jobsMap.get(p.jobId) : undefined
                   const { tax, net } = calcTax(p.amount)
                   const transferTotal = net + (p.expenseAmount ?? 0)
                   return (
-                    <div key={p.id} className="px-5 py-3 grid grid-cols-[1fr_auto] gap-4 items-start">
+                    <div
+                      key={p.id}
+                      onClick={split ? () => toggleSkip(p.id) : undefined}
+                      className={`px-5 py-3 grid ${split ? 'grid-cols-[auto_1fr_auto] cursor-pointer hover:bg-gray-50/60' : 'grid-cols-[1fr_auto]'} gap-4 items-start ${split && skipped.has(p.id) ? 'opacity-50' : ''}`}
+                    >
+                      {split && (
+                        <span onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                          <FormCheckbox size="sm" checked={!skipped.has(p.id)} onChange={() => toggleSkip(p.id)} />
+                        </span>
+                      )}
                       <div>
                         <p className="text-sm font-medium text-gray-800">{job?.title ?? '-'}</p>
                         <div className="flex flex-wrap gap-x-3 mt-0.5">
@@ -225,13 +267,16 @@ export default function PayoutPage() {
 
               {pmts.length > 1 && (
                 <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end">
-                  <p className="text-sm text-gray-500">
-                    รวมโอน <span className="font-bold text-gray-900">{formatCurrency(totalNet)}</span>
+                  <p className="text-sm text-gray-500 whitespace-nowrap">
+                    {partial ? 'โอนรอบนี้ ' : 'รวมโอน '}<span className="font-bold text-gray-900 tabular-nums">{formatCurrency(totalNet)}</span>
+                    {/* ยอดคงค้างอยู่บรรทัดเดียวกับยอดรวมด้านล่าง ไม่ให้หัวการ์ดสูงขึ้น */}
+                    {partial && <span className="text-gray-400"> · คงค้าง <span className="tabular-nums">{formatCurrency(allNet - totalNet)}</span></span>}
                   </p>
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

@@ -229,7 +229,7 @@ export default function VatReportPage() {
               <tbody className="divide-y divide-gray-50">
                 {taxInvoices.map((t) => (
                   <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-2 font-mono">{t.docNumber}</td>
+                    <td className="px-5 py-2">{t.docNumber}</td>
                     <td className="px-5 py-2 whitespace-nowrap">{formatDate(t.issueDate)}</td>
                     <td className="px-5 py-2">{t.customerSnapshot.name}</td>
                     <td className="px-5 py-2 text-gray-600">{t.customerSnapshot.taxId ?? '-'}</td>
@@ -300,7 +300,7 @@ export default function VatReportPage() {
               <tbody className="divide-y divide-gray-50">
                 {expenses.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-2 font-mono">{e.code}</td>
+                    <td className="px-5 py-2">{e.code}</td>
                     <td className="px-5 py-2 whitespace-nowrap">{formatDate(e.date)}</td>
                     <td className="px-5 py-2">
                       <div className="text-gray-900">{e.categoryName}</div>

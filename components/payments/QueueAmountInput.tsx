@@ -5,7 +5,7 @@ import { calcTax, formatCurrency } from '@/lib/utils'
 
 /**
  * ยอดขอเบิก = จำนวนคิว × ราคาต่อคิว — ฟอร์มขอเบิก LIFF (2 หน้า) + สร้าง/แก้การเบิกจ่ายของแอดมิน
- * จำนวนคิวเริ่มที่ 1 · +/− ทีละ 0.5 · พิมพ์เองได้
+ * จำนวนคิวตั้งต้น = จำนวนวันที่เลือก (หน้าที่ใช้คิดให้) · +/− ทีละ 0.5 · พิมพ์เองได้
  */
 export function queueTotal(queuesInput: string, rateInput: string): { queues: number; rate: number; amount: number } {
   const queues = Number(queuesInput)
@@ -21,13 +21,15 @@ function stepQueue(v: number, dir: 1 | -1): number {
   return Math.max(STEP, Math.round(snapped * 2) / 2)
 }
 
-export default function QueueAmountInput({ queues, onQueues, rate, onRate, inputCls, labelCls }: {
+export default function QueueAmountInput({ queues, onQueues, rate, onRate, inputCls, labelCls, autoHint }: {
   queues: string
   onQueues: (v: string) => void
   rate: string
   onRate: (v: string) => void
   inputCls: string
   labelCls: string
+  /** จำนวนคิวยังเป็นค่าอัตโนมัติ (ตามวันที่เลือก) — ข้อความบอกใต้ช่อง */
+  autoHint?: string
 }) {
   const { amount } = queueTotal(queues, rate)
   // ฐานของปุ่ม +/− (ช่องว่าง/พิมพ์ผิด = 0 → กด + ได้ 0.5)
@@ -85,6 +87,7 @@ export default function QueueAmountInput({ queues, onQueues, rate, onRate, input
           />
         </div>
       </div>
+      {autoHint && <p className="-mt-1 text-[11px] text-gray-400">{autoHint}</p>}
       <div className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
         <span className="text-sm text-gray-600">รวมเป็นเงิน</span>
         <span className="text-right">

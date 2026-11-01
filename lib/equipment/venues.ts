@@ -90,6 +90,7 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
   { value: 'tele_lens', label: 'กล้องเลนส์ Tele (40x)', color: '#0369a1' },
   { value: 'box_lens', label: 'กล้อง Box Lens (เลนส์ tele)', color: '#1e40af' },
   { value: 'mirrorless', label: 'กล้อง Mirrorless (ขาตั้ง)', color: '#9333ea' },
+  { value: 'dolly', label: 'กล้องราง Dolly', color: '#be123c' },
   { value: 'ob_truck', label: 'รถ OB', color: '#475569' },
   { value: 'control_room', label: 'ห้องคอนโทรล', color: '#0f766e' },
   { value: 'rack', label: 'ตู้ Rack OB', color: '#1f2937' },
@@ -103,7 +104,7 @@ export const OBJECT_KINDS: { value: LayoutObjectKind; label: string; color: stri
 
 /** วัตถุที่มีกรวยมุมภาพ + มุมมองจากกล้อง + คอลัมน์เลนส์ในหน้าพิมพ์ */
 export function isCameraKind(kind: LayoutObjectKind): boolean {
-  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head' || kind === 'micro_stand' || kind === 'action_cam' || kind === 'ptz' || kind === 'tele_lens' || kind === 'box_lens' || kind === 'mirrorless'
+  return kind === 'camera' || kind === 'jib' || kind === 'gimbal' || kind === 'remote_head' || kind === 'micro_stand' || kind === 'action_cam' || kind === 'ptz' || kind === 'tele_lens' || kind === 'box_lens' || kind === 'mirrorless' || kind === 'dolly'
 }
 
 export function kindMeta(kind: LayoutObjectKind) {
@@ -135,6 +136,8 @@ export const KIND_DEFAULTS: Record<LayoutObjectKind, Partial<LayoutObject>> = {
   rack: { w: 0.6, d: 0.8, h: 1.6 },
   // กล้อง mirrorless (Sony FX3/A7, Lumix GH7 ฯลฯ) บนขาตั้งกล้องถ่ายภาพ — มุมกลาง ระยะใกล้-กลาง
   mirrorless: { mountHeight: 1.5, fov: 50, range: 20 },
+  // กล้องบนรถ dolly วิ่งบนราง — w = ความยาวราง (แนวซ้าย-ขวาของวัตถุ) d = ความกว้างราง · กล้องอยู่กลางราง หันไปด้านหน้า (-z)
+  dolly: { mountHeight: 1.5, fov: 40, range: 30, w: 6, d: 1 },
   desk: { w: 4, d: 2, h: 1 },
   screen: { w: 8, d: 0.3, h: 4.5 },
   speaker: { w: 1.2, d: 1.2, h: 3 },

@@ -226,13 +226,13 @@ export default function EquipmentForm({ defaultValues, locationOptions, vendorOp
           {priceNote && <p className="mt-1 text-[11px] text-amber-600">{priceNote}</p>}
         </Field>
         <Field label="Port ขาเข้า (บรรทัดละ 1 port)">
-          <textarea className={`${inputCls} font-mono`} rows={4} value={inputs} onChange={(e) => setInputs(e.target.value)} />
+          <textarea className={`${inputCls}`} rows={4} value={inputs} onChange={(e) => setInputs(e.target.value)} />
         </Field>
         <Field label="Port ขาออก (บรรทัดละ 1 port)">
-          <textarea className={`${inputCls} font-mono`} rows={4} value={outputs} onChange={(e) => setOutputs(e.target.value)} />
+          <textarea className={`${inputCls}`} rows={4} value={outputs} onChange={(e) => setOutputs(e.target.value)} />
         </Field>
         <Field label="Port เข้า-ออกในตัวเดียว ⇄ (บรรทัดละ 1 port)" className="sm:col-span-2">
-          <textarea className={`${inputCls} font-mono`} rows={2} value={ios} onChange={(e) => setIos(e.target.value)} placeholder="เช่น 12G-SDI 1, LAN 1 — port ที่รับและส่งได้ในช่องเดียว" />
+          <textarea className={`${inputCls}`} rows={2} value={ios} onChange={(e) => setIos(e.target.value)} placeholder="เช่น 12G-SDI 1, LAN 1 — port ที่รับและส่งได้ในช่องเดียว" />
         </Field>
         <p className="sm:col-span-2 -mt-2 text-xs text-gray-400">Port ใช้เป็นแม่แบบตอนวางอุปกรณ์ลงผังระบบ — แก้เฉพาะผังทีหลังได้ · port เข้า-ออกโยงได้ทั้งสองทาง</p>
         <Field label="หมายเหตุ" className="sm:col-span-2">

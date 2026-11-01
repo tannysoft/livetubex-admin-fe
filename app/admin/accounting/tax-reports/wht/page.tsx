@@ -148,7 +148,7 @@ export default function WhtReportPage() {
         <tbody className="divide-y divide-gray-50">
           {list.map((e) => (
             <tr key={e.id} className="hover:bg-gray-50">
-              <td className="px-5 py-2 font-mono">{e.code}</td>
+              <td className="px-5 py-2">{e.code}</td>
               <td className="px-5 py-2 whitespace-nowrap">{formatDate(e.date)}</td>
               <td className="px-5 py-2">
                 <div>{e.vendorSnapshot?.name ?? '(ไม่ระบุ)'}</div>

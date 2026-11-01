@@ -232,7 +232,7 @@ export default function CashFlowPage() {
                 {receipts.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-5 py-2 whitespace-nowrap">{formatDate(r.issueDate)}</td>
-                    <td className="px-5 py-2 font-mono">{r.docNumber}</td>
+                    <td className="px-5 py-2">{r.docNumber}</td>
                     <td className="px-5 py-2">{r.customerSnapshot.name}</td>
                     <td className="px-5 py-2 text-gray-600">{r.paymentMethod}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatCurrency(r.amount)}</td>
@@ -292,7 +292,7 @@ export default function CashFlowPage() {
                 {expenses.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50">
                     <td className="px-5 py-2 whitespace-nowrap">{formatDate(e.date)}</td>
-                    <td className="px-5 py-2 font-mono">{e.code}</td>
+                    <td className="px-5 py-2">{e.code}</td>
                     <td className="px-5 py-2">{e.categoryName}</td>
                     <td className="px-5 py-2 text-gray-700">{e.vendorSnapshot?.name ?? '-'}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatCurrency(e.amount)}</td>

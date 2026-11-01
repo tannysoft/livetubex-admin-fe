@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import {
-  PlusIcon, TrashIcon, XMarkIcon, EyeIcon, EyeSlashIcon, CubeTransparentIcon, MapIcon, ArrowUpTrayIcon, DocumentDuplicateIcon, BoltIcon,
+  PlusIcon, TrashIcon, XMarkIcon, EyeIcon, EyeSlashIcon, CubeTransparentIcon, MapIcon, ArrowUpTrayIcon, DocumentDuplicateIcon, BoltIcon, SparklesIcon,
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import FormCheckbox from '@/components/ui/FormCheckbox'
@@ -14,12 +14,18 @@ import {
   KIND_DEFAULTS, OBJECT_KINDS, isCameraKind, VENUE_PRESETS, cloneVenue, kindForCategory, kindMeta, insideFootprint, rackInRoom,
 } from '@/lib/equipment/venues'
 import {
-  addLights, buildCableDraft, buildCables, buildObject, buildVenue, cableOrderLength, cableRuns, cameraPose, declutterLabels, disposeGroup, groundsOf,
-  labelSizeFor, loadImage, objectDims, ridersOf, venueExtent, CABLE_SLACK, focusAt, tuneOrbit,
+  applyAtmosphere, buildCableDraft, buildCables, buildObject, buildVenue, cableOrderLength, cableRuns, cameraPose, declutterLabels, disposeGroup, groundsOf,
+  labelSizeFor, loadImage, objectDims, ridersOf, venueExtent, CABLE_SLACK, focusAt, tuneOrbit, firstGroundHit, setRoofVisible, realisticObject, venueShell, SEAT_COLORS,
 } from '@/lib/equipment/layout-scene'
+import {
+  applyModelTransform, disposeSpark, ensureSpark, loadVenueModel, modelBox, modelGrounds, setModelShadows, type LoadedVenueModel,
+} from '@/lib/equipment/venue-model-scene'
+import { createRealisticPipeline, type RealisticPipeline } from '@/lib/equipment/realistic-render'
+import { fetchVenueModel } from '@/lib/equipment/venue-models'
+import VenueModelPanel from './VenueModelPanel'
 import { getPlanAsset, uploadPlanAsset } from '@/lib/equipment/plan-assets'
 import { newId } from '@/lib/equipment/plans'
-import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
+import { LABEL_SCALE, useLabelSize, useLensLines, useRealistic } from '@/lib/equipment/lens-lines'
 import LabelSizePicker from './LabelSizePicker'
 import { ORIGIN_LABEL, isRentalItem, itemOrigin } from '@/lib/equipment/rental-cost'
 
@@ -60,6 +66,9 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   const [viewMode, setViewMode] = useState<'3d' | 'top'>('3d')
   const [lensLines, setLensLines] = useLensLines()
   const [labelSizeKey] = useLabelSize()
+  const [realistic, setRealistic] = useRealistic()
+  const realisticRef = useRef(realistic)
+  useEffect(() => { realisticRef.current = realistic })
   const [panel, setPanel] = useState<'objects' | 'venue'>('objects')
   const [floorImg, setFloorImg] = useState<HTMLImageElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -71,6 +80,11 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   const cableModeRef = useRef(false)
   const draftRef = useRef<CableDraft | null>(null)
   useEffect(() => { cableModeRef.current = cableMode })
+  // โมเดล 3D ของสถานที่ (.glb / สแกน) — โหลดตาม assetId · loaded.assetId ไม่ตรงกับผัง = ยังไม่พร้อม (กำลังโหลดไฟล์ใหม่)
+  const [loaded, setLoaded] = useState<{ assetId: string; model: LoadedVenueModel } | null>(null)
+  const [modelProgress, setModelProgress] = useState<{ assetId: string; p: number } | null>(null)
+  const [modelError, setModelError] = useState<{ assetId: string; msg: string } | null>(null)
+  const modelRef = useRef<LoadedVenueModel | null>(null)
 
   const venue = layout.venue
   const selected = layout.objects.find((o) => o.id === selectedId)
@@ -100,13 +114,12 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     if (!mount) return
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.localClippingEnabled = true // ระดับตัดหลังคาของโมเดลสถานที่
     mount.appendChild(renderer.domElement)
     renderer.domElement.style.display = 'block'
     renderer.domElement.style.touchAction = 'none'
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xf3f4f6)
-    addLights(scene)
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000)
     const objects = new THREE.Group()
     const cables = new THREE.Group()
@@ -114,6 +127,8 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     scene.add(objects, cables, draft)
 
     let frame = 0
+    // โหมดสมจริงวาดผ่านท่อ AO (สร้างครั้งแรกที่เปิด) · โหมดปกติวาดตรงเหมือนเดิม
+    let pipeline: RealisticPipeline | null = null
     const render = () => {
       if (frame) return
       frame = requestAnimationFrame(() => {
@@ -121,7 +136,10 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
         // ป้ายชื่อหลบกันตามมุมกล้องปัจจุบัน — ต้องจัดใหม่ทุกเฟรมเพราะหมุน/ซูมแล้วตำแหน่งบนจอเปลี่ยน
         scene.updateMatrixWorld()
         declutterLabels(scene, camera, renderer.domElement.clientWidth, renderer.domElement.clientHeight)
-        renderer.render(scene, camera)
+        if (realisticRef.current) {
+          pipeline ??= createRealisticPipeline(renderer, scene, camera)
+          pipeline.render()
+        } else renderer.render(scene, camera)
       })
     }
 
@@ -141,6 +159,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const groundsExcept = (excludeId: string | null): THREE.Object3D[] => {
       const out: THREE.Object3D[] = []
       three.current?.venue?.traverse((o) => { if (o.userData.ground) out.push(o) })
+      out.push(...modelGrounds(modelRef.current))
       for (const child of objects.children) {
         if (child.userData.objectId === excludeId) continue
         child.traverse((o) => { if (o.userData.ground) out.push(o) })
@@ -150,12 +169,12 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const down = new THREE.Vector3(0, -1, 0)
     const groundPoint = (excludeId: string | null): THREE.Vector3 | null => {
       const grounds = groundsExcept(excludeId)
-      const hit = raycaster.intersectObjects(grounds, false)[0]
+      const hit = firstGroundHit(raycaster.intersectObjects(grounds, false))
       // นอกสถานที่ (เช่น รถ OB จอดข้างนอก) → วางบนระนาบพื้น y=0
       const p = hit ? hit.point.clone() : raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3())
       if (!p) return null
       // ray อาจชน "ด้านข้าง" ของแท่น/ขั้นบันได → ความสูงจริงต้องยิงลงตรงๆ ที่ x,z นั้น ให้ได้ผิวบนสุด
-      const top = new THREE.Raycaster(new THREE.Vector3(p.x, 500, p.z), down).intersectObjects(grounds, false)[0]
+      const top = firstGroundHit(new THREE.Raycaster(new THREE.Vector3(p.x, 500, p.z), down).intersectObjects(grounds, false))
       p.y = top ? top.point.y : 0
       return p
     }
@@ -178,7 +197,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       if (d && from) {
         const grounds = groundsExcept(null)
         const at = (x: number, z: number) => {
-          const hit = new THREE.Raycaster(new THREE.Vector3(x, 500, z), down).intersectObjects(grounds, false)[0]
+          const hit = firstGroundHit(new THREE.Raycaster(new THREE.Vector3(x, 500, z), down).intersectObjects(grounds, false))
           return new THREE.Vector3(x, hit ? hit.point.y : 0, z)
         }
         const pts = [new THREE.Vector3(from.x, from.y, from.z), ...d.points.map((p) => at(p.x, p.z)), ...(cursor ? [cursor] : [])]
@@ -344,6 +363,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       const w = mount.clientWidth
       const h = mount.clientHeight
       renderer.setSize(w, h)
+      pipeline?.setSize(w, h)
       camera.aspect = w / Math.max(h, 1)
       camera.updateProjectionMatrix()
       render()
@@ -362,7 +382,9 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
       el.removeEventListener('pointerup', onUp)
       el.removeEventListener('dblclick', onDbl)
       controls.dispose()
+      disposeSpark(scene)
       disposeGroup(scene)
+      pipeline?.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
       mount.removeChild(el)
@@ -382,18 +404,64 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   }, [venue.floorImageId])
   const activeFloorImg = venue.floorImageId ? floorImg : null
 
+  // ── โมเดลสถานที่ ──
+  const modelCfg = venue.model
+  const assetId = modelCfg?.assetId
+  useEffect(() => {
+    if (!assetId) return
+    let alive = true
+    let result: LoadedVenueModel | null = null
+    const cfg = latest.current.layout.venue.model
+    ;(async () => {
+      const buf = await fetchVenueModel(assetId, (p) => { if (alive) setModelProgress({ assetId, p }) })
+      if (!alive || !cfg) return
+      result = await loadVenueModel(buf, cfg.kind, cfg.fileName)
+      if (!alive) { result.dispose(); return }
+      const t = three.current
+      if (result.kind === 'splat' && t) await ensureSpark(t.scene, t.renderer, t.render)
+      if (alive) setLoaded({ assetId, model: result })
+    })().catch((e) => {
+      console.error(e)
+      if (alive) setModelError({ assetId, msg: e instanceof Error ? e.message : 'โหลดโมเดลไม่สำเร็จ' })
+    })
+    return () => { alive = false; result?.dispose() }
+  }, [assetId])
+  const model = loaded && loaded.assetId === assetId ? loaded.model : null
+  const modelLoading = !!assetId && !model && modelError?.assetId !== assetId
+  useEffect(() => { modelRef.current = model })
+  const modelKey = JSON.stringify(modelCfg ?? null)
+  useEffect(() => {
+    const t = three.current
+    if (!t || !model || !modelCfg) return
+    t.scene.add(model.root)
+    applyModelTransform(model, modelCfg)
+    setModelShadows(model, realistic)
+    t.render()
+    return () => { model.root.removeFromParent(); three.current?.render() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, modelKey, realistic])
+
   // สถานที่เปลี่ยน → สร้างใหม่ทั้งก้อน (ถูกพอ ไม่ต้อง diff)
   const venueKey = JSON.stringify(venue)
+  const shell = venueShell(venue, model?.kind ?? null)
+  const showRoof = !(viewMode === 'top' && !povId)
   useEffect(() => {
     const t = three.current
     if (!t) return
     if (t.venue) { t.scene.remove(t.venue); disposeGroup(t.venue) }
-    t.venue = buildVenue(venue, activeFloorImg)
+    t.venue = buildVenue(venue, { floorImage: activeFloorImg, realistic, shell })
     t.scene.add(t.venue)
     t.venue.updateMatrixWorld(true)
     t.render()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [venueKey, activeFloorImg])
+  }, [venueKey, activeFloorImg, realistic, shell])
+  // หลังคาบังทั้งผังเมื่อมองจากบน → ซ่อนในมุมบน
+  useEffect(() => {
+    const t = three.current
+    if (!t) return
+    setRoofVisible(t.venue, showRoof)
+    t.render()
+  }, [showRoof, venueKey, activeFloorImg, realistic, shell])
 
   const labelSize = labelSizeFor(venue, LABEL_SCALE[labelSizeKey])
   useEffect(() => {
@@ -402,22 +470,31 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
     const old = [...t.objects.children]
     old.forEach((c) => { t.objects.remove(c); disposeGroup(c) })
     // ในมุมมองจากกล้อง ซ่อนตัวกล้องนั้นเอง ไม่งั้นบังเลนส์
-    layout.objects.filter((o) => o.id !== povId).forEach((o) => t.objects.add(buildObject(o, labelSize, o.id === selectedId, lensLines)))
+    layout.objects.filter((o) => o.id !== povId).forEach((o) => {
+      const obj = buildObject(o, labelSize, o.id === selectedId, lensLines)
+      if (realistic) realisticObject(obj)
+      t.objects.add(obj)
+    })
     // three อัปเดต matrixWorld ตอน render เท่านั้น แต่ pointermove ถัดไปอาจ raycast ก่อน frame นั้น
     // → ไม่อัปเดตเอง ray จะเห็น riser ที่เพิ่งสร้างใหม่อยู่ที่จุด (0,0,0) แล้ววางของทับไม่ติด
     t.objects.updateMatrixWorld(true)
     t.render()
-  }, [layout.objects, selectedId, povId, labelSize, lensLines])
+  }, [layout.objects, selectedId, povId, labelSize, lensLines, realistic])
 
   // ── แนวสาย: คิดแนวแนบผิวจากสถานที่ชุดแยก (ไม่ต้องพึ่ง scene ที่ render) → ใช้ทั้งวาดและโชว์ความยาวในแผง ──
   const groundModel = useMemo(() => {
-    const g = buildVenue(venue)
+    const g = buildVenue(venue, { shell })
     g.updateMatrixWorld(true)
     return g
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [venueKey])
+  }, [venueKey, shell])
   useEffect(() => () => disposeGroup(groundModel), [groundModel])
-  const runs = useMemo(() => cableRuns(layout, groundsOf(groundModel)), [layout, groundModel])
+  const runs = useMemo(() => {
+    // โมเดล .glb เป็นผิวเดินสาย — จัดตำแหน่งตามค่าล่าสุดก่อนยิง ray (effect ที่จัดให้ในฉากอาจยังไม่ทำงาน)
+    if (model && modelCfg) applyModelTransform(model, modelCfg)
+    return cableRuns(layout, [...groundsOf(groundModel), ...modelGrounds(model)])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, groundModel, model, modelKey])
   const runById = new Map(runs.map((r) => [r.cable.id, r]))
 
   useEffect(() => {
@@ -459,11 +536,29 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   })
 
   // มุมมอง: 3D / Top / จากกล้อง
-  const frameKey = `${venue.width}|${venue.depth}|${venue.tiers?.steps ?? 0}|${venue.shape}|${venue.tiers?.curved}|${venue.tiers?.front}`
+  // โมเดลโหลดเสร็จ = จัดมุมใหม่ครั้งเดียว (ปรับตำแหน่งโมเดลทีหลังไม่ให้กล้องกระโดด)
+  const frameKey = `${venue.width}|${venue.depth}|${venue.tiers?.steps ?? 0}|${venue.shape}|${venue.tiers?.curved}|${venue.tiers?.front}|${model ? assetId : ''}`
+  /** ขอบเขตของผัง = สถานที่จากตัวเลข ∪ โมเดล */
+  const sceneExtent = () => {
+    const e = venueExtent(latest.current.layout.venue)
+    const m = modelRef.current
+    const cfg = latest.current.layout.venue.model
+    if (!m || !cfg) return e
+    applyModelTransform(m, cfg)
+    const b = modelBox(m)
+    if (b.isEmpty()) return e
+    return { minX: Math.min(e.minX, b.min.x), maxX: Math.max(e.maxX, b.max.x), minZ: Math.min(e.minZ, b.min.z), maxZ: Math.max(e.maxZ, b.max.z), topY: Math.max(e.topY, b.max.y) }
+  }
   useEffect(() => {
     const t = three.current
     if (!t) return
-    const e = venueExtent(latest.current.layout.venue)
+    applyAtmosphere(t.scene, t.renderer, { realistic, background: 0xf3f4f6, box: sceneExtent() })
+    t.render()
+  }, [realistic, frameKey])
+  useEffect(() => {
+    const t = three.current
+    if (!t) return
+    const e = sceneExtent()
     const cx = (e.minX + e.maxX) / 2
     const cz = (e.minZ + e.maxZ) / 2
     const span = Math.max(e.maxX - e.minX, e.maxZ - e.minZ)
@@ -502,10 +597,10 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
   const surfaceY = (x: number, z: number): number => {
     const t = three.current
     if (!t?.venue) return 0
-    const grounds: THREE.Object3D[] = []
+    const grounds: THREE.Object3D[] = [...modelGrounds(modelRef.current)]
     t.venue.traverse((o) => { if (o.userData.ground) grounds.push(o) })
     t.objects.traverse((o) => { if (o.userData.ground) grounds.push(o) }) // riser
-    const hit = new THREE.Raycaster(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0)).intersectObjects(grounds, false)[0]
+    const hit = firstGroundHit(new THREE.Raycaster(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0)).intersectObjects(grounds, false))
     return hit ? Math.max(0, Math.round(hit.point.y * 10) / 10) : 0
   }
 
@@ -524,7 +619,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
 
   const nextLabel = (kind: LayoutObjectKind) => {
     const count = layout.objects.filter((o) => o.kind === kind).length + 1
-    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : kind === 'micro_stand' ? `MICRO ${count}` : kind === 'action_cam' ? `ACTION ${count}` : kind === 'ptz' ? `PTZ ${count}` : kind === 'tele_lens' ? `TELE ${count}` : kind === 'box_lens' ? `BOX ${count}` : kind === 'control_room' ? (count > 1 ? `CONTROL ${count}` : 'CONTROL ROOM') : kind === 'rack' ? `RACK ${count}` : kind === 'mirrorless' ? `ML ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
+    return kind === 'camera' ? `CAM ${count}` : kind === 'jib' ? `JIB ${count}` : kind === 'gimbal' ? `RONIN ${count}` : kind === 'remote_head' ? `RH ${count}` : kind === 'micro_stand' ? `MICRO ${count}` : kind === 'action_cam' ? `ACTION ${count}` : kind === 'ptz' ? `PTZ ${count}` : kind === 'tele_lens' ? `TELE ${count}` : kind === 'box_lens' ? `BOX ${count}` : kind === 'control_room' ? (count > 1 ? `CONTROL ${count}` : 'CONTROL ROOM') : kind === 'rack' ? `RACK ${count}` : kind === 'mirrorless' ? `ML ${count}` : kind === 'dolly' ? `DOLLY ${count}` : `${kindMeta(kind).label.split(' ')[0]} ${count}`
   }
 
   /** ปรับความสูง riser → ของที่ยืนอยู่บนแท่นต้องขึ้น/ลงตาม ไม่งั้นลอยหรือจมแท่น */
@@ -586,6 +681,7 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
         ...cloneVenue(preset),
         floorImageId: venue.floorImageId, floorImageWidth: venue.floorImageWidth,
         floorImageOffsetX: venue.floorImageOffsetX, floorImageOffsetZ: venue.floorImageOffsetZ,
+        model: venue.model, seatColor: venue.seatColor, roof: venue.roof,
       },
     })
   }
@@ -637,6 +733,14 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
             {lensLines ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />} แนวเลนส์
           </button>
           <LabelSizePicker className="!border-0 !p-0" />
+          <button
+            onClick={() => setRealistic(!realistic)}
+            aria-pressed={realistic}
+            title="โหมดสมจริง: เก้าอี้ ราวกันตก หลังคา ท้องฟ้า เงา"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${realistic ? 'bg-brand-soft text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <SparklesIcon className="w-4 h-4" /> สมจริง
+          </button>
           <span className="w-px h-5 bg-gray-200 mx-0.5" aria-hidden />
           <button
             onClick={() => { setCableMode(!cableMode); setPovId(null) }}
@@ -746,6 +850,11 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
                   <Num label="FOV °" value={dims.fov} step={1} onChange={(v) => patchObject(selected.id, { fov: Math.min(120, Math.max(1, v)) })} />
                   <Num label="ระยะ (ม.)" value={dims.range} step={5} onChange={(v) => patchObject(selected.id, { range: Math.max(1, v) })} />
                 </div>
+                {selected.kind === 'dolly' && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <Num label="ความยาวราง (ม.)" value={dims.w} step={0.5} onChange={(v) => patchObject(selected.id, { w: Math.min(40, Math.max(1, v)) })} />
+                  </div>
+                )}
                 <Field label={`ก้ม/เงย ${selected.tilt ?? 0}° (มีผลในมุมมองจากกล้อง)`}>
                   <input type="range" min={-30} max={45} value={selected.tilt ?? 0} onChange={(e) => patchObject(selected.id, { tilt: Number(e.target.value) })} className="w-full accent-[var(--brand)]" />
                 </Field>
@@ -973,6 +1082,44 @@ export default function LayoutEditor({ planId, layout, onChange, planItems, onRe
                     )}
                   </div>
                 )}
+
+                <div className="border-t border-gray-100 pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-gray-500">โหมดสมจริง</p>
+                  {!realistic && <p className="text-[11px] text-gray-400">กดปุ่ม “สมจริง” บนแถบด้านบนเพื่อดูผล</p>}
+                  {venue.shape === 'arena' && venue.tiers && (
+                    <Field label="สีเก้าอี้">
+                      <div className="flex flex-wrap gap-1.5">
+                        {SEAT_COLORS.map((c) => (
+                          <button
+                            key={c.value}
+                            onClick={() => patchVenue({ seatColor: c.value })}
+                            title={c.label}
+                            aria-label={c.label}
+                            aria-pressed={(venue.seatColor ?? SEAT_COLORS[0].value) === c.value}
+                            className={`w-7 h-7 rounded-full border-2 ${(venue.seatColor ?? SEAT_COLORS[0].value) === c.value ? 'border-gray-900' : 'border-white shadow-sm'}`}
+                            style={{ background: c.value }}
+                          />
+                        ))}
+                      </div>
+                    </Field>
+                  )}
+                  <FormCheckbox
+                    size="sm"
+                    checked={!!venue.roof}
+                    onChange={(v) => patchVenue({ roof: v || undefined })}
+                    label={venue.pitch ? 'หลังคาคลุมอัฒจันทร์' : 'โครง truss เพดาน'}
+                    description="ซ่อนเองในมุมบน"
+                  />
+                </div>
+
+                <VenueModelPanel
+                  config={venue.model}
+                  onChange={(m) => patchVenue({ model: m })}
+                  model={model}
+                  loading={modelLoading}
+                  progress={modelProgress && modelProgress.assetId === assetId ? modelProgress.p : 0}
+                  error={modelError && modelError.assetId === assetId ? modelError.msg : ''}
+                />
 
                 <div className="border-t border-gray-100 pt-3 space-y-2">
                   <p className="text-xs font-semibold text-gray-500">รูป floor plan จริง (ปูบนพื้น)</p>

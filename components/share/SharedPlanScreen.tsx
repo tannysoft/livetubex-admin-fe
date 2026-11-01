@@ -1,10 +1,11 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
   ArrowDownTrayIcon, ArrowPathIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, LockClosedIcon, MagnifyingGlassIcon, MapPinIcon, CalendarDaysIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import Logo from '@/components/ui/Logo'
 import ZoomPan from '@/components/ui/ZoomPan'
@@ -17,7 +18,8 @@ import { camLabels, camTag, groupItems, isCamOnlyNote, type CamLabels, type Grou
 import { formatFullLabel } from '@/lib/equipment/video-format'
 import RecordingList from '@/components/admin/equipment/RecordingList'
 import { fohSummary } from '@/lib/equipment/foh-feeds'
-import { LABEL_SCALE, useLabelSize, useLensLines } from '@/lib/equipment/lens-lines'
+import { LABEL_SCALE, useLabelSize, useLensLines, useRealistic } from '@/lib/equipment/lens-lines'
+import { fetchSharedVenueModel } from '@/lib/equipment/venue-models'
 import LabelSizePicker from '@/components/admin/equipment/LabelSizePicker'
 import { itemUseLabel } from '@/lib/equipment/availability'
 import { ownerCounts, sharedItemOwner } from '@/lib/equipment/owners'
@@ -255,7 +257,7 @@ function SharedPlanPage({ via }: { via: 'link' | 'liff' }) {
 
       {tab === 'items' && <ItemsTab plan={plan} />}
       {tab === 'diagrams' && <DiagramsTab diagrams={diagrams} />}
-      {tab === 'layouts' && <LayoutsTab layouts={layouts} />}
+      {tab === 'layouts' && <LayoutsTab layouts={layouts} shareId={shareId} password={trusted ? '' : password} />}
     </div>
   )
 }
@@ -541,8 +543,14 @@ const LayoutViewer = dynamic(() => import('@/components/admin/equipment/LayoutVi
   loading: () => <Skeleton className="h-[calc(100dvh-230px)] lg:h-[calc(100dvh-190px)] min-h-[320px] w-full rounded-2xl" />,
 })
 
-function LayoutsTab({ layouts }: { layouts: PlanLayout[] }) {
+function LayoutsTab({ layouts, shareId, password }: { layouts: PlanLayout[]; shareId: string; password: string }) {
   const [activeId, setActiveId] = useState(layouts[0]?.id ?? '')
+  const [realistic, setRealistic] = useRealistic()
+  // โมเดลสถานที่อยู่ใน collection admin-only → อ่านผ่าน function ด้วยลิงก์/รหัสเดียวกับแผน
+  const loadModel = useCallback(
+    (assetId: string, onProgress: (p: number) => void) => fetchSharedVenueModel(shareId, password, assetId, onProgress),
+    [shareId, password],
+  )
   const [view, setView] = useState<'top' | 'perspective'>('top')
   const [lensLines, setLensLines] = useLensLines()
   const [labelSize] = useLabelSize()
@@ -567,12 +575,21 @@ function LayoutsTab({ layouts }: { layouts: PlanLayout[] }) {
             {lensLines ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />} แนวเลนส์
           </button>
           <LabelSizePicker className="!rounded-xl !p-1" />
+          <button
+            onClick={() => setRealistic(!realistic)}
+            aria-pressed={realistic}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium ${realistic ? 'border-brand bg-brand-soft text-gray-900' : 'border-gray-200 bg-white text-gray-500'}`}
+          >
+            <SparklesIcon className="w-4 h-4" /> สมจริง
+          </button>
         </div>
         <LayoutViewer
           layout={layout}
           view={view}
           lensLines={lensLines}
           labelScale={LABEL_SCALE[labelSize]}
+          realistic={realistic}
+          loadModel={loadModel}
           className="h-[calc(100dvh-230px)] lg:h-[calc(100dvh-190px)] min-h-[320px] bg-white rounded-2xl border border-gray-100"
         />
         <p className="text-[11px] text-gray-400 text-center">

@@ -1,5 +1,8 @@
 import * as THREE from 'three'
-import type { LayoutCable, LayoutObject, PlanLayout, VenueConfig } from '../types'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { Sky } from 'three/examples/jsm/objects/Sky.js'
+import type { LayoutCable, LayoutObject, PlanLayout, VenueConfig, VenueModelKind } from '../types'
 import { KIND_DEFAULTS, isCameraKind, kindMeta } from './venues'
 import { signalMeta } from './constants'
 
@@ -172,11 +175,12 @@ function gridTexture(): THREE.CanvasTexture {
   return gridTex
 }
 
-function floorMaterial(repeatX: number, repeatY: number): THREE.MeshLambertMaterial {
+/** tint = สีคูณทับลายตาราง (โหมดสมจริงใช้โทนพื้นปูน — ตารางยังเห็นจางๆ ไว้กะระยะ) */
+function floorMaterial(repeatX: number, repeatY: number, tint = 0xffffff): THREE.MeshLambertMaterial {
   const map = gridTexture().clone()
   map.repeat.set(repeatX, repeatY)
   map.needsUpdate = true
-  return new THREE.MeshLambertMaterial({ map })
+  return new THREE.MeshLambertMaterial({ map, color: tint })
 }
 function groundBox(w: number, h: number, d: number, color: number): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }))
@@ -220,6 +224,12 @@ function cornerSlab(cx: number, cz: number, sx: number, sz: number, r0: number, 
 
 const AISLE_COLOR = 0xeee3cc // ทางเดินบนอัฒจันทร์ — สีทรายอ่อน แยกจากที่นั่งสีเทาฟ้า
 
+/** สีของสถานที่: ปกติ = โทนแผนผัง (เทาฟ้า อ่านง่ายเวลาพิมพ์) · สมจริง = โทนปูน */
+const PALETTE = {
+  plan: { floorTint: 0xffffff, tierA: 0xcbd5e1, tierB: 0xb6c2d2, aisle: AISLE_COLOR, stage: 0x374151 },
+  real: { floorTint: 0xd9d4cb, tierA: 0xc9c5bd, tierB: 0xbfbab1, aisle: 0xa8a29e, stage: 0x1f2937 },
+}
+
 /**
  * ช่วงทางเดินตามขอบพื้นยาว base (จัดกึ่งกลาง): แบ่งที่นั่งเป็นบล็อกกว้างใกล้ section ที่สุด คั่นด้วยทางเดินกว้าง aisle
  * คืน [เริ่ม, จบ] ของแต่ละทางเดิน (พิกัดเทียบกึ่งกลางขอบ)
@@ -250,42 +260,396 @@ function splitSpan(a0: number, a1: number, gaps: [number, number][]): [number, n
   return out
 }
 
-/** สร้างสถานที่: พื้น, เวที, อัฒจันทร์, กรอบปริมาตร, grid 5 ม. และรูป floor plan (ถ้ามี) */
-export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null): THREE.Group {
+// ── เก้าอี้บนอัฒจันทร์ (โหมดสมจริง) — InstancedMesh ก้อนเดียว วาดได้หลายหมื่นตัว ─────────────
+/** x, y, z = จุดวางบนผิวขั้น · r = หมุนรอบแกนตั้ง (เก้าอี้ตั้งต้นหันไป -z) */
+type Seat = { x: number; y: number; z: number; r: number }
+const SEAT_GAP = 0.5   // ระยะเก้าอี้ตามแถว (ม.)
+const SEAT_ROW = 0.85  // ขั้นลึกเกินนี้ = นั่งได้หลายแถวต่อขั้น
+const MAX_SEATS = 90_000
+const faceAngle = (dx: number, dz: number) => Math.atan2(-dx, -dz)
+
+/** ระยะจากขอบในของขั้นถึงแต่ละแถวเก้าอี้ */
+function seatRowOffsets(run: number): number[] {
+  const n = Math.max(1, Math.floor(run / SEAT_ROW))
+  return Array.from({ length: n }, (_, k) => (run * (k + 0.5)) / n)
+}
+function seatsOnLine(out: Seat[], ax: number, az: number, bx: number, bz: number, y: number, r: number) {
+  const len = Math.hypot(bx - ax, bz - az)
+  const n = Math.floor(len / SEAT_GAP)
+  if (n < 1) return
+  const pad = (len - n * SEAT_GAP) / 2 + SEAT_GAP / 2
+  for (let k = 0; k < n; k++) {
+    const t = (pad + k * SEAT_GAP) / len
+    out.push({ x: ax + (bx - ax) * t, y, z: az + (bz - az) * t, r })
+  }
+}
+/** โค้งรอบจุด (cx, cz) รัศมี rad จากมุม a0 → a1 (มุมในระนาบ x-z) — หันเข้าหาศูนย์กลาง */
+function seatsOnArc(out: Seat[], cx: number, cz: number, rad: number, a0: number, a1: number, y: number) {
+  const n = Math.floor((Math.abs(a1 - a0) * rad) / SEAT_GAP)
+  for (let k = 0; k < n; k++) {
+    const a = a0 + ((a1 - a0) * (k + 0.5)) / n
+    const dx = Math.cos(a), dz = Math.sin(a)
+    out.push({ x: cx + dx * rad, y, z: cz + dz * rad, r: faceAngle(-dx, -dz) })
+  }
+}
+function seatsOnEllipse(out: Seat[], a: number, b: number, y: number) {
+  // เส้นรอบวงโดยประมาณ (Ramanujan) — ระยะตามแนวไม่เท่ากันเป๊ะ แต่ใกล้พอสำหรับภาพ
+  const per = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)))
+  const n = Math.floor(per / SEAT_GAP)
+  for (let k = 0; k < n; k++) {
+    const t = (k / n) * Math.PI * 2
+    const x = a * Math.cos(t), z = b * Math.sin(t)
+    const nx = Math.cos(t) / a, nz = Math.sin(t) / b // ตั้งฉากกับขอบ ชี้ออก
+    out.push({ x, y, z, r: faceAngle(-nx, -nz) })
+  }
+}
+
+/** เบาะ + พนัก (สร้างใหม่ทุกครั้ง — disposeGroup ทิ้ง geometry พร้อมสถานที่) */
+function seatGeometry(): THREE.BufferGeometry {
+  const seat = new THREE.BoxGeometry(0.44, 0.07, 0.4).translate(0, 0.42, -0.02)
+  const back = new THREE.BoxGeometry(0.44, 0.4, 0.06).translate(0, 0.62, 0.19)
+  const geo = mergeGeometries([seat, back])!
+  seat.dispose()
+  back.dispose()
+  return geo
+}
+
+function buildSeats(seats: Seat[], color: string): THREE.InstancedMesh {
+  const step = seats.length > MAX_SEATS ? seats.length / MAX_SEATS : 1
+  const count = Math.min(seats.length, MAX_SEATS)
+  const mesh = new THREE.InstancedMesh(seatGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), count)
+  const base = new THREE.Color(color)
+  const m = new THREE.Matrix4()
+  const q = new THREE.Quaternion()
+  const up = new THREE.Vector3(0, 1, 0)
+  const one = new THREE.Vector3(1, 1, 1)
+  const c = new THREE.Color()
+  for (let i = 0; i < count; i++) {
+    const s = seats[Math.floor(i * step)]
+    q.setFromAxisAngle(up, s.r)
+    mesh.setMatrixAt(i, m.compose(new THREE.Vector3(s.x, s.y, s.z), q, one))
+    // ความสว่างต่างกันนิดหน่อยต่อตัว (คงที่ทุกครั้ง) — สีเดียวทั้งสนามดูเป็นพลาสติกก้อนเดียว
+    const jitter = 0.9 + ((Math.sin(i * 12.9898) * 43758.5453) % 1 + 1) % 1 * 0.18
+    mesh.setColorAt(i, c.copy(base).multiplyScalar(jitter))
+  }
+  mesh.instanceMatrix.needsUpdate = true
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  mesh.computeBoundingSphere()
+  mesh.raycast = () => {} // ray ไปชนขั้นอัฒจันทร์แทน (ผิววางของ) — 9 หมื่นตัวยิง ray ทุกครั้งที่ขยับเมาส์ไม่ไหว
+  mesh.receiveShadow = true
+  return mesh
+}
+
+export const SEAT_COLORS: { value: string; label: string }[] = [
+  { value: '#1d4ed8', label: 'น้ำเงิน' },
+  { value: '#dc2626', label: 'แดง' },
+  { value: '#15803d', label: 'เขียว' },
+  { value: '#ea580c', label: 'ส้ม' },
+  { value: '#eab308', label: 'เหลือง' },
+  { value: '#6b7280', label: 'เทา' },
+]
+const DEFAULT_SEAT_COLOR = '#1d4ed8'
+
+// ── สนามหญ้า (โหมดสมจริง): ลายตัดหญ้า + เส้นสนามฟุตบอล ─────────────────────────
+function pitchTexture(width: number, depth: number): THREE.CanvasTexture {
+  const along = depth >= width // แนวยาวของสนามตามแกน z
+  const L = along ? depth : width
+  const W = along ? width : depth
+  const px = 12 // พิกเซลต่อเมตร
+  const c = document.createElement('canvas')
+  c.width = Math.round(width * px)
+  c.height = Math.round(depth * px)
+  const ctx = c.getContext('2d')!
+  // ลายตัดหญ้าเป็นแถบขวางแนวยาว
+  const stripes = Math.max(6, Math.round(L / 5.5))
+  for (let i = 0; i < stripes; i++) {
+    ctx.fillStyle = i % 2 ? '#4f8f45' : '#5a9c4f'
+    const s0 = (i * L) / stripes * px, s1 = ((i + 1) * L) / stripes * px
+    if (along) ctx.fillRect(0, s0, c.width, s1 - s0)
+    else ctx.fillRect(s0, 0, s1 - s0, c.height)
+  }
+  // เส้นสนาม — วาดในพิกัด (u = ตามกว้าง, v = ตามยาว) แล้วสลับแกนถ้าสนามยาวตาม x
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+  ctx.lineWidth = Math.max(2, 0.12 * px)
+  const P = (u: number, v: number): [number, number] => (along ? [u * px, v * px] : [v * px, u * px])
+  const rect = (u0: number, v0: number, w: number, h: number) => {
+    const [x0, y0] = P(u0, v0), [x1, y1] = P(u0 + w, v0 + h)
+    ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0))
+  }
+  const m = 1 // ขอบเส้นห่างขอบหญ้า
+  rect(m, m, W - 2 * m, L - 2 * m)
+  ctx.beginPath(); ctx.moveTo(...P(m, L / 2)); ctx.lineTo(...P(W - m, L / 2)); ctx.stroke()
+  ctx.beginPath(); ctx.arc(...P(W / 2, L / 2), Math.min(9.15, W / 6) * px, 0, Math.PI * 2); ctx.stroke()
+  const box = Math.min(40.3, W * 0.6), boxD = Math.min(16.5, L * 0.16)
+  const six = Math.min(18.3, W * 0.28), sixD = Math.min(5.5, L * 0.055)
+  rect((W - box) / 2, m, box, boxD)
+  rect((W - box) / 2, L - m - boxD, box, boxD)
+  rect((W - six) / 2, m, six, sixD)
+  rect((W - six) / 2, L - m - sixD, six, sixD)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = ANISOTROPY
+  return tex
+}
+
+// ── วัสดุแบบ PBR (โหมดสมจริง) ─────────────────────────────────────────────
+let concreteTex: THREE.CanvasTexture | null = null
+/** ผิวปูนเป็นจุดๆ (สีเทาอ่อน–ขาว คูณทับสีเดิม) — ผิวเรียบสีเดียวคือสิ่งที่ทำให้ฉากดูเป็นแผนผัง ไม่ใช่สถานที่ */
+function concreteTexture(): THREE.CanvasTexture {
+  if (concreteTex) return concreteTex
+  const n = 256
+  const c = document.createElement('canvas')
+  c.width = c.height = n
+  const ctx = c.getContext('2d')!
+  const img = ctx.createImageData(n, n)
+  let seed = 7
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  for (let i = 0; i < n * n; i++) {
+    const v = 214 + rnd() * 41 // 214..255
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v
+    img.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+  // คราบ/รอยด่างใหญ่ๆ ให้ไม่เป็นลายซ้ำชัดเกิน
+  for (let k = 0; k < 40; k++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.01 + rnd() * 0.02})`
+    ctx.beginPath()
+    ctx.arc(rnd() * n, rnd() * n, 8 + rnd() * 30, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  concreteTex = new THREE.CanvasTexture(c)
+  concreteTex.wrapS = concreteTex.wrapT = THREE.RepeatWrapping
+  concreteTex.colorSpace = THREE.SRGBColorSpace
+  concreteTex.anisotropy = ANISOTROPY
+  return concreteTex
+}
+
+/** Lambert → Standard (PBR) คงสี/texture/ความโปร่ง — โหมดปกติยังใช้ Lambert (เบา + สีตรงตามที่ตั้ง) */
+function toStandard(m: THREE.Material, roughness: number, metalness = 0): THREE.Material {
+  if (!(m instanceof THREE.MeshLambertMaterial)) return m
+  const out = new THREE.MeshStandardMaterial({
+    color: m.color, map: m.map, emissive: m.emissive, transparent: m.transparent, opacity: m.opacity,
+    side: m.side, depthWrite: m.depthWrite, depthTest: m.depthTest, roughness, metalness,
+  })
+  m.dispose()
+  return out
+}
+function convertMaterials(mesh: THREE.Mesh, roughness: number, metalness = 0) {
+  mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => toStandard(m, roughness, metalness)) : toStandard(mesh.material, roughness, metalness)
+}
+
+/** ผิวสถานที่ (ขั้นอัฒจันทร์ ผนัง) ใส่ลายปูน — repeat ตามขนาดจริง (กล่อง: UV 0..1 ต่อหน้า, Extrude: UV = เมตร) */
+function concreteSurface(mesh: THREE.Mesh) {
+  const mat = mesh.material as THREE.MeshLambertMaterial
+  if (!(mat instanceof THREE.MeshLambertMaterial) || mat.map) return
+  const tex = concreteTexture().clone()
+  const geo = mesh.geometry as THREE.BufferGeometry & { parameters?: { width?: number; height?: number; depth?: number } }
+  const p = geo.parameters
+  if (geo.type === 'BoxGeometry' && p) {
+    const big = Math.max(p.width ?? 1, p.depth ?? 1)
+    tex.repeat.set(big / 3, Math.max(1, (p.height ?? 1) / 3))
+  } else tex.repeat.set(1 / 3, 1 / 3)
+  tex.needsUpdate = true
+  mat.map = tex
+}
+
+/**
+ * อุปกรณ์ในผัง (กล้อง รถ OB ฯลฯ) แบบสมจริง: กล่องเป็นขอบมน + วัสดุ PBR + ทอดเงา
+ * แก้ที่ตัวที่สร้างจาก buildObject แล้ว — ไม่ต้องแตะโค้ดวาดอุปกรณ์แต่ละชนิด
+ */
+export function realisticObject(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh || (o as unknown as THREE.Sprite).isSprite) return
+    const geo = mesh.geometry as THREE.BufferGeometry & { parameters?: { width: number; height: number; depth: number } }
+    if (geo.type === 'BoxGeometry' && geo.parameters) {
+      const { width: w, height: h, depth: d } = geo.parameters
+      const r = Math.min(0.08, Math.min(w, h, d) * 0.18)
+      if (r > 0.004) { mesh.geometry = new RoundedBoxGeometry(w, h, d, 2, r); geo.dispose() }
+    }
+    convertMaterials(mesh, 0.45, 0.15)
+    const mat = mesh.material as THREE.Material
+    mesh.castShadow = !mat.transparent && mat.depthTest
+    mesh.receiveShadow = true
+  })
+}
+
+// ── ของบนเวที (โหมดสมจริง): จอ LED หลังเวที + truss + ลำโพงแขวน ───────────────
+let ledTex: THREE.CanvasTexture | null = null
+function ledTexture(): THREE.CanvasTexture {
+  if (ledTex) return ledTex
+  const c = document.createElement('canvas')
+  c.width = 512
+  c.height = 256
+  const ctx = c.getContext('2d')!
+  const g = ctx.createLinearGradient(0, 0, 512, 256)
+  g.addColorStop(0, '#1e3a8a')
+  g.addColorStop(0.5, '#6d28d9')
+  g.addColorStop(1, '#0e7490')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, 512, 256)
+  // ตาราง cabinet ของจอ LED
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+  ctx.lineWidth = 2
+  for (let x = 0; x <= 512; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke() }
+  for (let y = 0; y <= 256; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke() }
+  ledTex = new THREE.CanvasTexture(c)
+  ledTex.colorSpace = THREE.SRGBColorSpace
+  return ledTex
+}
+
+function stageDressing(v: VenueConfig): THREE.Group {
   const g = new THREE.Group()
+  const s = v.stage
+  const back = -v.depth / 2 + s.offset
+  const front = back + s.depth
+  const steel = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.35, metalness: 0.8 })
+  const black = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.6, metalness: 0.2 })
+  // จอ LED กว้าง ~70% ของเวที ยืนชิดขอบหลังเวที
+  const ledW = s.width * 0.7
+  const ledH = Math.max(2.5, Math.min(ledW * 9 / 16, v.height * 0.5, 9))
+  const led = new THREE.Mesh(new THREE.PlaneGeometry(ledW, ledH), new THREE.MeshBasicMaterial({ map: ledTexture(), toneMapped: false }))
+  led.position.set(0, s.height + 0.6 + ledH / 2, back + 0.4)
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(ledW + 0.3, ledH + 0.3, 0.3), black)
+  frame.position.set(0, led.position.y, back + 0.22)
+  g.add(frame, led)
+  // truss: เสา 2 ต้นหน้าเวที + คานขวาง สูงไม่เกินเพดาน
+  const trussH = Math.max(s.height + 4, Math.min(v.height - 1.5, s.height + 10))
+  const tw = 0.4
+  for (const sx of [-1, 1]) {
+    const tower = new THREE.Mesh(new THREE.BoxGeometry(tw, trussH, tw), steel)
+    tower.position.set(sx * (s.width / 2 + 0.5), trussH / 2, front - 0.6)
+    g.add(tower)
+    // ลำโพง line array แขวนข้างเวที
+    for (let k = 0; k < 8; k++) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.32, 0.6), black)
+      box.position.set(sx * (s.width / 2 + 2.4), trussH - 1.2 - k * 0.34, front - 0.2)
+      box.rotation.x = -0.03 * k // ลำโพงล่างๆ ก้มลงหาผู้ชม
+      g.add(box)
+    }
+  }
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(s.width + 1 + tw, tw, tw), steel)
+  beam.position.set(0, trussH, front - 0.6)
+  g.add(beam)
+  // ไฟบนคาน (moving head) — จุดเล็กๆ ทุก ~2 ม.
+  const n = Math.max(3, Math.round(s.width / 2.2))
+  for (let i = 0; i < n; i++) {
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.36, 12), black)
+    head.position.set(-s.width / 2 + (i + 0.5) * (s.width / n), trussH - 0.4, front - 0.6)
+    g.add(head)
+  }
+  g.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (mesh.isMesh) { mesh.castShadow = mesh !== led; mesh.receiveShadow = true }
+  })
+  return decor(g)
+}
+
+/**
+ * ผนังฮอลล์ในร่ม แบบบ้านตุ๊กตา: หันผิวเข้าด้านใน (BackSide) → ผนังฝั่งที่หันหากล้องถูกตัดทิ้งเอง
+ * มองจากมุมไหนก็เห็นข้างใน + เห็นผนังฝั่งไกลเป็นฉากหลัง
+ */
+function hallWalls(v: VenueConfig): THREE.Mesh {
+  const e = venueExtent(v)
+  const curved = v.shape === 'arena' && !!v.tiers?.curved
+  const h = Math.max(4, v.height)
+  // วงรี = ทรงกระบอก 64 ด้าน · สี่เหลี่ยม = ทรงกระบอก 4 ด้านหมุน 45° (รัศมี √2 → ครึ่งด้าน = 1)
+  const geo = curved ? new THREE.CylinderGeometry(1, 1, h, 64, 1, true) : new THREE.CylinderGeometry(Math.SQRT2, Math.SQRT2, h, 4, 1, true, Math.PI / 4)
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd4d0ca, roughness: 0.95, side: THREE.BackSide }))
+  mesh.scale.set((e.maxX - e.minX) / 2 + 0.5, 1, (e.maxZ - e.minZ) / 2 + 0.5)
+  mesh.position.set((e.minX + e.maxX) / 2, h / 2 - 0.2, (e.minZ + e.maxZ) / 2)
+  mesh.receiveShadow = true
+  mesh.userData.noAO = true
+  mesh.userData.noShadow = true // ผนังฝั่งใกล้ถูกตัดทิ้งในภาพแต่ยังบังแดด → เงาแถบใหญ่บนพื้น
+  return decor(mesh)
+}
+
+// ── หลังคา / ราวกันตก (โหมดสมจริง) ─────────────────────────────────────────
+const glassMaterial = () => new THREE.MeshLambertMaterial({ color: 0xa5c8e4, transparent: true, opacity: 0.35, depthWrite: false })
+/** ทำให้เป็นของประกอบฉาก — ไม่ใช่ผิววางของ ray ไม่ชน */
+function decor<T extends THREE.Object3D>(o: T): T {
+  o.traverse((c) => { c.userData.ground = false; c.raycast = () => {} })
+  return o
+}
+
+/** หลังคา/โครงเพดาน — มุมบนต้องซ่อน (setRoofVisible) ไม่งั้นบังทั้งผัง */
+export function setRoofVisible(root: THREE.Object3D | null | undefined, visible: boolean): void {
+  root?.traverse((o) => { if (o.userData.roof) o.visible = visible })
+}
+
+/**
+ * normal = สถานที่จากตัวเลขตามปกติ · ghost = เส้นโปร่งไว้เทียบกับโมเดล (ไม่ใช่ผิววางของ)
+ * hidden = มองไม่เห็นแต่ยังเป็นผิววางของ (ใต้ไฟล์สแกน) · none = ไม่สร้าง (โมเดล .glb เป็นผิววางของแทน)
+ * เวที รูป floor plan และป้าย STAGE ไม่อยู่ในส่วนนี้ — มีเสมอ (เวทีเป็นของงาน ไม่ใช่ของสถานที่)
+ */
+export type VenueShell = 'normal' | 'ghost' | 'hidden' | 'none'
+
+/** loaded = ชนิดโมเดลที่โหลดสำเร็จแล้ว (ยังไม่โหลด/โหลดไม่ได้ = null → ใช้สถานที่จากตัวเลข) */
+export function venueShell(v: VenueConfig, loaded: VenueModelKind | null): VenueShell {
+  if (!loaded || !v.model) return 'normal'
+  if (loaded === 'mesh') return v.model.showVenue ? 'ghost' : 'none'
+  return v.model.showVenue ? 'normal' : 'hidden'
+}
+
+export interface VenueBuildOptions {
+  floorImage?: HTMLImageElement | null
+  /** โหมดสมจริง: เก้าอี้ ราวกันตก หลังคา ลายหญ้า พื้นรอบสถานที่ เงา */
+  realistic?: boolean
+  shell?: VenueShell
+}
+
+/** สร้างสถานที่: พื้น, เวที, อัฒจันทร์, กรอบปริมาตร, grid 5 ม. และรูป floor plan (ถ้ามี) */
+export function buildVenue(v: VenueConfig, opts: VenueBuildOptions = {}): THREE.Group {
+  const g = new THREE.Group()
+  const shellMode = opts.shell ?? 'normal'
+  const real = !!opts.realistic && shellMode === 'normal'
+  const pal = real ? PALETTE.real : PALETTE.plan
+  // สถานที่จากตัวเลข — แยกกลุ่มไว้ ซ่อน/ทำโปร่งได้ทั้งก้อนเมื่อมีโมเดลจริง
+  const shell = new THREE.Group()
+  const seats: Seat[] = []
 
   const curved = v.shape === 'arena' && !!v.tiers?.curved
   if (curved) {
     // พื้นวงรี — width/depth เป็นแกนของวงรี; UV ของ ExtrudeGeometry = พิกัดเมตร → repeat 1/5 = ช่อง 5 ม.
     const floor = ellipseSlab(v.width / 2, v.depth / 2, null, 0.2, 0xe5e7eb)
-    floor.material = floorMaterial(1 / 5, 1 / 5)
+    floor.material = floorMaterial(1 / 5, 1 / 5, pal.floorTint)
+    floor.userData.rough = 0.8
     floor.position.y = -0.2
-    g.add(floor)
+    shell.add(floor)
   } else {
     const floor = groundBox(v.width, 0.2, v.depth, 0xe5e7eb)
-    floor.material = floorMaterial(v.width / 5, v.depth / 5)
+    // ฮอลล์ในร่ม (ไม่มีสนาม) = พื้นขัดเงาสีเข้มขึ้น สะท้อนแสงนิดๆ
+    floor.material = floorMaterial(v.width / 5, v.depth / 5, real && !v.pitch ? 0x9d9a94 : pal.floorTint)
+    floor.userData.rough = real && !v.pitch ? 0.4 : 0.8
     floor.position.y = -0.1
-    g.add(floor)
+    shell.add(floor)
   }
 
+  if (v.pitch && real && curved) shell.add(runningTrack(v))
   if (v.pitch) {
     // สนามกีฬากลาง — พื้นเขียว + เส้นขอบขาว วางเหนือพื้นนิดเดียว (ไม่ใช่ ground แยก พื้นหลักรับการวางอยู่แล้ว)
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(v.pitch.width, v.pitch.depth), new THREE.MeshLambertMaterial({ color: 0x86c98a }))
+    const grass = new THREE.Mesh(
+      new THREE.PlaneGeometry(v.pitch.width, v.pitch.depth),
+      real ? new THREE.MeshLambertMaterial({ map: pitchTexture(v.pitch.width, v.pitch.depth) }) : new THREE.MeshLambertMaterial({ color: 0x86c98a }),
+    )
     grass.rotation.x = -Math.PI / 2
     grass.position.y = 0.05
     grass.raycast = () => {}
-    const line = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.PlaneGeometry(v.pitch.width, v.pitch.depth)),
-      new THREE.LineBasicMaterial({ color: 0xffffff }),
-    )
-    line.rotation.x = -Math.PI / 2
-    line.position.y = 0.08
-    g.add(grass, line)
+    shell.add(grass)
+    if (!real) {
+      const line = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.PlaneGeometry(v.pitch.width, v.pitch.depth)),
+        new THREE.LineBasicMaterial({ color: 0xffffff }),
+      )
+      line.rotation.x = -Math.PI / 2
+      line.position.y = 0.08
+      shell.add(line)
+    }
   }
 
   if (v.stage.enabled) {
     const s = v.stage
-    const stage = groundBox(s.width, s.height, s.depth, 0x374151)
+    const stage = groundBox(s.width, s.height, s.depth, pal.stage)
     stage.position.set(0, s.height / 2, -v.depth / 2 + s.offset + s.depth / 2)
     g.add(stage)
     const label = makeLabel('STAGE', '#374151', labelSizeFor(v))
@@ -307,26 +671,40 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
     const wall = Math.max(0, Math.round(v.tiers.wallSteps ?? 0))
     // รัศมีมุมโค้ง (ที่ขอบพื้นราบ) — ไม่เกินครึ่งด้านที่สั้นกว่า
     const R = Math.max(0, Math.min(v.tiers.cornerRadius ?? 0, v.width / 2, v.depth / 2))
+    const rows = seatRowOffsets(run)
     for (let i = 0; i < steps; i++) {
       const h = rise * (i + 1 + wall)
-      const shade = i % 2 === 0 ? 0xcbd5e1 : 0xb6c2d2
+      const shade = i % 2 === 0 ? pal.tierA : pal.tierB
+      const isCross = cross > 0 && i === cross - 1 // ทั้งขั้นเป็นทางเดินขวาง
+      const seated = real && !isCross
       if (curved) {
         // ชามวงรี: แต่ละขั้นเป็นวงแหวนวงรี ล้อมรอบพื้นทุกด้าน
         const a = v.width / 2 + run * i
         const b = v.depth / 2 + run * i
-        g.add(ellipseSlab(a + run, b + run, [a, b], h, shade))
+        shell.add(ellipseSlab(a + run, b + run, [a, b], h, shade))
+        if (seated) for (const off of rows) seatsOnEllipse(seats, a + off, b + off, h)
         continue
       }
-      const isCross = cross > 0 && i === cross - 1 // ทั้งขั้นเป็นทางเดินขวาง
       // วางขั้นเป็นท่อนๆ ตามแนว axis — ช่วงที่ตรงกับทางเดินใช้สีทางเดิน (ยังเป็นผิวที่วางของได้)
-      const tierRow = (axis: 'x' | 'z', a0: number, a1: number, fixed: number, gaps: [number, number][]) => {
+      // fixed = กึ่งกลางความลึกของขั้น (บวก = ฝั่ง +x/+z) · seatSpan = ช่วงที่วางเก้าอี้ (กันซ้อนกับแถวหน้า/หลังตรงมุม)
+      const tierRow = (axis: 'x' | 'z', a0: number, a1: number, fixed: number, gaps: [number, number][], seatSpan: [number, number] = [a0, a1]) => {
+        const out = Math.sign(fixed) || 1
+        const inner = fixed - (out * run) / 2
         for (const [s0, s1, aisle] of splitSpan(a0, a1, isCross ? [] : gaps)) {
           const len = s1 - s0
-          const color = isCross || aisle ? AISLE_COLOR : shade
+          const color = isCross || aisle ? pal.aisle : shade
           const box = axis === 'z' ? groundBox(run, h, len, color) : groundBox(len, h, run, color)
           if (axis === 'z') box.position.set(fixed, h / 2, (s0 + s1) / 2)
           else box.position.set((s0 + s1) / 2, h / 2, fixed)
-          g.add(box)
+          shell.add(box)
+          const c0 = Math.max(s0, seatSpan[0]), c1 = Math.min(s1, seatSpan[1])
+          if (!seated || aisle || c1 <= c0) continue
+          for (const off of rows) {
+            const p = inner + out * off
+            // เก้าอี้หันเข้าหาพื้นราบ (ทิศตรงข้ามกับฝั่งที่อยู่)
+            if (axis === 'z') seatsOnLine(seats, p, c0, p, c1, h, faceAngle(-out, 0))
+            else seatsOnLine(seats, c0, p, c1, p, h, faceAngle(0, -out))
+          }
         }
       }
       if (R > 0 && sides) {
@@ -337,10 +715,13 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
         const xHalf = v.width / 2 - R
         if (back) tierRow('x', -xHalf, xHalf, v.depth / 2 + run * i + run / 2, endGaps)
         if (front) tierRow('x', -xHalf, xHalf, -(v.depth / 2 + run * i + run / 2), endGaps)
-        const cornerColor = isCross ? AISLE_COLOR : shade
+        const cornerColor = isCross ? pal.aisle : shade
         for (const sx of [-1, 1]) {
           for (const sz of [...(back ? [1] : []), ...(front ? [-1] : [])]) {
-            g.add(cornerSlab(sx * xHalf, sz * (v.depth / 2 - R), sx, sz, R + run * i, R + run * (i + 1), h, cornerColor))
+            const cx = sx * xHalf, cz = sz * (v.depth / 2 - R)
+            shell.add(cornerSlab(cx, cz, sx, sz, R + run * i, R + run * (i + 1), h, cornerColor))
+            const mid = Math.atan2(sz, sx) // ทิศของมุมในระนาบ x-z
+            if (seated) for (const off of rows) seatsOnArc(seats, cx, cz, R + run * i + off, mid - Math.PI / 4, mid + Math.PI / 4, h)
           }
         }
         continue
@@ -349,18 +730,74 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
         // ขั้นด้านข้างยืดไปคลุมมุมด้วย → มุมสูง = max(ขั้นข้าง, ขั้นหน้า/หลัง) ไม่มีรู
         const extBack = back ? run * (i + 1) : 0
         const extFront = front ? run * (i + 1) : 0
-        for (const sign of [-1, 1]) tierRow('z', -v.depth / 2 - extFront, v.depth / 2 + extBack, sign * (v.width / 2 + run * i + run / 2), sideGaps)
+        // เก้าอี้ฝั่งข้างหยุดก่อนมุม — มุมเป็นของแถวหน้า/หลัง (ไม่ซ้อนกัน)
+        const span: [number, number] = [-v.depth / 2 - (front ? run * i : 0), v.depth / 2 + (back ? run * i : 0)]
+        for (const sign of [-1, 1]) tierRow('z', -v.depth / 2 - extFront, v.depth / 2 + extBack, sign * (v.width / 2 + run * i + run / 2), sideGaps, span)
       }
       const endHalf = v.width / 2 + (sides ? run * (i + 1) : 0)
       if (back) tierRow('x', -endHalf, endHalf, v.depth / 2 + run * i + run / 2, endGaps)
       if (front) tierRow('x', -endHalf, endHalf, -(v.depth / 2 + run * i + run / 2), endGaps)
     }
+
+    if (real) {
+      if (seats.length) shell.add(buildSeats(seats, v.seatColor || DEFAULT_SEAT_COLOR))
+      // ราวกระจกขอบหน้าแถวแรก (บนผนังล่าง) สูง 1 ม.
+      const y0 = rise * (1 + wall)
+      const rail = new THREE.Group()
+      const RH = 1, T = 0.06
+      if (curved) {
+        const ring = ellipseSlab(v.width / 2 + T, v.depth / 2 + T, [v.width / 2, v.depth / 2], RH, 0)
+        ring.material = glassMaterial()
+        rail.add(ring)
+      } else {
+        const zB = back && R > 0 && sides ? v.depth / 2 - R : v.depth / 2
+        const zF = front && R > 0 && sides ? -(v.depth / 2 - R) : -v.depth / 2
+        const xH = R > 0 && sides && (back || front) ? v.width / 2 - R : v.width / 2
+        const seg = (w: number, d: number, x: number, z: number) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(w, RH, d), glassMaterial())
+          m.position.set(x, RH / 2, z)
+          rail.add(m)
+        }
+        if (sides) for (const s of [-1, 1]) seg(T, zB - zF, s * (v.width / 2 + T / 2), (zB + zF) / 2)
+        if (back) seg(xH * 2, T, 0, v.depth / 2 + T / 2)
+        if (front) seg(xH * 2, T, 0, -v.depth / 2 - T / 2)
+        if (R > 0 && sides) {
+          for (const sx of [-1, 1]) {
+            for (const sz of [...(back ? [1] : []), ...(front ? [-1] : [])]) {
+              const arc = cornerSlab(sx * xH, sz * (v.depth / 2 - R), sx, sz, R, R + T, RH, 0)
+              arc.material = glassMaterial()
+              rail.add(arc)
+            }
+          }
+        }
+      }
+      rail.position.y = y0
+      shell.add(decor(rail))
+    }
   }
 
-  if (floorImage) {
+  if (real && v.roof) shell.add(buildRoof(v))
+  if (real && !v.pitch) shell.add(hallWalls(v))
+  if (opts.realistic && v.stage.enabled) g.add(stageDressing(v))
+
+  if (shellMode === 'ghost') {
+    // เส้นโปร่งไว้เทียบตำแหน่งกับโมเดล — ไม่ใช่ผิววางของ (โมเดลเป็นผิววางของแทน)
+    shell.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      o.userData.ground = false
+      o.raycast = () => {}
+      if (!mesh.isMesh) return
+      mesh.material = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.12, depthWrite: false })
+    })
+  }
+  if (shellMode === 'hidden') shell.visible = false // ray ยังชน (Raycaster ไม่สนใจ visible) → ใต้ไฟล์สแกนยังวางของได้
+  if (shellMode !== 'none') g.add(shell)
+
+  if (opts.floorImage) {
+    const img = opts.floorImage
     const w = v.floorImageWidth || v.width
-    const d = w * (floorImage.naturalHeight / floorImage.naturalWidth)
-    const tex = new THREE.Texture(floorImage)
+    const d = w * (img.naturalHeight / img.naturalWidth)
+    const tex = new THREE.Texture(img)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.anisotropy = ANISOTROPY
     tex.needsUpdate = true
@@ -375,14 +812,216 @@ export function buildVenue(v: VenueConfig, floorImage?: HTMLImageElement | null)
   }
 
   const e = venueExtent(v)
-  const bounds = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(e.maxX - e.minX, e.topY, e.maxZ - e.minZ)),
-    new THREE.LineBasicMaterial({ color: 0x9ca3af }),
-  )
-  bounds.position.set((e.minX + e.maxX) / 2, e.topY / 2, (e.minZ + e.maxZ) / 2)
-  g.add(bounds)
+  if (opts.realistic) {
+    // พื้นรอบสถานที่ (ลานปูน/ถนน) — ของที่วางนอกสถานที่ เช่น รถ OB ไม่ลอยกลางความว่าง
+    const span = Math.max(e.maxX - e.minX, e.maxZ - e.minZ)
+    // สีเรียบ — ลายปูนที่ repeat บนพื้นกว้างหลายร้อยเมตรเห็นเป็นตารางซ้ำ ดูปลอม
+    const around = new THREE.Mesh(new THREE.PlaneGeometry(span * 4, span * 4), new THREE.MeshLambertMaterial({ color: 0x84827c }))
+    around.rotation.x = -Math.PI / 2
+    around.position.set((e.minX + e.maxX) / 2, -0.22, (e.minZ + e.maxZ) / 2)
+    around.receiveShadow = true
+    g.add(decor(around))
+  } else if (shellMode !== 'none' && shellMode !== 'hidden') {
+    const bounds = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(e.maxX - e.minX, e.topY, e.maxZ - e.minZ)),
+      new THREE.LineBasicMaterial({ color: 0x9ca3af }),
+    )
+    bounds.position.set((e.minX + e.maxX) / 2, e.topY / 2, (e.minZ + e.maxZ) / 2)
+    g.add(bounds)
+  }
 
+  if (opts.realistic) {
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      if ((mesh as THREE.InstancedMesh).isInstancedMesh) { convertMaterials(mesh, 0.5); return } // เก้าอี้พลาสติก
+      if (o.userData.ground && real) concreteSurface(mesh)
+      convertMaterials(mesh, (o.userData.rough as number | undefined) ?? (o.userData.ground ? 0.85 : 0.6))
+      const mat = mesh.material as THREE.Material
+      mesh.receiveShadow = true
+      mesh.castShadow = !o.userData.noShadow && (!mat.transparent || !!o.userData.roof)
+    })
+  }
   return g
+}
+
+/** ลู่วิ่งสีแดงรอบสนาม (ชามวงรีที่มีสนามหญ้า) — กว้าง 8 ลู่ × 1.22 ม. ตามขอบพื้นราบ + เส้นแบ่งลู่ */
+function runningTrack(v: VenueConfig): THREE.Group {
+  const g = new THREE.Group()
+  const a = v.width / 2 - 0.3, b = v.depth / 2 - 0.3
+  const W = Math.min(8 * 1.22, a * 0.25, b * 0.25)
+  const ring = ellipseSlab(a, b, [a - W, b - W], 0.02, 0xb4533c)
+  ring.position.y = 0.01
+  ring.userData.rough = 0.9
+  g.add(ring)
+  for (let k = 0; k <= 8; k++) {
+    const d = (W * k) / 8
+    const pts = new THREE.EllipseCurve(0, 0, a - d, b - d).getPoints(160).map((p) => new THREE.Vector3(p.x, 0.04, p.y))
+    g.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })))
+  }
+  return decor(g)
+}
+
+/**
+ * หลังคา: มีสนามหญ้า = สนามกลางแจ้ง → หลังคายื่นคลุมอัฒจันทร์ (ไม่คลุมสนาม)
+ * ไม่มีสนาม = ในร่ม → โครง truss เพดานเป็นเส้น (มองทะลุได้ ไม่บังของในผัง)
+ */
+function buildRoof(v: VenueConfig): THREE.Group {
+  const g = new THREE.Group()
+  const e = venueExtent(v)
+  const tiers = v.shape === 'arena' ? v.tiers : undefined
+  const t = tiers ? tiers.steps * tiers.run : 0
+  const top = tiers ? tiers.rise * (tiers.steps + (tiers.wallSteps ?? 0)) : 0
+  if (v.pitch && tiers && t > 0) {
+    // หลังคาเมมเบรนทึบคลุมอัฒจันทร์ครึ่งบน (แถวล่างกลางแจ้ง) + เสาค้ำรอบนอก — แบบสนามกีฬาส่วนใหญ่
+    const y = Math.max(v.height, top + 8)
+    const mat = new THREE.MeshLambertMaterial({ color: 0xf3f4f6, side: THREE.DoubleSide })
+    const steel = new THREE.MeshLambertMaterial({ color: 0x9ca3af })
+    const inset = t * 0.5
+    const column = (x: number, z: number) => {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, y, 10), steel)
+      c.position.set(x, y / 2, z)
+      g.add(c)
+    }
+    if (tiers.curved) {
+      const A = v.width / 2 + t + 1, B = v.depth / 2 + t + 1
+      const ring = ellipseSlab(A, B, [v.width / 2 + inset, v.depth / 2 + inset], 0.6, 0)
+      ring.material = mat
+      ring.position.y = y
+      g.add(ring)
+      // ขอบหน้าหลังคา (fascia) เป็นคานเหล็กรอบวง
+      const edge = ellipseSlab(v.width / 2 + inset + 0.6, v.depth / 2 + inset + 0.6, [v.width / 2 + inset, v.depth / 2 + inset], 1.6, 0)
+      edge.material = steel
+      edge.position.y = y - 1
+      g.add(edge)
+      const per = Math.PI * (3 * (A + B) - Math.sqrt((3 * A + B) * (A + 3 * B)))
+      const n = Math.max(8, Math.round(per / 16))
+      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; column(Math.cos(a) * (A - 0.5), Math.sin(a) * (B - 0.5)) }
+    } else {
+      const slab = (w: number, d: number, x: number, z: number) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), mat)
+        m.position.set(x, y, z)
+        g.add(m)
+      }
+      const deep = t + 1 - inset
+      for (let x = e.minX; x <= e.maxX + 0.01; x += 16) { if (tiers.back) column(x, e.maxZ - 0.5); if (tiers.front) column(x, e.minZ + 0.5) }
+      for (let z = e.minZ; z <= e.maxZ + 0.01; z += 16) if (tiers.sides) { column(e.minX + 0.5, z); column(e.maxX - 0.5, z) }
+      if (tiers.sides) for (const s of [-1, 1]) slab(deep, e.maxZ - e.minZ, s * (v.width / 2 + inset + deep / 2), (e.minZ + e.maxZ) / 2)
+      if (tiers.back) slab(v.width + 2 * inset, deep, 0, v.depth / 2 + inset + deep / 2)
+      if (tiers.front) slab(v.width + 2 * inset, deep, 0, -(v.depth / 2 + inset + deep / 2))
+    }
+  } else {
+    // โครง truss: ตารางคานทุก 6 ม. + คานรอบนอก ที่ความสูงเพดาน
+    const y = v.height
+    const pts: number[] = []
+    const STEP = 6
+    for (let x = e.minX; x <= e.maxX + 0.01; x += STEP) pts.push(x, y, e.minZ, x, y, e.maxZ)
+    for (let z = e.minZ; z <= e.maxZ + 0.01; z += STEP) pts.push(e.minX, y, z, e.maxX, y, z)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+    g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x6b7280, transparent: true, opacity: 0.6 })))
+    const beam = (w: number, d: number, x: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d), new THREE.MeshLambertMaterial({ color: 0x4b5563 }))
+      m.position.set(x, y, z)
+      g.add(m)
+    }
+    const W = e.maxX - e.minX, D = e.maxZ - e.minZ, cx = (e.minX + e.maxX) / 2, cz = (e.minZ + e.maxZ) / 2
+    beam(W, 0.5, cx, e.minZ); beam(W, 0.5, cx, e.maxZ); beam(0.5, D, e.minX, cz); beam(0.5, D, e.maxX, cz)
+  }
+  g.traverse((o) => { o.userData.roof = true })
+  return decor(g)
+}
+
+// ── บรรยากาศ: ท้องฟ้า แสง เงา ──────────────────────────────────────────────
+/** ทิศแดด (บ่ายแก่ — เงาทอดยาวพอให้เห็นมิติ แต่ไม่มืดทั้งอัฒจันทร์) — ใช้ทั้งท้องฟ้าและไฟแดด ให้เงาตรงกับดวงอาทิตย์บนฟ้า */
+const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(50), THREE.MathUtils.degToRad(35))
+
+const skyCache = new WeakMap<THREE.WebGLRenderer, THREE.Texture>()
+/**
+ * ท้องฟ้าแบบฟิสิกส์ (Sky shader ของ three — กระเจิงแสง Rayleigh/Mie) อบเป็น PMREM ครั้งเดียวต่อ renderer
+ * ใช้เป็นทั้งพื้นหลังและแสงสะท้อนรอบตัว (วัสดุ PBR สะท้อนฟ้าจริง ไม่ใช่ห้องสตูดิโอ)
+ */
+function skyEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  let tex = skyCache.get(renderer)
+  if (!tex) {
+    const sky = new Sky()
+    sky.scale.setScalar(1000)
+    const u = sky.material.uniforms
+    u.turbidity.value = 3
+    u.rayleigh.value = 1.2
+    u.mieCoefficient.value = 0.004
+    u.mieDirectionalG.value = 0.8
+    u.sunPosition.value.copy(SUN_DIR)
+    const skyScene = new THREE.Scene()
+    skyScene.add(sky)
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    tex = pmrem.fromScene(skyScene, 0).texture
+    pmrem.dispose()
+    sky.geometry.dispose()
+    sky.material.dispose()
+    skyCache.set(renderer, tex)
+  }
+  return tex
+}
+
+/**
+ * ตั้งพื้นหลัง + แสงของฉาก (แทนของเดิมทั้งชุด เรียกซ้ำได้)
+ * realistic = ฟ้าไล่สี + แดดทอดเงา (shadow map ครอบทั้งสถานที่) + แสงสะท้อนรอบตัว
+ * box = ขอบเขตที่ต้องมีเงา (สถานที่ + โมเดล) · shadowSize = ความละเอียดเงา (มือถือใช้เล็กลง)
+ */
+export function applyAtmosphere(
+  scene: THREE.Scene, renderer: THREE.WebGLRenderer,
+  opts: { realistic: boolean; background: number; box: { minX: number; maxX: number; minZ: number; maxZ: number }; shadowSize?: number },
+): void {
+  scene.children.filter((c) => c.userData.atmo).forEach((c) => {
+    scene.remove(c)
+    const light = c as THREE.DirectionalLight
+    light.shadow?.map?.dispose()
+  })
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  // ACES = สีแบบภาพยนตร์/เกม (ไฮไลต์ไม่แตก) — โหมดปกติไม่ใช้ สีวัตถุต้องตรงตามสีที่ตั้ง
+  renderer.toneMapping = opts.realistic ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping
+  renderer.toneMappingExposure = opts.realistic ? 0.5 : 1 // ท้องฟ้าฟิสิกส์สว่างระดับ HDR — exposure ต่ำให้ฟ้ายังเป็นสีฟ้า
+  const add = (o: THREE.Object3D) => { o.userData.atmo = true; scene.add(o) }
+  if (!opts.realistic) {
+    scene.background = new THREE.Color(opts.background)
+    scene.environment = null
+    add(new THREE.AmbientLight(0xffffff, 1.6))
+    const sun = new THREE.DirectionalLight(0xffffff, 1.8)
+    sun.position.set(60, 120, 80)
+    add(sun)
+    return
+  }
+  const sky = skyEnvironment(renderer)
+  scene.background = sky
+  scene.environment = sky
+  scene.environmentIntensity = 0.7
+  add(new THREE.HemisphereLight(0xdbeafe, 0x6b6358, 0.35))
+  const { minX, maxX, minZ, maxZ } = opts.box
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2
+  const half = Math.max(maxX - minX, maxZ - minZ) / 2 + 15
+  const sun = new THREE.DirectionalLight(0xfff1dc, 4.5)
+  sun.position.set(cx, 0, cz).addScaledVector(SUN_DIR, half * 2.5)
+  sun.target.position.set(cx, 0, cz)
+  sun.castShadow = true
+  const size = opts.shadowSize ?? 4096
+  sun.shadow.mapSize.set(size, size)
+  const cam = sun.shadow.camera
+  cam.left = -half * 1.2; cam.right = half * 1.2; cam.top = half * 1.2; cam.bottom = -half * 1.2
+  cam.near = 1; cam.far = half * 6
+  cam.updateProjectionMatrix()
+  sun.shadow.bias = -0.0004
+  sun.shadow.normalBias = 0.04
+  add(sun)
+  add(sun.target)
+}
+
+/**
+ * ผิวที่ ray ชนจริง: ข้ามจุดที่สูงเกิน userData.maxY ของ mesh นั้น (โมเดลที่ตัดหลังคาออก — ส่วนที่ถูกตัดมองไม่เห็นก็ต้องไม่รับของ)
+ */
+export function firstGroundHit(hits: THREE.Intersection[]): THREE.Intersection | undefined {
+  return hits.find((h) => h.point.y <= ((h.object.userData.maxY as number | undefined) ?? Infinity) + 1e-3)
 }
 
 // ── objects ────────────────────────────────────────────────────────────────
@@ -451,7 +1090,8 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
   root.userData.objectId = o.id
   root.position.set(o.x, o.y, o.z)
   root.rotation.y = -deg(o.rotation) // องศาเพิ่ม = หมุนตามเข็มเมื่อมองจากด้านบน
-  const S = isCameraKind(o.kind) && o.kind !== 'jib' ? CAMERA_MODEL_SCALE : 1
+  // jib / dolly ไม่ขยาย — ความยาวแขน/รางเป็นเมตรจริงที่ผู้ใช้ตั้ง
+  const S = isCameraKind(o.kind) && o.kind !== 'jib' && o.kind !== 'dolly' ? CAMERA_MODEL_SCALE : 1
   const E = S === 1 ? 1 : S * boost // ตัวคูณจริงของก้อน (ความสูงคงค่าจริงเฉพาะส่วน S)
   const g = new THREE.Group()
   g.scale.setScalar(E)
@@ -737,6 +1377,51 @@ export function buildObject(o: LayoutObject, labelSize: number, selected: boolea
       g.add(wedge)
     }
     top = m.mountHeight + 0.3
+  } else if (o.kind === 'dolly') {
+    // ราง dolly: หมอนรอง + ราง 2 เส้นตามแกน x (ยาว w) → รถ dolly กลางราง + ล้อ → เสา pedestal → หัวกล้อง + เลนส์หันไป -z
+    const railW = Math.min(m.d, 1.2)
+    const dark = new THREE.MeshLambertMaterial({ color: 0x374151 })
+    const steel = new THREE.MeshLambertMaterial({ color: 0x9ca3af })
+    const n = Math.max(2, Math.round(m.w / 0.6) + 1)
+    for (let i = 0; i < n; i++) {
+      const sl = box(0.12, 0.04, railW + 0.2, '#78716c')
+      sl.position.set(-m.w / 2 + (i * m.w) / (n - 1), 0.02, 0)
+      g.add(sl)
+    }
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, m.w, 10), steel)
+      rail.rotation.z = Math.PI / 2
+      rail.position.set(0, 0.07, (side * railW) / 2)
+      g.add(rail)
+    }
+    const deck = box(0.9, 0.08, railW + 0.1, color)
+    deck.position.y = 0.17
+    g.add(deck)
+    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 12), dark)
+      wheel.rotation.x = Math.PI / 2
+      wheel.position.set(x * 0.32, 0.11, (z * railW) / 2)
+      g.add(wheel)
+    }
+    const colH = Math.max(0.2, m.mountHeight - 0.4)
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, colH, 10), dark)
+    column.position.y = 0.21 + colH / 2
+    const head = box(0.4, 0.35, 0.6, color)
+    head.position.y = m.mountHeight
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.4, 12), new THREE.MeshLambertMaterial({ color: 0x111827 }))
+    lens.rotation.x = Math.PI / 2
+    lens.position.set(0, m.mountHeight, -0.48)
+    const seat = box(0.3, 0.06, 0.3, '#111827')
+    seat.position.set(0.32, 0.55, 0.3)
+    const seatPost = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.34, 6), dark)
+    seatPost.position.set(0.32, 0.38, 0.3)
+    g.add(column, head, lens, seat, seatPost)
+    if (lensLines) {
+      const wedge = fovWedge(m.fov, m.range, color)
+      wedge.position.y = m.mountHeight
+      g.add(wedge)
+    }
+    top = m.mountHeight + 0.3
   } else if (o.kind === 'jib') {
     const base = box(m.w, m.h, m.w, '#4b5563')
     base.position.y = m.h / 2
@@ -909,7 +1594,7 @@ export function groundsOf(root: THREE.Object3D): THREE.Object3D[] {
 
 const DOWN = new THREE.Vector3(0, -1, 0)
 function surfaceAt(grounds: THREE.Object3D[], x: number, z: number): number {
-  const hit = new THREE.Raycaster(new THREE.Vector3(x, 500, z), DOWN).intersectObjects(grounds, false)[0]
+  const hit = firstGroundHit(new THREE.Raycaster(new THREE.Vector3(x, 500, z), DOWN).intersectObjects(grounds, false))
   return hit ? Math.max(0, hit.point.y) : 0
 }
 
@@ -1015,24 +1700,28 @@ export function buildCableDraft(points: THREE.Vector3[]): THREE.Group {
   return g
 }
 
-/** ความยาวสายทุกเส้นโดยไม่ต้องมี renderer (หน้าพิมพ์/ตาราง) */
-export function measureCables(layout: PlanLayout): { cable: LayoutCable; length: number }[] {
+/**
+ * ความยาวสายทุกเส้นโดยไม่ต้องมี renderer (หน้าพิมพ์/ตาราง)
+ * model = โมเดล .glb ที่โหลดแล้ว (จัดตำแหน่งแล้ว) — สายแนบผิวโมเดลแทนสถานที่จากตัวเลข
+ */
+export function measureCables(layout: PlanLayout, model?: THREE.Object3D | null): { cable: LayoutCable; length: number }[] {
   if (!layout.cables?.length) return []
-  const venue = buildVenue(layout.venue)
+  const venue = buildVenue(layout.venue, { shell: model ? venueShell(layout.venue, 'mesh') : 'normal' })
   venue.updateMatrixWorld(true)
-  const runs = cableRuns(layout, groundsOf(venue)).map(({ cable, length }) => ({ cable, length }))
+  const runs = cableRuns(layout, [...groundsOf(venue), ...(model ? groundsOf(model) : [])]).map(({ cable, length }) => ({ cable, length }))
   disposeGroup(venue)
   return runs
 }
 
+/** ทิ้ง geometry/material ทั้งก้อน — ข้ามก้อนที่ userData.keep (โมเดลสถานที่/SparkRenderer ที่ใช้ซ้ำข้ามการสร้างฉากใหม่) */
 export function disposeGroup(group: THREE.Object3D): void {
-  group.traverse((obj) => {
-    const mesh = obj as THREE.Mesh
-    mesh.geometry?.dispose?.()
-    const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []
-    // texture ของ label อยู่ใน cache ใช้ซ้ำ — ไม่ dispose ที่นี่
-    mats.forEach((m) => m.dispose())
-  })
+  if (group.userData.keep) return
+  const mesh = group as THREE.Mesh
+  mesh.geometry?.dispose?.()
+  const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []
+  // texture ของ label อยู่ใน cache ใช้ซ้ำ — ไม่ dispose ที่นี่
+  mats.forEach((m) => m.dispose())
+  for (const child of group.children) disposeGroup(child)
 }
 
 export function addLights(scene: THREE.Scene): void {
@@ -1070,24 +1759,27 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 const PRINT_LABEL_BOOST = 2
 const PRINT_MODEL_BOOST = 2
 
+/** model = โมเดล .glb ของสถานที่ที่โหลด+จัดตำแหน่งแล้ว (ไฟล์สแกนไม่ลงหน้าพิมพ์ — ใช้สถานที่จากตัวเลข) */
 export async function snapshotLayout(
   layout: PlanLayout, view: 'top' | 'perspective', floorImageSrc?: string | null, width = 1800, height = 1100, lensLines = true, pixelRatio = 2,
-  labelScale = 1,
+  labelScale = 1, model?: THREE.Object3D | null,
 ): Promise<string> {
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(pixelRatio)
   renderer.setSize(width, height, false)
+  renderer.localClippingEnabled = true // ระดับตัดหลังคาของโมเดล
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0xffffff)
   addLights(scene)
   const img = floorImageSrc ? await loadImage(floorImageSrc).catch(() => null) : null
-  const venue = buildVenue(layout.venue, img)
+  const venue = buildVenue(layout.venue, { floorImage: img, shell: model ? venueShell(layout.venue, 'mesh') : 'normal' })
   scene.add(venue)
+  if (model) scene.add(model)
   // กระดาษ A4 ย่อทั้งสถานที่ → ป้ายและกล้องขนาดเท่าบนจอเล็กจนอ่านไม่ออก ขยายเพิ่มเฉพาะหน้าพิมพ์
   const size = labelSizeFor(layout.venue, labelScale) * PRINT_LABEL_BOOST
   layout.objects.forEach((o) => scene.add(buildObject(o, size, false, lensLines, PRINT_MODEL_BOOST)))
   venue.updateMatrixWorld(true)
-  scene.add(buildCables(cableRuns(layout, groundsOf(venue)), size))
+  scene.add(buildCables(cableRuns(layout, [...groundsOf(venue), ...(model ? groundsOf(model) : [])]), size))
 
   const e = venueExtent(layout.venue)
   const cx = (e.minX + e.maxX) / 2
@@ -1116,6 +1808,7 @@ export async function snapshotLayout(
   declutterLabels(scene, camera, width, height)
   renderer.render(scene, camera)
   const url = renderer.domElement.toDataURL('image/jpeg', 0.92)
+  model?.removeFromParent() // โมเดลใช้ต่อในรูปถัดไป — ไม่ทิ้ง
   disposeGroup(scene)
   renderer.dispose()
   renderer.forceContextLoss()

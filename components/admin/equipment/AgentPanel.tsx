@@ -413,7 +413,7 @@ function ThinkingLog({ trace, live = false, elapsed = 0 }: { trace: TraceEntry[]
               : t.ok
                 ? <CheckCircleIcon className="w-4 h-4 shrink-0 text-green-600" />
                 : <XCircleIcon className="w-4 h-4 shrink-0 text-red-500" />}
-            <span className="font-mono text-gray-700">{t.name}</span>
+            <span className="text-gray-700">{t.name}</span>
             {t.detail && <span className="text-gray-400 truncate">{t.detail}</span>}
           </div>
         )

@@ -54,7 +54,8 @@ export default function PaymentsPage() {
   const [newPosition, setNewPosition] = useState('')
   const [newWorkDates, setNewWorkDates] = useState<string[]>([])
   // ยอด = จำนวนคิว × ราคาต่อคิว (เหมือนฟอร์มเบิกใน LIFF)
-  const [newQueues, setNewQueues] = useState('1')
+  // จำนวนคิว: null = ตามจำนวนวันที่เลือก · กด +/− หรือพิมพ์เอง = ค่าที่ตั้ง (แก้รายการเดิม = ค่าที่บันทึกไว้)
+  const [newQueuesOverride, setNewQueuesOverride] = useState<string | null>(null)
   const [newRate, setNewRate] = useState('')
   const [newNotes, setNewNotes] = useState('')
   const [newStatus, setNewStatus] = useState<'pending' | 'approved' | 'paid'>('pending')
@@ -71,7 +72,7 @@ export default function PaymentsPage() {
   const [editJobId, setEditJobId] = useState('')
   const [editPosition, setEditPosition] = useState('')
   const [editWorkDates, setEditWorkDates] = useState<string[]>([])
-  const [editQueues, setEditQueues] = useState('')
+  const [editQueuesOverride, setEditQueuesOverride] = useState<string | null>(null)
   const [editRate, setEditRate] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editShowExpense, setEditShowExpense] = useState(false)
@@ -132,6 +133,8 @@ export default function PaymentsPage() {
     if (!job) return []
     return jobDays(job)
   }, [editJobId, jobsMap])
+  const newQueues = newQueuesOverride ?? String(Math.max(1, newJobDates.length === 1 ? 1 : newWorkDates.length))
+  const editQueues = editQueuesOverride ?? String(Math.max(1, editJobDates.length === 1 ? 1 : editWorkDates.length))
 
   const getJobTitle = (p: Payment) =>
     (p.jobId ? jobsMap.get(p.jobId)?.title : undefined) ?? p.workDescription ?? ''
@@ -207,12 +210,12 @@ export default function PaymentsPage() {
     setEditWorkDates(payment.workDates ?? [])
     // ข้อมูลเก่าไม่มีคิว → ตั้งจากวันที่ทำงาน (ถ้าหารลงตัว) ไม่งั้น 1 คิว × ยอดเดิม — ยอดรวมเท่าเดิมเสมอ
     if (payment.queueCount && payment.ratePerQueue) {
-      setEditQueues(String(payment.queueCount))
+      setEditQueuesOverride(String(payment.queueCount))
       setEditRate(String(payment.ratePerQueue))
     } else {
       const n = payment.workDates?.length ?? 0
       const q = n > 1 && payment.amount % n === 0 ? n : 1
-      setEditQueues(String(q))
+      setEditQueuesOverride(String(q))
       setEditRate(String(payment.amount / q))
     }
     setEditNotes(payment.notes ?? '')
@@ -278,7 +281,7 @@ export default function PaymentsPage() {
     setNewJobId('')
     setNewPosition('')
     setNewWorkDates([])
-    setNewQueues('1')
+    setNewQueuesOverride(null)
     setNewRate('')
     setNewNotes('')
     setNewStatus('pending')
@@ -650,7 +653,7 @@ export default function PaymentsPage() {
                     </td>
                     <td className="px-5 py-4">
                       <p className="text-gray-600 text-xs">{getBankName(payment)}</p>
-                      <p className="text-gray-900 font-mono text-xs">{getBankAccount(payment)}</p>
+                      <p className="text-gray-900 text-xs">{getBankAccount(payment)}</p>
                     </td>
                     <td className="px-5 py-4 text-center">
                       <Badge label={paymentStatusLabel(payment.status)} colorClass={paymentStatusColor(payment.status)} />
@@ -772,7 +775,7 @@ export default function PaymentsPage() {
                       {/* col 3: bank */}
                       <div className="min-w-0">
                         <p className="text-xs text-gray-500 truncate">{getBankName(payment)}</p>
-                        <p className="text-xs font-mono text-gray-700">{getBankAccount(payment)}</p>
+                        <p className="text-xs text-gray-700">{getBankAccount(payment)}</p>
                       </div>
                       {/* col 4: requested date */}
                       <div>
@@ -974,7 +977,7 @@ export default function PaymentsPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">งาน <span className="text-red-500">*</span></label>
             <FormListbox
               value={newJobId}
-              onChange={(v) => { setNewJobId(v); setNewWorkDates([]) }}
+              onChange={(v) => { setNewJobId(v); setNewWorkDates([]); setNewQueuesOverride(null) }}
               options={jobs.map((j) => ({ value: j.id, label: j.title }))}
               placeholder="เลือกงาน…"
             />
@@ -1030,7 +1033,8 @@ export default function PaymentsPage() {
           {/* จำนวนคิว × ราคาต่อคิว */}
           <QueueAmountInput
             queues={newQueues}
-            onQueues={setNewQueues}
+            onQueues={setNewQueuesOverride}
+            autoHint={newQueuesOverride === null && newWorkDates.length > 1 ? `คิดจากวันที่เลือก ${newWorkDates.length} วัน — กด + / − ถ้าวันเดียวทำหลายคิว` : undefined}
             rate={newRate}
             onRate={setNewRate}
                         inputCls="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1176,7 +1180,7 @@ export default function PaymentsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">งาน <span className="text-red-500">*</span></label>
               <FormListbox
                 value={editJobId}
-                onChange={(v) => { setEditJobId(v); setEditWorkDates([]) }}
+                onChange={(v) => { setEditJobId(v); setEditWorkDates([]); setEditQueuesOverride(null) }}
                 options={jobs.map((j) => ({ value: j.id, label: j.title }))}
                 placeholder="เลือกงาน…"
               />
@@ -1229,7 +1233,8 @@ export default function PaymentsPage() {
             {/* จำนวนคิว × ราคาต่อคิว */}
             <QueueAmountInput
               queues={editQueues}
-              onQueues={setEditQueues}
+              onQueues={setEditQueuesOverride}
+              autoHint={editQueuesOverride === null && editWorkDates.length > 1 ? `คิดจากวันที่เลือก ${editWorkDates.length} วัน — กด + / − ถ้าวันเดียวทำหลายคิว` : undefined}
               rate={editRate}
               onRate={setEditRate}
                             inputCls="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"

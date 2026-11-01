@@ -97,7 +97,7 @@ function PlanPrintBody({ plan, showList, showDiagrams, showCables, showLayouts, 
                     return (
                       <tr key={it.id} className="border-b border-gray-200 break-inside-avoid align-top">
                         <td className="py-1.5 pr-2 text-gray-500">{n}</td>
-                        <td className="py-1.5 pr-2 font-mono text-[10px]">{it.code ?? '—'}</td>
+                        <td className="py-1.5 pr-2 text-[10px]">{it.code ?? '—'}</td>
                         <td className={`py-1.5 pr-2 font-medium ${child ? 'pl-4' : ''}`}>
                           {child && <span className="text-gray-400 mr-1">↳</span>}
                           {camTag(it, labels) && <span className="mr-1 px-1 rounded bg-black text-white text-[10px] font-bold whitespace-nowrap">{camTag(it, labels)}</span>}
@@ -279,17 +279,30 @@ function LayoutPages({ plan, layout, lensLines, labelScale }: { plan: EquipmentP
 
   useEffect(() => {
     let alive = true
+    let model: { root: import('three').Object3D; dispose: () => void } | null = null
     ;(async () => {
       // three.js โหลดเฉพาะตอนมีผัง 3D ให้พิมพ์
       const { snapshotLayout, measureCables, cableOrderLength } = await import('@/lib/equipment/layout-scene')
-      const measured = measureCables(layout).map((r) => ({ ...r, order: cableOrderLength(r.length) }))
+      // โมเดล .glb ของสถานที่ (ไฟล์สแกนไม่ลงกระดาษ) — โหลดไม่ได้ (เช่น หน้าแชร์ที่ไม่ได้ login) = ใช้สถานที่จากตัวเลข
+      const cfg = layout.venue.model
+      if (cfg?.kind === 'mesh') {
+        try {
+          const [{ fetchVenueModel }, scene3d] = await Promise.all([import('@/lib/equipment/venue-models'), import('@/lib/equipment/venue-model-scene')])
+          const m = await scene3d.loadVenueModel(await fetchVenueModel(cfg.assetId), 'mesh', cfg.fileName)
+          if (!alive) { m.dispose(); return }
+          scene3d.applyModelTransform(m, cfg)
+          model = m
+        } catch (e) { console.warn('โหลดโมเดลสถานที่ไม่ได้ — ใช้สถานที่จากตัวเลข', e) }
+      }
+      const root = model?.root ?? null
+      const measured = measureCables(layout, root).map((r) => ({ ...r, order: cableOrderLength(r.length) }))
       if (alive) setCables(measured)
       const floor = layout.venue.floorImageId ? await getPlanAsset(layout.venue.floorImageId).catch(() => null) : null
-      const top = await snapshotLayout(layout, 'top', floor, undefined, undefined, lensLines, undefined, labelScale)
-      const persp = await snapshotLayout(layout, 'perspective', floor, undefined, undefined, lensLines, undefined, labelScale)
+      const top = await snapshotLayout(layout, 'top', floor, undefined, undefined, lensLines, undefined, labelScale, root)
+      const persp = await snapshotLayout(layout, 'perspective', floor, undefined, undefined, lensLines, undefined, labelScale, root)
       if (alive) setShots({ top, persp })
     })().catch((e) => { console.error(e); if (alive) setFailed(true) })
-    return () => { alive = false }
+    return () => { alive = false; model?.dispose() }
   }, [layout, lensLines, labelScale])
 
   const views = [['มุมบน', shots?.top], ['3D', shots?.persp]] as const

@@ -95,6 +95,11 @@ async function trustedCaller(auth: CallerAuth): Promise<boolean> {
 
 /** สาธารณะ: ตรวจรหัสผ่าน (หรือคนที่ login แล้ว) แล้วคืนแผนแบบตัดข้อมูลการเงิน */
 export async function handleGetSharedPlan(data: unknown, auth?: CallerAuth) {
+  return sanitizePlan(await authorizeShare(data, auth))
+}
+
+/** ตรวจลิงก์ + รหัสผ่าน (ผิดนับครั้ง/ล็อกเหมือนกันทุกทางเข้า) → ข้อมูลแผนดิบ */
+async function authorizeShare(data: unknown, auth?: CallerAuth): Promise<Record<string, unknown>> {
   const d = (data ?? {}) as { shareId?: unknown; password?: unknown }
   const shareId = typeof d.shareId === 'string' ? d.shareId.trim() : ''
   const password = typeof d.password === 'string' ? d.password : ''
@@ -115,7 +120,7 @@ export async function handleGetSharedPlan(data: unknown, auth?: CallerAuth) {
   if (trusted) {
     const planSnap = await db.collection('equipmentPlans').doc(share.planId).get()
     if (!planSnap.exists) throw notFound()
-    return sanitizePlan(planSnap.data() as Record<string, unknown>)
+    return planSnap.data() as Record<string, unknown>
   }
   if ((share.lockedUntil ?? 0) > now) {
     const min = Math.ceil(((share.lockedUntil ?? 0) - now) / 60000)
@@ -137,7 +142,28 @@ export async function handleGetSharedPlan(data: unknown, auth?: CallerAuth) {
 
   const planSnap = await db.collection('equipmentPlans').doc(share.planId).get()
   if (!planSnap.exists) throw notFound()
-  return sanitizePlan(planSnap.data() as Record<string, unknown>)
+  return planSnap.data() as Record<string, unknown>
+}
+
+/**
+ * สาธารณะ: ไฟล์โมเดล 3D ของสถานที่ทีละชิ้น (equipmentVenueModels/{id}/chunks — admin-only)
+ * ให้เฉพาะไฟล์ที่ผังวางของแผนนี้อ้างอยู่จริง · คืน { data: base64, count: จำนวนชิ้นทั้งหมด }
+ * ⚠️ ฝาแฝดฝั่งเว็บ: fetchSharedVenueModel() ใน lib/equipment/venue-models.ts
+ */
+export async function handleGetSharedVenueModel(data: unknown, auth?: CallerAuth) {
+  const d = (data ?? {}) as { assetId?: unknown; index?: unknown }
+  const assetId = typeof d.assetId === 'string' ? d.assetId : ''
+  const index = typeof d.index === 'number' && Number.isInteger(d.index) && d.index >= 0 ? d.index : -1
+  if (!/^[A-Za-z0-9]{10,40}$/.test(assetId) || index < 0) throw new HttpsError('invalid-argument', 'คำขอไม่ถูกต้อง')
+  const plan = await authorizeShare(data, auth)
+  const used = ((plan.layouts as Obj[] | undefined) ?? []).some((l) => ((l.venue as Obj | undefined)?.model as Obj | undefined)?.assetId === assetId)
+  if (!used) throw new HttpsError('not-found', 'ไม่พบโมเดลนี้ในแผน')
+  const ref = admin.firestore().collection('equipmentVenueModels').doc(assetId)
+  const [meta, chunk] = await Promise.all([ref.get(), ref.collection('chunks').doc(String(index).padStart(4, '0')).get()])
+  if (!meta.exists || !chunk.exists) throw new HttpsError('not-found', 'ไม่พบไฟล์โมเดล')
+  const bytes = chunk.data()?.data as { toBase64?: () => string } | Buffer | undefined
+  const b64 = Buffer.isBuffer(bytes) ? bytes.toString('base64') : bytes?.toBase64?.() ?? ''
+  return { data: b64, count: Number(meta.data()?.chunkCount ?? 1) }
 }
 
 type Obj = Record<string, unknown>

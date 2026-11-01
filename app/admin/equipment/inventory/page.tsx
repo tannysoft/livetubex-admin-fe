@@ -153,7 +153,7 @@ export default function EquipmentInventoryPage() {
                   const status = EQUIPMENT_STATUSES.find((s) => s.value === it.status)
                   return (
                     <tr key={it.id} className="hover:bg-gray-50/60">
-                      <td className="px-5 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">{it.code}</td>
+                      <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">{it.code}</td>
                       <td className="px-3 py-3">
                         <p className="font-medium text-gray-900">
                           {it.name}

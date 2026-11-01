@@ -301,7 +301,7 @@ function AvailabilityRow({ row, multiDay }: { row: Row; multiDay: boolean }) {
           )}
           {repair && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium align-middle bg-red-100 text-red-700">ส่งซ่อม</span>}
         </p>
-        <p className="text-[11px] text-gray-400 font-mono">{eq.code}</p>
+        <p className="text-[11px] text-gray-400">{eq.code}</p>
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{total}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{booked || '—'}</td>
