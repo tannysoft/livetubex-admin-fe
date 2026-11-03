@@ -35,7 +35,7 @@ import {
 } from '@/lib/firebase-utils'
 import { uploadExpenseSlip, uploadProfilePictureFromUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
-import { calcTax, formatCurrency, formatDatePill, formatDate } from '@/lib/utils'
+import { calcTax, formatCurrency, isClaimableJob, formatDatePill, formatDate } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
 import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
@@ -136,11 +136,11 @@ export default function FreelancerPage() {
         const claim = new URLSearchParams(window.location.search).get('claim')
         if (claim) {
           const job = j.find((x) => x.id === claim)
-          const selectable = !!job && job.showInLiff !== false && !p.some((x) => x.jobId === claim && x.status !== 'rejected')
+          const selectable = !!job && isClaimableJob(job) && !p.some((x) => x.jobId === claim && x.status !== 'rejected')
           setSelectedJobId(selectable ? claim : '')
           setSelectedPosition(f.position && pos.some((x) => x.name === f.position) ? f.position : '')
           setRequestRate(f.ratePerQueue ? String(f.ratePerQueue) : '')
-          if (!selectable) setClaimNotice(job ? `งาน "${job.title}" ขอเบิกไปแล้ว หรือยังไม่เปิดให้เบิก` : 'ไม่พบงานที่ลิงก์ระบุ')
+          if (!selectable) setClaimNotice(job ? `งาน "${job.title}" ขอเบิกไปแล้ว หรือยังไม่ถึงวันงาน/ยังไม่เปิดให้เบิก` : 'ไม่พบงานที่ลิงก์ระบุ')
           setRequestOpen(true)
         }
         setPageState('ready')
@@ -163,9 +163,9 @@ export default function FreelancerPage() {
 
   const jobOptions = useMemo(() => [
     { value: '', label: '-- เลือกงาน --' },
-    // กรอง: งานที่ admin เปิดให้แสดงใน LIFF + ยังไม่เคยเบิก
+    // กรอง: งานที่ถึงวันสุดท้ายแล้ว + admin เปิดให้แสดงใน LIFF + ยังไม่เคยเบิก
     ...jobs
-      .filter((j) => j.showInLiff !== false && !requestedJobIds.has(j.id))
+      .filter((j) => isClaimableJob(j) && !requestedJobIds.has(j.id))
       .map((j) => ({ value: j.id, label: j.title })),
   ], [jobs, requestedJobIds])
 
