@@ -19,7 +19,7 @@ import { initLiff, isLiffLoggedIn, signInFirebaseWithLiff } from '@/lib/line-lif
 import { getFreelancerByLineId, getPaymentsByFreelancer, createPayment, getJobs, getPositions } from '@/lib/firebase-utils'
 import { uploadExpenseSlip, getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { calcTax, formatCurrency, isClaimableJob, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
 import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonImage, SkeletonPaymentCard } from '@/components/ui/Skeleton'
@@ -134,9 +134,9 @@ export default function FreelancerPaymentsPage() {
 
   const jobOptions = useMemo(() => [
     { value: '', label: '-- เลือกงาน --' },
-    // กรอง: งานที่ admin เปิดให้แสดงใน LIFF + ยังไม่เคยเบิก
+    // กรอง: งานที่ถึงวันสุดท้ายแล้ว + admin เปิดให้แสดงใน LIFF + ยังไม่เคยเบิก
     ...jobs
-      .filter((j) => j.showInLiff !== false && !requestedJobIds.has(j.id))
+      .filter((j) => isClaimableJob(j) && !requestedJobIds.has(j.id))
       .map((j) => ({ value: j.id, label: j.title })),
   ], [jobs, requestedJobIds])
 

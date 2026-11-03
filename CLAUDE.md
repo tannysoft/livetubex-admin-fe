@@ -1152,7 +1152,7 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
 
 5. **Firestore Trigger v2 ไม่ได้**: Firestore database อยู่ที่ region `asia-southeast3` ซึ่ง Eventarc ไม่รองรับ → ใช้ HTTPS Callable แทน และเรียกจาก frontend
 
-6. **Payment flow**: Freelancer ไม่ต้องมี JobAssignment — เลือก Job จาก dropdown แล้วขอเบิกได้เลย ชื่องานดึงจาก `jobId` → `jobs` collection
+6. **Payment flow**: Freelancer ไม่ต้องมี JobAssignment — เลือก Job จาก dropdown แล้วขอเบิกได้เลย ชื่องานดึงจาก `jobId` → `jobs` collection · ตัวเลือกงานใน LIFF = เฉพาะงานที่ถึงวันสุดท้ายแล้ว (`endDate`/`date` ≤ วันนี้ ตามเวลาท้องถิ่น — ไม่ดูสถานะงาน) และไม่ได้ซ่อน (`isClaimableJob()` ใน `lib/utils.ts` — ใช้ทั้ง 2 หน้า + ลิงก์ `?claim=`)
 
 7. **Logo white mode**: บนพื้นสีแบรนด์ ต้องส่ง `white` prop → ระบบแทน `fill` ทุกตัวด้วย `currentColor` ให้เอง ไม่ต้องทำโลโก้เวอร์ชันขาวแยก
 

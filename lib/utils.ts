@@ -139,3 +139,14 @@ export function assignmentStatusLabel(status: string): string {
   }
   return map[status] || status
 }
+
+/**
+ * งานที่ freelancer เลือกขอเบิกได้ใน LIFF — แอดมินเปิดให้แสดง + ถึงวันสุดท้ายของงานแล้ว (นับวันนี้ด้วย)
+ * วันสุดท้าย = endDate (งานเว้นวันก็เป็นวันสุดท้ายจริง) ไม่มี = date · งานไม่มีวัน = เบิกไม่ได้
+ */
+export function isClaimableJob(job: { date?: string; endDate?: string; showInLiff?: boolean }): boolean {
+  const lastDay = job.endDate || job.date
+  if (job.showInLiff === false || !lastDay) return false
+  // เทียบวันตามเวลาท้องถิ่น — ห้าม toISOString() (UTC เลื่อนวัน)
+  return lastDay.slice(0, 10) <= format(new Date(), 'yyyy-MM-dd')
+}
