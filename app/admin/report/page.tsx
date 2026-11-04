@@ -10,6 +10,8 @@ import {
   ChevronUpIcon,
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
+import FormDatePicker from '@/components/ui/FormDatePicker'
+import { format, startOfMonth } from 'date-fns'
 import { getPayments, getFreelancers, getJobs, getAppSettings, sendPaymentReport, type FreelancerReportPayload } from '@/lib/firebase-utils'
 import type { BillingCycle, Job, Payment, Freelancer } from '@/lib/types'
 import { calcTax, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
@@ -28,12 +30,15 @@ function buildPeriodLabel(month: number, year: number, cycle: BillingCycle) {
   return `${prefix}${MONTH_LABELS[month - 1]} ${thaiYear(year)}`
 }
 
-function paidAtMatch(paidAt: string | undefined, year: number, month: number): boolean {
-  if (!paidAt) return false
-  // paidAt = "2026-04-05T..."
-  const prefix = `${year}-${String(month).padStart(2, '0')}`
-  return paidAt.startsWith(prefix)
+/** วันที่โอน (YYYY-MM-DD) ตามเวลาท้องถิ่น — paidAt เป็น UTC ห้าม slice ตรงๆ ไม่งั้นที่จ่ายช่วงเช้ามืดตกวันก่อน */
+function paidLocalDay(paidAt: string | undefined): string | null {
+  if (!paidAt) return null
+  const d = new Date(paidAt)
+  return Number.isNaN(d.getTime()) ? null : format(d, 'yyyy-MM-dd')
 }
+
+type FilterMode = 'month' | 'range'
+
 
 interface FreelancerGroup {
   freelancer: Freelancer
@@ -44,6 +49,10 @@ export default function ReportPage() {
   const now = new Date()
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [selectedYear, setSelectedYear]   = useState(now.getFullYear())
+  // โหมดช่วงวันที่: ตั้งต้น = ต้นเดือนนี้ → วันนี้
+  const [filterMode, setFilterMode] = useState<FilterMode>('month')
+  const [rangeFrom, setRangeFrom]   = useState(() => format(startOfMonth(now), 'yyyy-MM-dd'))
+  const [rangeTo, setRangeTo]       = useState(() => format(now, 'yyyy-MM-dd'))
 
   const [payments, setPayments]       = useState<Payment[]>([])
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
@@ -80,11 +89,11 @@ export default function ReportPage() {
     load()
   }, [])
 
-  // รีเซ็ต selection เมื่อเปลี่ยนเดือน/ปี
+  // รีเซ็ต selection เมื่อเปลี่ยนตัวกรอง
   useEffect(() => {
     setSelected(new Set())
     setToast(null)
-  }, [selectedMonth, selectedYear])
+  }, [selectedMonth, selectedYear, filterMode, rangeFrom, rangeTo])
 
   // auto-dismiss toast
   useEffect(() => {
@@ -99,12 +108,25 @@ export default function ReportPage() {
   const getJobTitle = (p: Payment) =>
     (p.jobId ? jobsMap.get(p.jobId)?.title : undefined) ?? p.workDescription ?? ''
 
-  // กรองเฉพาะ paid payments ของเดือน/ปีที่เลือก
+  // ช่วงวันที่ที่ใช้กรอง (รวมวันเริ่ม-วันสิ้นสุด) — เลือกกลับด้านก็สลับให้
+  const [dayFrom, dayTo] = useMemo((): [string, string] => {
+    if (filterMode === 'month') {
+      const ym = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+      return [`${ym}-01`, `${ym}-31`]
+    }
+    const a = rangeFrom || '0000-01-01'
+    const b = rangeTo || '9999-12-31'
+    return a <= b ? [a, b] : [b, a]
+  }, [filterMode, selectedYear, selectedMonth, rangeFrom, rangeTo])
+
+  // กรองเฉพาะ paid payments ที่โอนในช่วงที่เลือก
   const filtered = useMemo(
-    () => payments.filter(
-      (p) => p.status === 'paid' && paidAtMatch(p.paidAt, selectedYear, selectedMonth)
-    ),
-    [payments, selectedYear, selectedMonth]
+    () => payments.filter((p) => {
+      if (p.status !== 'paid') return false
+      const day = paidLocalDay(p.paidAt)
+      return !!day && day >= dayFrom && day <= dayTo
+    }),
+    [payments, dayFrom, dayTo]
   )
 
   // group by freelancer
@@ -154,7 +176,12 @@ export default function ReportPage() {
   }
 
   // period ที่ใช้ในอีเมล: ใช้ค่าจากหน้าตั้งค่าถ้ามี มิฉะนั้นใช้ filter ที่เลือก
-  const filterPeriod = buildPeriodLabel(selectedMonth, selectedYear, settingCycle)
+  const filterPeriod = filterMode === 'month'
+    ? buildPeriodLabel(selectedMonth, selectedYear, settingCycle)
+    : rangeFrom && rangeTo
+      ? (dayFrom === dayTo ? formatDate(dayFrom) : `${formatDate(dayFrom)} – ${formatDate(dayTo)}`)
+      : rangeFrom ? `ตั้งแต่ ${formatDate(rangeFrom)}` : rangeTo ? `ถึง ${formatDate(rangeTo)}` : 'ทุกช่วงเวลา'
+
   const period = settingPeriod ?? filterPeriod
 
   const handleSend = async () => {
@@ -271,18 +298,42 @@ export default function ReportPage() {
 
       {/* Filter */}
       <div className="flex items-center gap-3 flex-wrap">
-        <FormListbox
-          value={String(selectedMonth)}
-          onChange={(v) => setSelectedMonth(Number(v))}
-          options={monthOptions}
-          buttonClassName="w-40"
-        />
-        <FormListbox
-          value={String(selectedYear)}
-          onChange={(v) => setSelectedYear(Number(v))}
-          options={yearOptions}
-          buttonClassName="w-28"
-        />
+        <div className="inline-flex p-1 bg-gray-100 rounded-xl">
+          {([['month', 'รายเดือน'], ['range', 'ช่วงวันที่']] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setFilterMode(mode)}
+              className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                filterMode === mode ? 'bg-white text-brand shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {filterMode === 'month' ? (
+          <>
+            <FormListbox
+              value={String(selectedMonth)}
+              onChange={(v) => setSelectedMonth(Number(v))}
+              options={monthOptions}
+              buttonClassName="w-40"
+            />
+            <FormListbox
+              value={String(selectedYear)}
+              onChange={(v) => setSelectedYear(Number(v))}
+              options={yearOptions}
+              buttonClassName="w-28"
+            />
+          </>
+        ) : (
+          <>
+            <FormDatePicker value={rangeFrom} onChange={setRangeFrom} placeholder="ตั้งแต่วันที่" allowClear buttonClassName="w-44" />
+            <span className="text-sm text-gray-400">ถึง</span>
+            <FormDatePicker value={rangeTo} onChange={setRangeTo} placeholder="ถึงวันที่" allowClear buttonClassName="w-44" />
+          </>
+        )}
         <span className="text-sm text-gray-400">
           {filtered.length} รายการ
         </span>
