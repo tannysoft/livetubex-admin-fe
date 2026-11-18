@@ -19,7 +19,7 @@ import { initLiff, isLiffLoggedIn, signInFirebaseWithLiff } from '@/lib/line-lif
 import { getFreelancerByLineId, getPaymentsByFreelancer, createPayment, getJobs, getPositions } from '@/lib/firebase-utils'
 import { uploadExpenseSlip, getStorageDownloadUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position } from '@/lib/types'
-import { calcTax, formatCurrency, isClaimableJob, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { paymentTax, paymentPayout, formatCurrency, isClaimableJob, formatDate, formatDatePill, formatDateTime, paymentCycleLabel, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
 import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonImage, SkeletonPaymentCard } from '@/components/ui/Skeleton'
@@ -283,6 +283,9 @@ export default function FreelancerPaymentsPage() {
 
   const pendingAmount = payments.filter(p => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
   const paidAmount = payments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
+  // สุทธิ/ภาษีรวมทีละใบ — ใบเก่าปัดเป็นบาท ใบใหม่ถึงสตางค์
+  const pendingNet = payments.filter(p => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + paymentTax(p).net, 0)
+  const paidTax = payments.filter(p => p.status === 'paid').reduce((s, p) => s + paymentTax(p).tax, 0)
 
   const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand'
   const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
@@ -309,7 +312,7 @@ export default function FreelancerPaymentsPage() {
               <span className="text-xs text-gray-500">รอดำเนินการ</span>
             </div>
             <p className="text-xl font-bold text-yellow-600">{formatCurrency(pendingAmount)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(calcTax(pendingAmount).net)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(pendingNet)}</p>
           </div>
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
             <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -317,7 +320,7 @@ export default function FreelancerPaymentsPage() {
               <span className="text-xs text-gray-500">ได้รับแล้ว</span>
             </div>
             <p className="text-xl font-bold text-green-600">{formatCurrency(paidAmount)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">หักภาษีรวม {formatCurrency(calcTax(paidAmount).tax)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">หักภาษีรวม {formatCurrency(paidTax)}</p>
           </div>
         </div>
 
@@ -382,8 +385,8 @@ export default function FreelancerPaymentsPage() {
                     <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
 {p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
                     <p className="text-xs text-gray-400 mt-0.5">
-                      ภาษี {formatCurrency(calcTax(p.amount).tax)} · สุทธิ{' '}
-                      <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
+                      ภาษี {formatCurrency(paymentTax(p).tax)} · สุทธิ{' '}
+                      <span className="text-green-600 font-medium">{formatCurrency(paymentTax(p).net)}</span>
                     </p>
                     <div className="mt-1">
                       <Badge label={paymentStatusLabel(p.status)} colorClass={paymentStatusColor(p.status)} />
@@ -422,7 +425,7 @@ export default function FreelancerPaymentsPage() {
                         <p className="font-bold text-gray-900">{formatCurrency(p.amount)}</p>
 {p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
                         <p className="text-xs text-gray-400 mt-0.5">
-                          สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span>
+                          สุทธิ <span className="text-green-600 font-medium">{formatCurrency(paymentTax(p).net)}</span>
                         </p>
                         <div className="mt-1"><Badge label={paymentStatusLabel(p.status)} colorClass={paymentStatusColor(p.status)} /></div>
                       </div>
@@ -437,7 +440,7 @@ export default function FreelancerPaymentsPage() {
 
                 {/* paid with slip — grouped */}
                 {Array.from(slipGroups.entries()).map(([slipPath, pmts]) => {
-                  const totalNet = pmts.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
+                  const totalNet = pmts.reduce((s, p) => s + paymentPayout(p), 0)
                   const paidAt = pmts[0]?.paidAt
                   const jobTitles = pmts.map((p) => getJobTitle(p)).filter(Boolean)
                   return (
@@ -471,7 +474,7 @@ export default function FreelancerPaymentsPage() {
                             <div className="text-right flex-shrink-0">
                               <p className="text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</p>
 {p.queueCount && p.ratePerQueue ? <p className="text-[11px] text-gray-400 tabular-nums">{p.queueCount} คิว × {formatCurrency(p.ratePerQueue)}</p> : null}
-                              <p className="text-xs text-gray-400">สุทธิ <span className="text-green-600 font-medium">{formatCurrency(calcTax(p.amount).net)}</span></p>
+                              <p className="text-xs text-gray-400">สุทธิ <span className="text-green-600 font-medium">{formatCurrency(paymentTax(p).net)}</span></p>
                             </div>
                           </div>
                         ))}

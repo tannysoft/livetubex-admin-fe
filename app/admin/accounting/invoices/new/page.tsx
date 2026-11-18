@@ -272,7 +272,7 @@ function InvoiceEditor() {
           {taxInvoices.length > 0 && (
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">ใบกำกับภาษีที่ออกแล้ว ({taxInvoices.length})</p>
-              <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="rounded-xl border border-gray-200 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500">
                     <tr>
@@ -311,7 +311,7 @@ function InvoiceEditor() {
           {receipts.length > 0 && (
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">ใบเสร็จที่ออกแล้ว ({receipts.length})</p>
-              <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="rounded-xl border border-gray-200 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500">
                     <tr>

@@ -107,6 +107,7 @@ Freelancer: LINE LIFF → accessToken → Cloud Function lineAuth()
 | position | string? | ตำแหน่งงาน |
 | workDates | string[]? | วันที่ทำงาน (ISO date) |
 | expenseAmount | number? | ค่าใช้จ่ายเพิ่มเติม (ไม่หัก 3%) |
+| taxDecimals | number? | ทศนิยมของภาษี 3% — ประทับ 2 ตอน `createPayment` และ `markPaymentPaid` · **ยังไม่โอน = ถึงสตางค์เสมอ** (`paymentTaxDecimals`) · โอนแล้วไม่มี field = โอนก่อน 4 พ.ย. 2569 ปัดเป็นบาท (ห้ามคิดใหม่) · rules: freelancer ส่งได้แค่ 2 |
 | expenseSlipPath | string? | **Storage path** สลิปค่าใช้จ่าย (ไม่มี token) |
 | notes | string? | หมายเหตุจาก freelancer |
 | adminNotes | string? | หมายเหตุจาก admin |
@@ -444,7 +445,8 @@ formatDatePill(dateStr): string    // "จ. 3 เม.ย." (สำหรับ t
 formatDate(dateStr): string        // "3 เม.ย. 2569"
 formatDateTime(dateStr): string    // "3 เม.ย. 2569 17:00"
 formatCurrency(amount): string     // "฿10,000"
-calcTax(gross): { gross, tax, net } // ภาษี 3% — tax = round(gross * 0.03)
+calcTax(gross, decimals=2): { gross, tax, net } // ภาษี 3% ปัดตาม decimals
+paymentTax(p) / paymentPayout(p)  // ภาษี/ยอดโอนของการเบิก 1 ใบ ตาม p.taxDecimals — ใช้ 2 ตัวนี้กับ payment เสมอ
 jobStatusLabel(status): string
 jobStatusColor(status): string     // Tailwind classes
 paymentStatusLabel(status): string
@@ -504,7 +506,8 @@ basisAmount(totals, basis): number                    // basis: 'gross' | 'net' 
 ## Admin Report Page
 
 ```
-- กรองตาม period (month/year) + billing cycle จาก settings
+- กรองตามวันที่โอน: รายเดือน หรือช่วงวันที่ (ตั้งแต่–ถึง) + ช่องค้นชื่อ/ชื่อเล่น (รายการที่ถูกซ่อนไม่ถูกส่งเมล)
+- วันที่ทำงานรวมวันติดกันเป็นช่วง (`formatDateRuns`) ตัดบรรทัดได้ + บอกจำนวนวัน
 - สรุปรายได้ต่อ freelancer
 - ส่งอีเมลสรุปผ่าน sendPaymentReport Cloud Function
 - buildPeriodLabel(month, year, cycle) → "กลางเดือนมีนาคม 2568" / "สิ้นเดือนมีนาคม 2568"
@@ -1165,7 +1168,7 @@ lib/equipment/item-groups.ts # groupItems (ตามหมวด/ปลายท
 
 8. **Skeleton**: ใช้ class `.skeleton` จาก `globals.css` (shimmer animation) — อย่าใช้ `animate-pulse` ของ Tailwind. ใช้ `SkeletonImage` สำหรับรูปภาพที่โหลดจาก Storage
 
-9. **calcTax**: `tax = Math.round(gross * 0.03)` ใช้ทั้ง frontend และ function (เขียนซ้ำในแต่ละที่)
+9. **ภาษี 3% ของการเบิก**: อ่านผ่าน `paymentTax(p)` / `paymentPayout(p)` เท่านั้น — ยังไม่โอน/โอนหลัง 4 พ.ย. 2569 ถึงสตางค์, โอนก่อนนั้นปัดเป็นบาท · ส่ง payment เข้า bridge หลังโอนต้องใส่ `taxDecimals: PAYMENT_TAX_DECIMALS` · **ห้าม `calcTax(ยอดรวมหลายใบ)`** ต้องรวมภาษีทีละใบ · ฝาแฝดฝั่ง functions = `calcWht(amount, taxDecimals)` + `formatBaht` (`functions/src/index.ts`) · รายงานส่งเมลส่ง `tax/net` ต่อแถวไปให้ function (ไม่คิดใหม่) · bridge บัญชีใช้ `paymentTax` ให้ WHT ใน Expense ตรงกับที่หักจริง · `formatCurrency` มีสตางค์ = โชว์ 2 ตำแหน่ง
 
 10. **Firebase Functions region**: `asia-southeast1` สำหรับทุก function — ตั้งไว้ใน `setGlobalOptions`
 

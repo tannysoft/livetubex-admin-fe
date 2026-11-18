@@ -35,7 +35,7 @@ import {
 } from '@/lib/firebase-utils'
 import { uploadExpenseSlip, uploadProfilePictureFromUrl } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, Position, LiffUserProfile } from '@/lib/types'
-import { calcTax, formatCurrency, isClaimableJob, formatDatePill, formatDate } from '@/lib/utils'
+import { paymentTax, paymentPayout, formatCurrency, isClaimableJob, formatDatePill, formatDate } from '@/lib/utils'
 import { jobDays } from '@/lib/job-dates'
 import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
 import { Skeleton, SkeletonProfile, SkeletonPaymentCard } from '@/components/ui/Skeleton'
@@ -270,15 +270,15 @@ export default function FreelancerPage() {
 
   const paidPayments = payments.filter((p) => p.status === 'paid')
   const totalPaid    = paidPayments.reduce((s, p) => s + p.amount, 0)
-  const totalPaidNet = paidPayments.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
+  const totalPaidNet = paidPayments.reduce((s, p) => s + paymentPayout(p), 0)
 
   const lastMonthPaid    = payments.filter((p) => p.status === 'paid' && p.paidAt && p.paidAt.startsWith(lastMonthStart))
   const lastMonthEarned  = lastMonthPaid.reduce((s, p) => s + p.amount, 0)
-  const lastMonthNet     = lastMonthPaid.reduce((s, p) => s + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
+  const lastMonthNet     = lastMonthPaid.reduce((s, p) => s + paymentPayout(p), 0)
 
-  const pendingAmount = payments
-    .filter((p) => p.status === 'pending' || p.status === 'approved')
-    .reduce((s, p) => s + p.amount, 0)
+  const pendingList = payments.filter((p) => p.status === 'pending' || p.status === 'approved')
+  const pendingAmount = pendingList.reduce((s, p) => s + p.amount, 0)
+  const pendingNet = pendingList.reduce((s, p) => s + paymentTax(p).net, 0)
 
   const lastMonthLabel = lastMonthEnd.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
@@ -385,21 +385,21 @@ export default function FreelancerPage() {
       </header>
 
       <div className="max-w-lg mx-auto px-4 pb-10 space-y-4 -mt-2">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Stats — ยอดหลักล้าน/มีสตางค์ในการ์ดแคบ (จอ 360px) ย่อตัวอักษร + ตัดบรรทัดได้ ไม่ล้นการ์ด */}
+        <div className="grid grid-cols-3 gap-2 min-[400px]:gap-3">
           <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
-            <p className="text-base font-bold text-brand leading-tight">{formatCurrency(totalPaid)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(totalPaidNet)}</p>
+            <p className="text-sm min-[400px]:text-base font-bold text-brand leading-tight tabular-nums break-words">{formatCurrency(totalPaid)}</p>
+            <p className="text-xs text-gray-400 mt-0.5 tabular-nums break-words">สุทธิ {formatCurrency(totalPaidNet)}</p>
             <p className="text-xs text-gray-500 mt-0.5">รายได้รวม</p>
           </div>
           <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
-            <p className="text-base font-bold text-gray-800 leading-tight">{formatCurrency(lastMonthEarned)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">สุทธิ {formatCurrency(lastMonthNet)}</p>
+            <p className="text-sm min-[400px]:text-base font-bold text-gray-800 leading-tight tabular-nums break-words">{formatCurrency(lastMonthEarned)}</p>
+            <p className="text-xs text-gray-400 mt-0.5 tabular-nums break-words">สุทธิ {formatCurrency(lastMonthNet)}</p>
             <p className="text-xs text-gray-500 mt-0.5">เดือน{lastMonthLabel}</p>
           </div>
           <div className="bg-yellow-50 rounded-2xl p-3 shadow-sm border border-yellow-100 text-center">
-            <p className="text-base font-bold text-yellow-600 leading-tight">{formatCurrency(pendingAmount)}</p>
-            <p className="text-xs text-yellow-500 mt-0.5">สุทธิ {formatCurrency(calcTax(pendingAmount).net)}</p>
+            <p className="text-sm min-[400px]:text-base font-bold text-yellow-600 leading-tight tabular-nums break-words">{formatCurrency(pendingAmount)}</p>
+            <p className="text-xs text-yellow-500 mt-0.5 tabular-nums break-words">สุทธิ {formatCurrency(pendingNet)}</p>
             <p className="text-xs text-yellow-500 mt-0.5">รอดำเนินการ</p>
           </div>
         </div>

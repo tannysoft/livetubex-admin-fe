@@ -123,6 +123,7 @@ export interface Payment {
   adminNotes?: string         // หมายเหตุจาก admin
   position?: string           // ตำแหน่งงาน
   expenseAmount?: number      // ค่าใช้จ่ายเพิ่มเติม (ไม่หัก 3%)
+  taxDecimals?: number        // ทศนิยมของภาษี 3% — ประทับ 2 ตอนสร้าง + ตอน markPaymentPaid · ใบที่โอนก่อน 4 พ.ย. 2569 ไม่มี = ปัดเป็นบาท → อ่านผ่าน paymentTax() เท่านั้น
   expenseSlipPath?: string    // Storage path รูปสลิปค่าใช้จ่าย (เช่น expenseSlips/{uid}/{ts}.jpg)
   expenseSlipUrl?: string     // @deprecated: เก็บ URL เดิม (backward compat) — ใช้ expenseSlipPath แทน
   payoutSlipPath?: string     // Storage path สลิปการโอนเงิน (เช่น payoutSlips/{freelancerId}/{ts}.jpg)

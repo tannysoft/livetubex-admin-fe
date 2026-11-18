@@ -7,7 +7,7 @@ import { getPayments, getJobs, getFreelancers, markPaymentPaid, sendPayoutNotifi
 import { syncExpenseFromPayment } from '@/lib/accounting/payment-expense-bridge'
 import { uploadPayoutSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate } from '@/lib/utils'
+import { PAYMENT_TAX_DECIMALS, paymentTax, paymentPayout, formatCurrency, formatDate } from '@/lib/utils'
 import { SkeletonCard } from '@/components/ui/Skeleton'
 import FormCheckbox from '@/components/ui/FormCheckbox'
 
@@ -30,7 +30,7 @@ export default function PayoutPage() {
   // แบ่งโอน: รายการที่เอาติ๊กออก = ยังไม่โอนรอบนี้ (ค่าเริ่มต้นติ๊กครบ) · อยู่ในหน่วยความจำ รีเฟรชแล้วกลับมาติ๊กครบ
   const [skipped, setSkipped] = useState<Set<string>>(new Set())
   const toggleSkip = (id: string) => setSkipped((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const netOf = (p: Payment) => calcTax(p.amount).net + (p.expenseAmount ?? 0)
+  const netOf = (p: Payment) => paymentPayout(p)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'warning' | 'error' } | null>(null)
   const lastToast = useRef(toast)
   if (toast) lastToast.current = toast
@@ -71,7 +71,7 @@ export default function PayoutPage() {
       .map(([fid, pmts]) => {
         const freelancer = freelancersMap.get(fid)
         if (!freelancer) return null
-        const totalNet = pmts.reduce((sum, p) => sum + calcTax(p.amount).net + (p.expenseAmount ?? 0), 0)
+        const totalNet = Math.round(pmts.reduce((sum, p) => sum + paymentPayout(p), 0) * 100) / 100
         return { freelancer, payments: pmts, totalNet }
       })
       .filter((g): g is FreelancerGroup => g !== null)
@@ -120,7 +120,7 @@ export default function PayoutPage() {
       // auto-create expense entries (ค่าจ้างทีมงาน) — fire-and-forget
       Promise.all(
         confirmGroup.payments.map((p) =>
-          syncExpenseFromPayment({ ...p, status: 'paid', paidAt: paidAtIso })
+          syncExpenseFromPayment({ ...p, status: 'paid', paidAt: paidAtIso, taxDecimals: PAYMENT_TAX_DECIMALS })
         )
       ).catch((err) => console.error('syncExpenseFromPayment batch failed:', err))
       setConfirmGroup(null)
@@ -226,8 +226,8 @@ export default function PayoutPage() {
               <div className="divide-y divide-gray-50">
                 {pmts.map((p) => {
                   const job = p.jobId ? jobsMap.get(p.jobId) : undefined
-                  const { tax, net } = calcTax(p.amount)
-                  const transferTotal = net + (p.expenseAmount ?? 0)
+                  const { tax, net } = paymentTax(p)
+                  const transferTotal = paymentPayout(p)
                   return (
                     <div
                       key={p.id}

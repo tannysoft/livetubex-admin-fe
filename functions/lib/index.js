@@ -225,6 +225,24 @@ function sendLineMessage(to, token, messages) {
 }
 // ── Email notification on new payment request ─────────────────────────────
 // เรียกจาก frontend หลัง createPayment สำเร็จ (หลีกเลี่ยง Eventarc ที่ไม่รองรับ asia-southeast3)
+/**
+ * ภาษีหัก ณ ที่จ่าย 3% — ฝาแฝดของ calcTax/paymentTax ใน lib/utils.ts
+ * decimals มาจาก payment.taxDecimals: การเบิกใหม่ = 2 (ถึงสตางค์) · ไม่มี = ข้อมูลเก่า ปัดเป็นบาท
+ */
+function calcWht(amount, decimals) {
+    const d = typeof decimals === 'number' && decimals >= 0 && decimals <= 2 ? decimals : 0;
+    const f = 10 ** d;
+    const tax = Math.round(amount * 0.03 * f + 1e-9) / f;
+    return { tax, net: Math.round((amount - tax) * 100) / 100 };
+}
+/** ฿1,234 / ฿1,234.50 — มีสตางค์โชว์ 2 ตำแหน่ง (ฝาแฝด formatCurrency ฝั่งเว็บ) */
+function formatBaht(n) {
+    const hasSatang = Math.abs(Math.round(n * 100) % 100) !== 0;
+    return new Intl.NumberFormat('th-TH', {
+        style: 'currency', currency: 'THB',
+        minimumFractionDigits: hasSatang ? 2 : 0, maximumFractionDigits: 2,
+    }).format(n);
+}
 exports.sendPaymentNotification = (0, https_1.onCall)({
     cors: CORS_ORIGINS,
     secrets: [RESEND_API_KEY, SMTP_PASSWORD, MAIL_FROM, MAIL_TO],
@@ -305,12 +323,11 @@ exports.sendPaymentNotification = (0, https_1.onCall)({
         hour: '2-digit', minute: '2-digit',
     });
     const amount = payment.amount;
-    const tax = Math.round(amount * 0.03);
-    const net = amount - tax;
+    const { tax, net } = calcWht(amount, payment.taxDecimals);
     const workDatesText = Array.isArray(payment.workDates) && payment.workDates.length > 0
         ? payment.workDates.join(', ')
         : '-';
-    const formatCurrency = (n) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n);
+    const formatCurrency = formatBaht;
     const brand = await getBrandInfo();
     const mail = await (0, mail_1.getMailSettings)();
     const creds = mailCreds({ withAdminTo: true });
@@ -585,7 +602,7 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
     const bankAccount = fl.bankAccount ?? '-';
     const lineUserId = fl.lineUserId?.trim();
     // ── ดึงข้อมูล payments + job titles ──────────────────────────────────
-    const formatCurr = (n) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n);
+    const formatCurr = formatBaht;
     const paymentDocs = await Promise.all(paymentIds.map((id) => admin.firestore().collection('payments').doc(id).get()));
     const rows = [];
     let totalNet = 0;
@@ -594,9 +611,10 @@ exports.sendPayoutNotification = (0, https_1.onCall)({
             continue;
         const p = snap.data();
         const amount = p.amount;
-        const tax = Math.round(amount * 0.03);
-        const net = amount - tax + (p.expenseAmount ?? 0);
-        totalNet += net;
+        const wht = calcWht(amount, p.taxDecimals);
+        const tax = wht.tax;
+        const net = Math.round((wht.net + (p.expenseAmount ?? 0)) * 100) / 100;
+        totalNet = Math.round((totalNet + net) * 100) / 100;
         let jobTitle = '-';
         const jobId = p.jobId;
         if (jobId) {
@@ -1227,7 +1245,7 @@ exports.sendPaymentReport = (0, https_1.onCall)({
         console.log('[sendPaymentReport] ปิดเมลสรุปรายได้ไว้ — ไม่ส่ง');
         return { results: [] };
     }
-    const formatCurr = (n) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(n);
+    const formatCurr = formatBaht;
     const formatDates = (dates) => {
         if (!dates || dates.length === 0)
             return '-';
@@ -1250,8 +1268,8 @@ exports.sendPaymentReport = (0, https_1.onCall)({
           <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${p.position ?? '-'}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#374151;white-space:nowrap">${formatDates(p.workDates)}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#111827;text-align:right;white-space:nowrap">${formatCurr(p.amount)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;text-align:right;white-space:nowrap">−${formatCurr(Math.round(p.amount * 0.03))}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#059669;font-weight:600;text-align:right;white-space:nowrap">${formatCurr(p.amount - Math.round(p.amount * 0.03))}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;text-align:right;white-space:nowrap">−${formatCurr(p.tax ?? calcWht(p.amount, 0).tax)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;color:#059669;font-weight:600;text-align:right;white-space:nowrap">${formatCurr(p.net ?? calcWht(p.amount, 0).net)}</td>
         </tr>`).join('');
         const brand = await getBrandInfo();
         const vars = {

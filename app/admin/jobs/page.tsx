@@ -14,6 +14,9 @@ import {
   MapPinIcon,
 } from '@heroicons/react/24/outline'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import FormListbox from '@/components/ui/FormListbox'
+import FormDatePicker from '@/components/ui/FormDatePicker'
+import { format, startOfMonth } from 'date-fns'
 import Badge from '@/components/ui/Badge'
 import {
   getJobsWithBudget,
@@ -21,8 +24,8 @@ import {
   deleteJob,
 } from '@/lib/firebase-utils'
 import type { Job } from '@/lib/types'
-import { formatCurrency, jobStatusColor, jobStatusLabel, paymentCycleLabel } from '@/lib/utils'
-import { formatJobDates } from '@/lib/job-dates'
+import { THAI_MONTHS, formatCurrency, jobStatusColor, jobStatusLabel, paymentCycleLabel, thaiYear } from '@/lib/utils'
+import { formatJobDates, jobDays } from '@/lib/job-dates'
 import { SkeletonTableRow } from '@/components/ui/Skeleton'
 import { getCalendarEntries } from '@/lib/calendar'
 import { getAccountingStatuses, setJobAccountingStatus, type AccountingStatusDef } from '@/lib/job-accounting'
@@ -32,10 +35,19 @@ import SendJobModal from '@/components/admin/SendJobModal'
 import GoogleCalendarButton, { GoogleAddedBadge } from '@/components/admin/GoogleCalendarButton'
 import { safeMapUrl } from '@/lib/job-map'
 
+type DateMode = 'all' | 'month' | 'range'
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // กรองวันงาน — ตั้งต้น = ทั้งหมด (เหมือนเดิม)
+  const today = new Date()
+  const [dateMode, setDateMode] = useState<DateMode>('all')
+  const [fMonth, setFMonth] = useState(today.getMonth() + 1)
+  const [fYear, setFYear] = useState(today.getFullYear())
+  const [rangeFrom, setRangeFrom] = useState(() => format(startOfMonth(today), 'yyyy-MM-dd'))
+  const [rangeTo, setRangeTo] = useState('')
 
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null)
   const [sendJob, setSendJob] = useState<Job | null>(null)
@@ -109,9 +121,25 @@ export default function JobsPage() {
     }
   }
 
+  // ช่วงที่กรอง (รวม 2 ปลาย) — null = ไม่กรอง · เลือกกลับด้านก็สลับให้
+  const dateRange: [string, string] | null = (() => {
+    if (dateMode === 'all') return null
+    if (dateMode === 'month') {
+      const ym = `${fYear}-${String(fMonth).padStart(2, '0')}`
+      return [`${ym}-01`, `${ym}-31`]
+    }
+    const a = rangeFrom || '0000-01-01'
+    const b = rangeTo || '9999-12-31'
+    return a <= b ? [a, b] : [b, a]
+  })()
+  // งานหลายวัน/เว้นวัน: มีวันทำงานจริงวันใดวันหนึ่งในช่วง = ผ่าน · งานไม่มีวัน = ไม่ผ่านเมื่อกรองวัน
+  const inDateRange = (j: Job) => !dateRange || (!!j.date && jobDays(j).some((d) => d >= dateRange[0] && d <= dateRange[1]))
+  const years = [...new Set([today.getFullYear(), ...jobs.map((j) => Number(j.date?.slice(0, 4))).filter((y) => y > 2000)])].sort((a, b) => b - a)
+
   const filtered = jobs.filter(
     (j) =>
       (acctFilter === null || acctOf(j) === acctFilter) &&
+      inDateRange(j) &&
       (j.title.toLowerCase().includes(search.toLowerCase()) ||
         j.location.toLowerCase().includes(search.toLowerCase()) ||
         j.clientName.toLowerCase().includes(search.toLowerCase()) ||
@@ -145,6 +173,40 @@ export default function JobsPage() {
           placeholder="ค้นหาชื่องาน สถานที่ หรือลูกค้า..."
           className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white"
         />
+      </div>
+
+      {/* กรองวันงาน */}
+      <div className="flex items-center gap-2 flex-wrap -mt-2">
+        <span className="text-xs text-gray-400">วันงาน</span>
+        {([['all', 'ทั้งหมด'], ['month', 'รายเดือน'], ['range', 'ช่วงวันที่']] as const).map(([mode, label]) => (
+          <button key={mode} onClick={() => setDateMode(mode)} className={chipCls(dateMode === mode)}>{label}</button>
+        ))}
+        {dateMode === 'month' && (
+          <>
+            <FormListbox
+              value={String(fMonth)}
+              onChange={(v) => setFMonth(Number(v))}
+              options={THAI_MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+              buttonClassName="w-36"
+            />
+            <FormListbox
+              value={String(fYear)}
+              onChange={(v) => setFYear(Number(v))}
+              options={years.map((y) => ({ value: String(y), label: String(thaiYear(y)) }))}
+              buttonClassName="w-24"
+            />
+          </>
+        )}
+        {dateMode === 'range' && (
+          <>
+            <FormDatePicker value={rangeFrom} onChange={setRangeFrom} placeholder="ตั้งแต่วันที่" allowClear buttonClassName="w-44" />
+            <span className="text-xs text-gray-400">ถึง</span>
+            <FormDatePicker value={rangeTo} onChange={setRangeTo} placeholder="ถึงวันที่" allowClear buttonClassName="w-44" />
+          </>
+        )}
+        {dateMode !== 'all' && !loading && (
+          <span className="text-xs text-gray-400">พบ {filtered.length} งาน</span>
+        )}
       </div>
 
       {/* กรองสถานะบัญชี */}

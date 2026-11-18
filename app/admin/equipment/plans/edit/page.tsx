@@ -421,7 +421,7 @@ function PlanEditor() {
         </Link>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="flex-1 min-w-[240px] text-2xl font-bold text-gray-900">{plan.title}</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center rounded-xl border border-gray-200 bg-white">
               <button onClick={undo} disabled={history.undo === 0} title="ย้อนกลับ (⌘Z)" className="p-2.5 text-gray-600 hover:bg-gray-50 rounded-l-xl disabled:opacity-30 disabled:hover:bg-transparent">
                 <ArrowUturnLeftIcon className="w-4 h-4" />

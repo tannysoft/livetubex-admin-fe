@@ -1,8 +1,9 @@
 import { calcExpenseTotals, createExpense, deleteExpense, getExpenseByPaymentId, updateExpense } from './expenses'
 import { getOrCreateFreelancerPaymentCategory } from './expense-categories'
 import { getFreelancer, getJob, getPayments } from '../firebase-utils'
-import { formatDate } from '../utils'
+import { formatDate, paymentTax } from '../utils'
 import { round2 } from './calc'
+import { format } from 'date-fns'
 import type { Payment } from '../types'
 
 /**
@@ -14,7 +15,7 @@ import type { Payment } from '../types'
  *
  * คำนวณ:
  *   - amount        = payment.amount (gross fee — ฐาน WHT 3%)
- *   - whtAmount     = round(amount * 3%)
+ *   - whtAmount     = paymentTax(payment).tax — ตรงกับยอดที่โอนจริง (ใบใหม่ถึงสตางค์, ใบเก่าปัดเป็นบาท)
  *   - paidAmount    = (amount - whtAmount) + expenseAmount (ค่าใช้จ่ายเบิกคืน เพิ่มเต็ม ไม่หัก)
  *   - status        = 'paid'
  *
@@ -39,8 +40,10 @@ export async function syncExpenseFromPayment(payment: Payment): Promise<void> {
     hasVat: false,
     whtRate: 3,
   })
+  // WHT = ยอดที่หักจริงตอนโอน ไม่ใช่สูตรของ Expense (ใบเก่าหักแบบปัดเป็นบาท)
+  const { tax: whtAmount, net } = paymentTax(payment)
 
-  const paidAmount = round2(totals.paidAmount + expenseReimburse)
+  const paidAmount = round2(net + expenseReimburse)
 
   const descriptionParts = [
     `ค่าจ้างทีมงาน: ${freelancer.name}`,
@@ -57,14 +60,15 @@ export async function syncExpenseFromPayment(payment: Payment): Promise<void> {
     jobTitle: job?.title || undefined,
     categoryId: category.id,
     categoryName: category.name,
-    date: payment.paidAt ? payment.paidAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    // วันที่ตามเวลาท้องถิ่น — paidAt เป็น UTC, slice ตรงๆ ทำให้ที่โอน 00:00–07:00 ตกวัน/เดือนก่อน (ภงด.3 ผิดเดือน)
+    date: format(payment.paidAt ? new Date(payment.paidAt) : new Date(), 'yyyy-MM-dd'),
     description: descriptionParts.join('\n'),
     amount: totals.amount,
     hasVat: false,
     vatRate: 0,
     vatAmount: 0,
     whtRate: 3,
-    whtAmount: totals.whtAmount,
+    whtAmount,
     totalAmount: totals.totalAmount,
     paidAmount,
     paymentMethod: 'transfer' as const,

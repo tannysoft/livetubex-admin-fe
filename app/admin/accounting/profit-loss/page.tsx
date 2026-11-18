@@ -374,7 +374,7 @@ export default function ProfitLossPage() {
 
       {/* Comparison with previous month */}
       {previous && current && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="p-2 bg-red-50 rounded-xl">
               <ChartBarIcon className="w-5 h-5 text-brand" />
