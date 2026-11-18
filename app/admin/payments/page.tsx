@@ -22,12 +22,14 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import FormListbox from '@/components/ui/FormListbox'
 import { getPayments, getJobsWithBudget, getFreelancers, getPositions, createPayment, updatePayment, approvePayment, markPaymentPaid, rejectPayment, revertPaymentPaid } from '@/lib/firebase-utils'
 import { syncExpenseFromPayment, removeExpenseForPayment } from '@/lib/accounting/payment-expense-bridge'
+import { round2 } from '@/lib/accounting/calc'
 import { deleteField } from 'firebase/firestore'
 import { getStorageDownloadUrl, uploadExpenseSlip } from '@/lib/firebase-storage'
 import type { Freelancer, Job, Payment, PaymentStatus, Position } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
+import { PAYMENT_TAX_DECIMALS, calcTax, paymentTax, paymentTaxDecimals, paymentPayout, formatCurrency, formatDate, formatDatePill, formatDateTime, paymentStatusColor, paymentStatusLabel } from '@/lib/utils'
 import { formatJobDates, jobDays } from '@/lib/job-dates'
 import QueueAmountInput, { queueTotal } from '@/components/payments/QueueAmountInput'
+import FreelancerSelect from '@/components/admin/FreelancerSelect'
 import { Skeleton, SkeletonImage, SkeletonTableRow } from '@/components/ui/Skeleton'
 import CelebrationOverlay from '@/components/ui/CelebrationOverlay'
 
@@ -180,6 +182,7 @@ export default function PaymentsPage() {
           amount: finalAmount,
           adminNotes: adminNotes || selectedPayment.adminNotes,
           status: 'paid',
+          taxDecimals: PAYMENT_TAX_DECIMALS, // ตรงกับที่ markPaymentPaid ประทับ
           paidAt: new Date().toISOString(),
         }).catch((err) => console.error('syncExpenseFromPayment failed:', err))
       } else if (actionType === 'unapprove') {
@@ -350,6 +353,7 @@ export default function PaymentsPage() {
           position: newPosition || undefined,
           workDates,
           expenseAmount: expAmt,
+          taxDecimals: PAYMENT_TAX_DECIMALS,
         } as Payment).catch((err) => console.error('syncExpenseFromPayment failed:', err))
       }
       setCreateOpen(false)
@@ -382,6 +386,9 @@ export default function PaymentsPage() {
   const totalPending = payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0)
   const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0)
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
+  // สุทธิ/ภาษีรวมต้องรวมทีละใบ — ใบเก่าปัดเป็นบาท ใบใหม่ถึงสตางค์ (คิดจากยอดรวมไม่ได้)
+  const sumNet = (status: Payment['status']) => round2(payments.filter((p) => p.status === status).reduce((s, p) => s + paymentTax(p).net, 0))
+  const totalPaidTax = round2(payments.filter((p) => p.status === 'paid').reduce((s, p) => s + paymentTax(p).tax, 0))
 
   const actionTitle = actionType === 'approve' ? 'อนุมัติการเบิกจ่าย' : actionType === 'paid' ? 'ยืนยันการโอนเงิน' : actionType === 'unapprove' ? 'ยกเลิกอนุมัติ' : actionType === 'unpay' ? 'ยกเลิกการโอนเงิน' : 'ปฏิเสธการเบิกจ่าย'
 
@@ -517,22 +524,22 @@ export default function PaymentsPage() {
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Summary cards — มือถือเรียงลงแนวตั้ง (3 ช่องแคบเกิน ยอดหลักล้านล้นการ์ด) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="bg-yellow-50 rounded-2xl p-4 border border-yellow-100">
           <p className="text-xs font-medium text-yellow-600">รอดำเนินการ</p>
-          <p className="text-xl font-bold text-yellow-700 mt-1">{formatCurrency(totalPending)}</p>
-          <p className="text-xs text-yellow-500 mt-1">โอนสุทธิ {formatCurrency(calcTax(totalPending).net)}</p>
+          <p className="text-xl font-bold text-yellow-700 mt-1 tabular-nums">{formatCurrency(totalPending)}</p>
+          <p className="text-xs text-yellow-500 mt-1">โอนสุทธิ {formatCurrency(sumNet('pending'))}</p>
         </div>
         <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
           <p className="text-xs font-medium text-blue-600">อนุมัติแล้ว (รอโอน)</p>
-          <p className="text-xl font-bold text-blue-700 mt-1">{formatCurrency(totalApproved)}</p>
-          <p className="text-xs text-blue-500 mt-1">โอนสุทธิ {formatCurrency(calcTax(totalApproved).net)}</p>
+          <p className="text-xl font-bold text-blue-700 mt-1 tabular-nums">{formatCurrency(totalApproved)}</p>
+          <p className="text-xs text-blue-500 mt-1">โอนสุทธิ {formatCurrency(sumNet('approved'))}</p>
         </div>
         <div className="bg-green-50 rounded-2xl p-4 border border-green-100">
           <p className="text-xs font-medium text-green-600">จ่ายแล้วทั้งหมด</p>
-          <p className="text-xl font-bold text-green-700 mt-1">{formatCurrency(totalPaid)}</p>
-          <p className="text-xs text-green-500 mt-1">หักภาษีรวม {formatCurrency(calcTax(totalPaid).tax)}</p>
+          <p className="text-xl font-bold text-green-700 mt-1 tabular-nums">{formatCurrency(totalPaid)}</p>
+          <p className="text-xs text-green-500 mt-1">หักภาษีรวม {formatCurrency(totalPaidTax)}</p>
         </div>
       </div>
 
@@ -667,7 +674,7 @@ export default function PaymentsPage() {
                       {payment.expenseAmount && (
                         <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                       )}
-                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
+                      <p className="text-xs text-gray-400">ภาษี {formatCurrency(paymentTax(payment).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(paymentPayout(payment))}</span></p>
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap w-[140px]">
                       <div className="flex items-center justify-center">
@@ -696,7 +703,7 @@ export default function PaymentsPage() {
             const jobPaid = items.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
             const jobPending = items.filter((p) => p.status === 'pending' || p.status === 'approved').reduce((s, p) => s + p.amount, 0)
             const jobTotal = jobPaid + jobPending  // ไม่นับ rejected
-            const jobNetTotal = calcTax(jobTotal).net
+            const jobNetTotal = round2(items.filter((p) => p.status !== 'rejected').reduce((s, p) => s + paymentTax(p).net, 0))
             const jobId = items[0]?.jobId
             const job = jobId ? jobsMap.get(jobId) : undefined
             const jobTitle = items[0] ? getJobTitle(items[0]) || 'ไม่ระบุงาน' : 'ไม่ระบุงาน'
@@ -739,6 +746,9 @@ export default function PaymentsPage() {
                   </div>
                 </div>
 
+                {/* จอเล็ก: เลื่อนแนวนอน — คอลัมน์ตายตัวรวม ~900px ถ้าไม่ห่อ ชื่อคนเหลือ 0 และยอด/ปุ่มถูกตัด */}
+                <div className="overflow-x-auto">
+                <div className="min-w-[1040px]">
                 {/* Column headers */}
                 <div className="grid grid-cols-[1fr_150px_160px_130px_140px_140px] gap-x-4 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
                   <span>Freelancer / วันที่ทำงาน</span>
@@ -788,7 +798,7 @@ export default function PaymentsPage() {
                         {payment.expenseAmount && (
                           <p className="text-xs text-orange-500 font-medium mt-0.5">+{formatCurrency(payment.expenseAmount)} ค่าใช้จ่าย</p>
                         )}
-                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(calcTax(payment.amount).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(calcTax(payment.amount).net + (payment.expenseAmount ?? 0))}</span></p>
+                        <p className="text-xs text-gray-400">ภาษี {formatCurrency(paymentTax(payment).tax)} · โอน <span className="text-brand font-medium">{formatCurrency(paymentPayout(payment))}</span></p>
                       </div>
                       {/* col 6: actions */}
                       <div className="flex items-center justify-center">
@@ -796,6 +806,8 @@ export default function PaymentsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+                </div>
                 </div>
               </div>
             )
@@ -861,7 +873,7 @@ export default function PaymentsPage() {
             {/* Amount editor */}
             {actionType !== 'unapprove' && actionType !== 'unpay' && (() => {
               const amt = parseFloat(editAmount) || 0
-              const { tax, net } = calcTax(amt)
+              const { tax, net } = calcTax(amt, paymentTaxDecimals(actionType === 'paid' ? { status: 'approved' } : selectedPayment))
               const isEdited = amt !== selectedPayment.amount
               return (
                 <div className={`rounded-xl border px-4 py-3 transition-colors ${isEdited ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
@@ -958,7 +970,8 @@ export default function PaymentsPage() {
           {/* Freelancer */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Freelancer <span className="text-red-500">*</span></label>
-            <FormListbox
+            <FreelancerSelect
+              freelancers={freelancers}
               value={newFreelancerId}
               onChange={(id) => {
                 setNewFreelancerId(id)
@@ -967,8 +980,6 @@ export default function PaymentsPage() {
                 setNewRate(f?.ratePerQueue ? String(f.ratePerQueue) : '')
                 setNewPosition(f?.position && positions.some((p) => p.name === f.position) ? f.position : '')
               }}
-              options={freelancers.map((f) => ({ value: f.id, label: f.name }))}
-              placeholder="เลือก Freelancer…"
             />
           </div>
 
@@ -1237,6 +1248,7 @@ export default function PaymentsPage() {
               autoHint={editQueuesOverride === null && editWorkDates.length > 1 ? `คิดจากวันที่เลือก ${editWorkDates.length} วัน — กด + / − ถ้าวันเดียวทำหลายคิว` : undefined}
               rate={editRate}
               onRate={setEditRate}
+              taxDecimals={editPayment ? paymentTaxDecimals(editPayment) : undefined}
                             inputCls="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               labelCls="block text-sm font-medium text-gray-700 mb-1"
             />

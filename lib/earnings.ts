@@ -1,5 +1,5 @@
 import type { Payment } from './types'
-import { calcTax } from './utils'
+import { paymentTax } from './utils'
 
 /**
  * สรุปรายได้ Freelancer รายเดือน — ใช้ร่วมกันระหว่างหน้า admin (/admin/earnings)
@@ -74,7 +74,7 @@ export function toEarningsEntries(
     if (payment.status !== 'paid') continue
     const parts = paidMonthParts(payment.paidAt)
     if (!parts) continue
-    const { tax, net } = calcTax(payment.amount)
+    const { tax, net } = paymentTax(payment)
     const expense = payment.expenseAmount ?? 0
     entries.push({
       payment,

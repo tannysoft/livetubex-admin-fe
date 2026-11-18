@@ -177,13 +177,20 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Mobile toggle */}
-      <button
-        className="print:hidden lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-xl shadow-md border border-gray-100"
-        onClick={() => setMobileOpen(!mobileOpen)}
-      >
-        {mobileOpen ? <XMarkIcon className="w-5 h-5" /> : <Bars3Icon className="w-5 h-5" />}
-      </button>
+      {/* แถบหัวบนมือถือ — sticky ไม่ลอยทับหัวข้อของหน้า (ปุ่มเดิมเป็น fixed ทับ <h1> ทุกหน้า) */}
+      <div className="print:hidden lg:hidden sticky top-0 z-50 h-14 flex items-center gap-3 px-3 bg-white/95 backdrop-blur border-b border-gray-100">
+        <button
+          className="p-2 -ml-1 rounded-xl hover:bg-gray-100 text-gray-700"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+        >
+          {mobileOpen ? <XMarkIcon className="w-5 h-5" /> : <Bars3Icon className="w-5 h-5" />}
+        </button>
+        {/* Logo มีลิงก์ในตัวแล้ว — ห้ามครอบ <Link> ซ้ำ (a ซ้อน a) */}
+        <span className="flex items-center" onClick={() => setMobileOpen(false)}>
+          <Logo width={112} height={17} />
+        </span>
+      </div>
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -195,7 +202,7 @@ export default function AdminSidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`print:hidden fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-100 z-40 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        className={`print:hidden fixed top-14 lg:top-0 left-0 h-[calc(100%-3.5rem)] lg:h-full w-64 bg-white border-r border-gray-100 z-40 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

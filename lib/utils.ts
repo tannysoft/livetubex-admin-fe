@@ -27,19 +27,47 @@ export function formatDateTime(dateStr: string): string {
 }
 
 export function formatCurrency(amount: number): string {
+  // มีสตางค์ = โชว์ 2 ตำแหน่งเสมอ (฿1,234.50 ไม่ใช่ ฿1,234.5) · จำนวนเต็มโชว์แบบเดิม
+  const hasSatang = Math.abs(Math.round(amount * 100) % 100) !== 0
   return new Intl.NumberFormat('th-TH', {
     style: 'currency',
     currency: 'THB',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: hasSatang ? 2 : 0,
+    maximumFractionDigits: 2,
   }).format(amount)
 }
 
 const TAX_RATE = 0.03
 
-/** คำนวณภาษีหัก ณ ที่จ่าย 3% */
-export function calcTax(gross: number): { gross: number; tax: number; net: number } {
-  const tax = Math.round(gross * TAX_RATE)
-  return { gross, tax, net: gross - tax }
+/** ทศนิยมของภาษีที่การเบิกใหม่ใช้ — createPayment ใส่ `taxDecimals` นี้ให้ทุกใบ */
+export const PAYMENT_TAX_DECIMALS = 2
+
+/**
+ * คำนวณภาษีหัก ณ ที่จ่าย 3%
+ * decimals 0 = ปัดเป็นบาท (การเบิกก่อน 4 พ.ย. 2569 — โอนไปตามนั้นแล้ว) · 2 = ถึงสตางค์
+ */
+export function calcTax(gross: number, decimals: number = PAYMENT_TAX_DECIMALS): { gross: number; tax: number; net: number } {
+  const f = 10 ** decimals
+  const tax = Math.round(gross * TAX_RATE * f + 1e-9) / f
+  return { gross, tax, net: Math.round((gross - tax) * 100) / 100 }
+}
+
+/**
+ * ทศนิยมภาษีของการเบิก 1 ใบ — ยังไม่โอน = ถึงสตางค์เสมอ (markPaymentPaid ประทับ taxDecimals: 2 ตอนโอน)
+ * โอนแล้ว = ตามที่ประทับไว้ · ใบที่โอนก่อน 4 พ.ย. 2569 ไม่มี field = ปัดเป็นบาท (โอนไปตามนั้นแล้ว ห้ามคิดใหม่)
+ */
+export function paymentTaxDecimals(p: { status?: string; taxDecimals?: number }): number {
+  return p.status === 'paid' ? (p.taxDecimals ?? 0) : PAYMENT_TAX_DECIMALS
+}
+
+/** ภาษีของการเบิก 1 ใบ */
+export function paymentTax(p: { amount: number; status?: string; taxDecimals?: number }) {
+  return calcTax(p.amount, paymentTaxDecimals(p))
+}
+
+/** ยอดโอนจริงของการเบิก 1 ใบ = สุทธิหลังหักภาษี + ค่าใช้จ่ายเบิกคืน (ไม่หัก 3%) */
+export function paymentPayout(p: { amount: number; status?: string; taxDecimals?: number; expenseAmount?: number }) {
+  return Math.round((paymentTax(p).net + (p.expenseAmount ?? 0)) * 100) / 100
 }
 
 export function jobStatusLabel(status: string): string {

@@ -142,7 +142,9 @@ service cloud.firestore {
                         'freelancerId',
                         'amount','status','requestedAt',
                         'jobId'
-                       ]);
+                       ])
+                    // ภาษีถึงสตางค์: ส่งมาต้องเป็น 2 เท่านั้น (กันตั้งค่าเอง) · ไม่ส่ง = LIFF ที่ cache JS เก่า ยังเบิกได้
+                    && (!('taxDecimals' in request.resource.data) || request.resource.data.taxDecimals == 2);
     }
 
     // ── Accounting (Admin only) ──────────────────────────────────────────────

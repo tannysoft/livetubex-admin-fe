@@ -59,7 +59,8 @@ export default function FormListbox({
               value={opt.value}
               className="flex cursor-pointer select-none items-center px-3 py-2 text-gray-900 data-focus:bg-brand-soft data-focus:outline-none data-selected:font-semibold data-selected:text-brand"
             >
-              <span className="block truncate">{opt.label}</span>
+              {/* ตัวเลือกตัดบรรทัดได้ — ชื่องานยาวๆ บนมือถือไม่ถูกตัดจนแยกไม่ออก */}
+              <span className="block min-w-0 break-words">{opt.label}</span>
             </ListboxOption>
           ))}
         </ListboxOptions>

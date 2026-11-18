@@ -1,7 +1,7 @@
 'use client'
 
 import { MinusIcon, PlusIcon } from '@heroicons/react/20/solid'
-import { calcTax, formatCurrency } from '@/lib/utils'
+import { PAYMENT_TAX_DECIMALS, calcTax, formatCurrency } from '@/lib/utils'
 
 /**
  * ยอดขอเบิก = จำนวนคิว × ราคาต่อคิว — ฟอร์มขอเบิก LIFF (2 หน้า) + สร้าง/แก้การเบิกจ่ายของแอดมิน
@@ -21,7 +21,7 @@ function stepQueue(v: number, dir: 1 | -1): number {
   return Math.max(STEP, Math.round(snapped * 2) / 2)
 }
 
-export default function QueueAmountInput({ queues, onQueues, rate, onRate, inputCls, labelCls, autoHint }: {
+export default function QueueAmountInput({ queues, onQueues, rate, onRate, inputCls, labelCls, autoHint, taxDecimals = PAYMENT_TAX_DECIMALS }: {
   queues: string
   onQueues: (v: string) => void
   rate: string
@@ -30,12 +30,14 @@ export default function QueueAmountInput({ queues, onQueues, rate, onRate, input
   labelCls: string
   /** จำนวนคิวยังเป็นค่าอัตโนมัติ (ตามวันที่เลือก) — ข้อความบอกใต้ช่อง */
   autoHint?: string
+  /** ทศนิยมของภาษีที่โชว์ — การเบิกใหม่ = ถึงสตางค์ · แก้ใบเก่าส่ง payment.taxDecimals ?? 0 */
+  taxDecimals?: number
 }) {
   const { amount } = queueTotal(queues, rate)
   // ฐานของปุ่ม +/− (ช่องว่าง/พิมพ์ผิด = 0 → กด + ได้ 0.5)
   const typed = Number(queues)
   const current = queues.trim() && Number.isFinite(typed) ? typed : 0
-  const tax = calcTax(amount)
+  const tax = calcTax(amount, taxDecimals)
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[1.3fr_auto_1.2fr] items-end gap-2">

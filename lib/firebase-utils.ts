@@ -17,6 +17,7 @@ import { httpsCallable } from 'firebase/functions'
 import { db, functions } from './firebase'
 import type { Job, Freelancer, JobAssignment, Payment, DashboardStats, Position, AppSettings, LineMessageLog } from './types'
 import { rememberJobPlace } from './job-places'
+import { PAYMENT_TAX_DECIMALS } from './utils'
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -269,7 +270,11 @@ export async function createPayment(
   freelancerEmail?: string,
 ): Promise<string> {
   const requestedAt = new Date().toISOString()
-  const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
+  // การเบิกใหม่ทุกใบคิดภาษีถึงสตางค์ — ใบเก่าที่ไม่มี field นี้ยังปัดเป็นบาทตามที่โอนไปแล้ว
+  const clean = {
+    ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)),
+    taxDecimals: PAYMENT_TAX_DECIMALS,
+  }
   const ref = await addDoc(collection(db, 'payments'), { ...clean, requestedAt })
 
   // ส่งเมลแจ้งเตือน admin + freelancer (fire-and-forget)
@@ -298,6 +303,8 @@ export async function markPaymentPaid(id: string, freelancerId: string, amount: 
   await updateDoc(doc(db, 'payments', id), {
     status: 'paid',
     paidAt: new Date().toISOString(),
+    // โอนตอนนี้ = หักภาษีถึงสตางค์ (รวมใบที่ขอเบิกไว้ก่อนเปลี่ยนระบบ) — paymentTax อ่านค่านี้หลังโอน
+    taxDecimals: PAYMENT_TAX_DECIMALS,
     adminNotes: adminNotes || '',
     ...(payoutSlipPath ? { payoutSlipPath } : {}),
   })
@@ -340,6 +347,8 @@ export interface FreelancerReportPayload {
     position?: string
     workDates?: string[]
     amount: number
+    tax: number      // ภาษีที่หักจริงของใบนี้ (paymentTax) — function ใช้ค่านี้ ไม่คิดใหม่
+    net: number
     paidAt?: string
   }[]
   totalGross: number

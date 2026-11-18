@@ -172,9 +172,9 @@ export default function CalendarPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
           <button onClick={() => shift(-1)} aria-label="เดือนก่อน" className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"><ChevronLeftIcon className="w-5 h-5" /></button>
-          <h2 className="text-lg font-semibold text-gray-900 min-w-[170px] text-center">{THAI_MONTHS[cursor.m]} {thaiYear(cursor.y)}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 min-w-[120px] sm:min-w-[170px] text-center whitespace-nowrap">{THAI_MONTHS[cursor.m]} {thaiYear(cursor.y)}</h2>
           <button onClick={() => shift(1)} aria-label="เดือนถัดไป" className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"><ChevronRightIcon className="w-5 h-5" /></button>
-          <button onClick={() => { const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }) }} className="ml-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50">วันนี้</button>
+          <button onClick={() => { const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }) }} className="ml-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 whitespace-nowrap">วันนี้</button>
           <div className="ml-auto flex items-center gap-3 text-xs text-gray-500 flex-wrap justify-end">
             <span className="hidden sm:inline-flex items-center gap-3 flex-wrap">
               {acctStatuses.map((st) => (

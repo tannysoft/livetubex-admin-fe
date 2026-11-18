@@ -8,13 +8,16 @@ import {
   ExclamationCircleIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import FormListbox from '@/components/ui/FormListbox'
 import FormDatePicker from '@/components/ui/FormDatePicker'
 import { format, startOfMonth } from 'date-fns'
 import { getPayments, getFreelancers, getJobs, getAppSettings, sendPaymentReport, type FreelancerReportPayload } from '@/lib/firebase-utils'
 import type { BillingCycle, Job, Payment, Freelancer } from '@/lib/types'
-import { calcTax, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { paymentTax, formatCurrency, formatDate } from '@/lib/utils'
+import { dateRuns, formatDateRuns } from '@/lib/job-dates'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 const MONTH_LABELS = [
@@ -39,6 +42,20 @@ function paidLocalDay(paidAt: string | undefined): string | null {
 
 type FilterMode = 'month' | 'range'
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+/** วันที่ทำงาน → "22–23, 25 พ.ย. 69" (รวมวันติดกันเป็นช่วง) */
+function workDatesLabel(days?: string[]): string {
+  return days?.length ? formatDateRuns(dateRuns(days), { shortYear: true }) : '-'
+}
+
+/** ค้นชื่อ: ชื่อจริง / ชื่อเล่น / ชื่อ LINE / อีเมล — ไม่สนตัวพิมพ์และช่องว่าง */
+const norm = (s?: string) => (s ?? '').toLowerCase().replace(/\s+/g, '')
+function matchFreelancer(f: Freelancer, q: string): boolean {
+  if (!q) return true
+  return [f.name, f.nickname, f.lineDisplayName, f.email].some((v) => norm(v).includes(q))
+}
+
 
 interface FreelancerGroup {
   freelancer: Freelancer
@@ -53,6 +70,7 @@ export default function ReportPage() {
   const [filterMode, setFilterMode] = useState<FilterMode>('month')
   const [rangeFrom, setRangeFrom]   = useState(() => format(startOfMonth(now), 'yyyy-MM-dd'))
   const [rangeTo, setRangeTo]       = useState(() => format(now, 'yyyy-MM-dd'))
+  const [search, setSearch]         = useState('')
 
   const [payments, setPayments]       = useState<Payment[]>([])
   const [freelancers, setFreelancers] = useState<Freelancer[]>([])
@@ -129,10 +147,20 @@ export default function ReportPage() {
     [payments, dayFrom, dayTo]
   )
 
+  // ค้นชื่อ — รายการที่ซ่อนอยู่ไม่ถูกส่งเมล/นับว่าเลือก แม้เคยติ๊กไว้
+  const query = norm(search)
+  const visible = useMemo(
+    () => filtered.filter((p) => {
+      const f = freelancerMap.get(p.freelancerId)
+      return !!f && matchFreelancer(f, query)
+    }),
+    [filtered, freelancerMap, query],
+  )
+
   // group by freelancer
   const groups = useMemo((): FreelancerGroup[] => {
     const map = new Map<string, Payment[]>()
-    for (const p of filtered) {
+    for (const p of visible) {
       const list = map.get(p.freelancerId) ?? []
       list.push(p)
       map.set(p.freelancerId, list)
@@ -144,7 +172,7 @@ export default function ReportPage() {
       result.push({ freelancer, payments: pmts.sort((a, b) => (a.paidAt ?? '').localeCompare(b.paidAt ?? '')) })
     }
     return result.sort((a, b) => a.freelancer.name.localeCompare(b.freelancer.name, 'th'))
-  }, [filtered, freelancerMap])
+  }, [visible, freelancerMap])
 
   const togglePayment = (id: string) => {
     setSelected((prev) => {
@@ -185,14 +213,14 @@ export default function ReportPage() {
   const period = settingPeriod ?? filterPeriod
 
   const handleSend = async () => {
-    if (selected.size === 0) return
+    if (selectedCount === 0) return
     setSending(true)
     setToast(null)
     try {
       // จัดกลุ่ม selected payments ตาม freelancer
       const reportsMap = new Map<string, FreelancerReportPayload>()
 
-      for (const p of filtered) {
+      for (const p of visible) {
         if (!selected.has(p.id)) continue
         const freelancer = freelancerMap.get(p.freelancerId)
         if (!freelancer) continue
@@ -209,17 +237,19 @@ export default function ReportPage() {
           })
         }
         const entry = reportsMap.get(p.freelancerId)!
-        const { tax, net } = calcTax(p.amount)
+        const { tax, net } = paymentTax(p)
         entry.payments.push({
           workDescription: getJobTitle(p),
           position: p.position,
           workDates: p.workDates,
           amount: p.amount,
+          tax,
+          net,
           paidAt: p.paidAt,
         })
-        entry.totalGross += p.amount
-        entry.totalTax   += tax
-        entry.totalNet   += net
+        entry.totalGross = r2(entry.totalGross + p.amount)
+        entry.totalTax   = r2(entry.totalTax + tax)
+        entry.totalNet   = r2(entry.totalNet + net)
       }
 
       const reports = Array.from(reportsMap.values())
@@ -245,7 +275,7 @@ export default function ReportPage() {
     }
   }
 
-  const selectedCount = selected.size
+  const selectedCount = visible.filter((p) => selected.has(p.id)).length
   const monthOptions = MONTH_LABELS.map((label, i) => ({ value: String(i + 1), label }))
   const yearOptions  = Array.from({ length: 3 }, (_, i) => {
     const y = now.getFullYear() - 2 + i   // ปีปัจจุบัน - 2 → ปีปัจจุบัน
@@ -334,8 +364,27 @@ export default function ReportPage() {
             <FormDatePicker value={rangeTo} onChange={setRangeTo} placeholder="ถึงวันที่" allowClear buttonClassName="w-44" />
           </>
         )}
+        <div className="relative">
+          <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาชื่อ / ชื่อเล่น"
+            className="w-56 pl-9 pr-8 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="ล้างคำค้น"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-md"
+            >
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <span className="text-sm text-gray-400">
-          {filtered.length} รายการ
+          {visible.length} รายการ{query && visible.length !== filtered.length ? ` (จาก ${filtered.length})` : ''}
         </span>
       </div>
 
@@ -353,7 +402,7 @@ export default function ReportPage() {
       ) : groups.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
           <EnvelopeIcon className="w-10 h-10 text-gray-300 mx-auto" />
-          <p className="text-gray-400 text-sm mt-3">ไม่มีรายการที่จ่ายแล้วในช่วงเวลานี้</p>
+          <p className="text-gray-400 text-sm mt-3">{query && filtered.length > 0 ? `ไม่พบชื่อ "${search.trim()}" ในช่วงเวลานี้` : 'ไม่มีรายการที่จ่ายแล้วในช่วงเวลานี้'}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -364,9 +413,10 @@ export default function ReportPage() {
             const selectedInGroup = groupIds.filter((id) => selected.has(id)).length
             const allGroupSelected = selectedInGroup === groupIds.length
             const groupGross = pmts.reduce((s, p) => s + p.amount, 0)
-            const { tax: groupTax, net: groupNet } = calcTax(groupGross)
+            const groupTax = r2(pmts.reduce((s, p) => s + paymentTax(p).tax, 0))
+            const groupNet = r2(pmts.reduce((s, p) => s + paymentTax(p).net, 0))
             const selectedGross = pmts.filter((p) => selected.has(p.id)).reduce((s, p) => s + p.amount, 0)
-            const { net: selectedNet } = calcTax(selectedGross)
+            const selectedNet = r2(pmts.filter((p) => selected.has(p.id)).reduce((s, p) => s + paymentTax(p).net, 0))
 
             return (
               <div key={fid} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -375,11 +425,15 @@ export default function ReportPage() {
                   <FormCheckbox size="sm" checked={allGroupSelected} onChange={() => toggleGroup(fid, pmts)} />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900">{freelancer.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
                       {freelancer.email
                         ? <span className="text-blue-500">{freelancer.email}</span>
                         : <span className="text-red-400">⚠ ไม่มีอีเมล</span>
                       }
+                    </p>
+                    {/* มือถือ: ยอดรวมอยู่ใต้ชื่อ (ช่องขวาซ่อนบนจอเล็ก) */}
+                    <p className="sm:hidden text-xs text-gray-600 mt-1 tabular-nums">
+                      {formatCurrency(groupGross)} · <span className="text-green-600 font-medium">สุทธิ {formatCurrency(groupNet)}</span>
                     </p>
                   </div>
                   <div className="text-right hidden sm:block">
@@ -406,8 +460,9 @@ export default function ReportPage() {
                 {/* Payment rows — table layout */}
                 {!isCollapsed && (
                   <div className="overflow-x-auto">
+                    <div className="min-w-[760px]">
                     {/* Column headers */}
-                    <div className="grid grid-cols-[28px_1fr_100px_120px_100px_90px_90px] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
+                    <div className="grid grid-cols-[28px_minmax(140px,1fr)_100px_170px_100px_100px_100px] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400">
                       <span />
                       <span>งาน</span>
                       <span>ตำแหน่ง</span>
@@ -417,13 +472,13 @@ export default function ReportPage() {
                       <span className="text-right">สุทธิ</span>
                     </div>
                     {pmts.map((p) => {
-                      const { tax, net } = calcTax(p.amount)
+                      const { tax, net } = paymentTax(p)
                       const isSelected = selected.has(p.id)
                       return (
                         <div
                           key={p.id}
                           onClick={() => togglePayment(p.id)}
-                          className={`grid grid-cols-[28px_1fr_100px_120px_100px_90px_90px] gap-x-3 items-center px-5 py-3 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${isSelected ? 'bg-red-50/40' : 'hover:bg-gray-50'}`}
+                          className={`grid grid-cols-[28px_minmax(140px,1fr)_100px_170px_100px_100px_100px] gap-x-3 items-center px-5 py-3 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${isSelected ? 'bg-brand-soft/60' : 'hover:bg-gray-50'}`}
                         >
                           {/* แถวทั้งแถวกดเลือกได้ — กันคลิกที่ช่องติ๊กนับซ้ำ */}
                           <span onClick={(e) => e.stopPropagation()}>
@@ -439,11 +494,13 @@ export default function ReportPage() {
                             }
                           </div>
                           {/* วันที่ทำงาน */}
-                          <p className="text-xs text-gray-500 truncate">
-                            {p.workDates && p.workDates.length > 0
-                              ? p.workDates.map((d) => formatDate(d)).join(', ')
-                              : '-'}
-                          </p>
+                          {/* รวมวันติดกันเป็นช่วง + ตัดบรรทัดได้ ไม่ตัดเป็น … */}
+                          <div className="text-xs text-gray-500 leading-snug">
+                            <p className="break-words">{workDatesLabel(p.workDates)}</p>
+                            {(p.workDates?.length ?? 0) > 1 && (
+                              <p className="text-[11px] text-gray-400 tabular-nums">{p.workDates!.length} วัน</p>
+                            )}
+                          </div>
                           {/* จ่ายแล้ว */}
                           <p className="text-xs text-gray-400 truncate">
                             {p.paidAt ? formatDate(p.paidAt) : '-'}
@@ -458,6 +515,7 @@ export default function ReportPage() {
                         </div>
                       )
                     })}
+                    </div>
                   </div>
                 )}
               </div>

@@ -48,7 +48,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className={`w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]`}>
+              <Dialog.Panel className={`w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] max-h-[90dvh]`}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
                   <Dialog.Title className="text-lg font-semibold text-gray-900">{title}</Dialog.Title>
                   <button
